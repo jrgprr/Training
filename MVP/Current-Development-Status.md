@@ -257,13 +257,16 @@ Also, references from higher-level docs were updated after the MVP was moved int
 - services connected to database
 - frontend folder structure
 - frontend Vite + React + TypeScript bootstrap
+- core UI screens with navigation
+- API integration and data fetching
+- CORS configuration for frontend-backend communication
+- end-to-end functionality testing
 
 ### Not complete yet
 
 - import pipeline from Garmin files
 - metrics calculations
 - dashboard aggregation endpoints
-- custom frontend pages and components
 - data flow between frontend and backend
 - user interface screens (dashboard, daily log, weekly review)
 
@@ -283,7 +286,11 @@ Recommended order:
    - today dashboard - COMPLETED
    - daily log - COMPLETED (placeholder)
    - weekly review - COMPLETED
-8. Implement import flow for files as the first ingestion path.
+   - navigation and routing - COMPLETED
+   - API integration - COMPLETED
+   - CORS configuration - COMPLETED
+8. ✅ Test current functionalities - COMPLETED
+9. Implement import flow for files as the first ingestion path.
 
 ---
 
@@ -291,11 +298,12 @@ Recommended order:
 
 If resuming in a fresh chat, the best first prompt is effectively:
 
-> Implement the import flow for Garmin files as the first data ingestion path. The MVP now has a functional UI connected to the backend.
+> Implement the import flow for Garmin files as the first data ingestion path. The MVP now has fully tested and functional UI screens connected to the backend.
 
 Reason:
-- the core UI screens are complete and functional,
+- the core UI screens are complete, tested, and functional,
 - the backend API is ready for data ingestion,
+- CORS is configured for frontend-backend communication,
 - implementing file import will make the MVP capable of actual data processing.
 
 ---
@@ -310,15 +318,17 @@ Important context to preserve:
 - Garmin devices are central to automated ingestion
 - the backend is fully functional with SQLite database and connected services
 - the frontend has core screens implemented with React Router and API integration
+- CORS middleware added to enable frontend-backend communication
 - both servers are currently running (backend on :8000, frontend on :5173)
+- all core functionalities have been tested and verified working
 - next priority is implementing file import for Garmin data ingestion
 
 ---
 
 ## 12. Current running state
 
-As of the last update, both development servers are running:
-- **Backend**: http://localhost:8000 (FastAPI with SQLite database)
-- **Frontend**: http://localhost:5173 (Vite + React + TypeScript)
+As of the last update, both development servers are running and fully tested:
+- **Backend**: http://localhost:8000 (FastAPI with SQLite database) - all endpoints functional
+- **Frontend**: http://localhost:5173 (Vite + React + TypeScript) - all screens working with API integration
 
-The MVP foundation is complete and ready for UI development.
+The MVP foundation is complete, tested, and ready for the next development phase (Garmin file import).
