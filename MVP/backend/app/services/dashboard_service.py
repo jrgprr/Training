@@ -1,10 +1,6 @@
-from datetime import date
+from app.repositories.dashboard_repository import DashboardRepository
 
 
 def get_today_dashboard() -> dict[str, object]:
-    return {
-        "date": date.today().isoformat(),
-        "dayStatus": "ready",
-        "primaryObjective": "Ejecutar el plan del dia",
-        "pendingFields": ["checkin", "nutrition"],
-    }
+    repo = DashboardRepository()
+    return repo.get_today_dashboard()

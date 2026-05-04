@@ -1,7 +1,6 @@
+from app.repositories.week_repository import WeekRepository
+
+
 def get_week_summary(week_id: int) -> dict[str, object]:
-    return {
-        "weekId": week_id,
-        "objective": "Repetir semana tipo con control",
-        "status": "planned",
-        "riskToWatch": "Aumentar demasiado pronto",
-    }
+    repo = WeekRepository()
+    return repo.get_week_summary(week_id)

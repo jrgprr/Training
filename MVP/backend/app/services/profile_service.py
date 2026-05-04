@@ -1,9 +1,6 @@
+from app.repositories.profile_repository import ProfileRepository
+
+
 def get_profile_summary() -> dict[str, object]:
-    return {
-        "displayName": "Usuario MVP",
-        "primarySport": "cycling",
-        "activeGoals": [
-            "Reconstruccion aerobica",
-            "Control de peso",
-        ],
-    }
+    repo = ProfileRepository()
+    return repo.get_profile_summary()
