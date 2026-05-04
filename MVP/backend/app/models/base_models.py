@@ -22,7 +22,7 @@ from app.models.base import Base, TimestampMixin
 class UserProfile(TimestampMixin, Base):
     __tablename__ = "user_profile"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     birth_date: Mapped[Date | None] = mapped_column(Date)
     sex: Mapped[str | None] = mapped_column(Text)
@@ -102,7 +102,7 @@ class DataSourceAccount(TimestampMixin, Base):
 class ImportBatch(Base):
     __tablename__ = "import_batch"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id", ondelete="CASCADE"), nullable=False)
     source_account_id: Mapped[int | None] = mapped_column(ForeignKey("data_source_account.id", ondelete="SET NULL"))
     import_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -118,7 +118,7 @@ class ImportBatch(Base):
 class ImportFile(Base):
     __tablename__ = "import_file"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     import_batch_id: Mapped[int] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"), nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     file_type: Mapped[str | None] = mapped_column(Text)
@@ -131,7 +131,7 @@ class ImportFile(Base):
 class ImportRecord(Base):
     __tablename__ = "import_record"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     import_file_id: Mapped[int] = mapped_column(ForeignKey("import_file.id", ondelete="CASCADE"), nullable=False)
     record_type: Mapped[str] = mapped_column(Text, nullable=False)
     external_id: Mapped[str | None] = mapped_column(Text)

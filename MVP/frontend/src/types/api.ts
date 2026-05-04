@@ -18,3 +18,21 @@ export interface WeekResponse {
   status: string;
   riskToWatch: string;
 }
+
+export interface ImportFileSummary {
+  originalFilename: string;
+  fileType: string | null;
+  fileHash: string | null;
+  importedAt: string;
+  status: string;
+  rawMetadata: Record<string, unknown>;
+}
+
+export interface ImportUploadResponse {
+  importBatchId: number;
+  importType: string;
+  filesCount: number;
+  status: string;
+  files: ImportFileSummary[];
+  notes: string | null;
+}
