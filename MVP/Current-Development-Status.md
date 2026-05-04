@@ -170,35 +170,21 @@ Already created:
 ### 5.2 Backend status summary
 
 Current state:
-- FastAPI skeleton exists
-- routing exists
+- FastAPI skeleton exists and is running
+- routing exists and is functional
 - minimal response schemas exist
-- placeholder services exist
-- SQLAlchemy base exists
-- only a minimal sample model file exists
-- Alembic bootstrap file exists
-- no actual migration file exists yet
-- the full SQL schema has not yet been translated into ORM models
-- repositories are not implemented
-- business services are mostly placeholders
-- import pipeline is not implemented
-- metrics logic is not implemented
+- services connected to database via repository layer
+- SQLAlchemy ORM models fully implemented for all tables
+- Alembic migration created and applied
+- SQLite database configured for development
+- repository layer implemented with base repository class
+- business services connected to database (profile, week, dashboard)
+- import pipeline not implemented yet
+- metrics logic not implemented yet
 
 ### 5.3 Known backend issue
 
-The editor currently reports unresolved import for `fastapi` in:
-- `MVP/backend/app/api/v1/router.py`
-
-This is not a code design issue.
-It is an environment issue: backend dependencies are not installed in the current Python environment.
-
-Reason:
-- a Python environment configuration step was attempted,
-- but the environment configuration tool call was cancelled by the user before completion.
-
-Implication:
-- the backend skeleton is present,
-- but the machine does not yet have the backend environment set up and dependencies installed.
+No known backend issues. All dependencies are installed and the backend runs successfully on http://localhost:8000.
 
 ---
 
@@ -229,13 +215,11 @@ Folders already created:
 
 Current state:
 - folder structure exists
-- no frontend files have been created yet
-- no `package.json`
-- no Vite config
-- no React app entrypoints
-- no pages or components yet
-
-So the frontend is only scaffolded at directory level, not yet bootstrapped.
+- Vite + React + TypeScript setup complete
+- package.json and dependencies installed
+- development server running on http://localhost:5173/
+- basic React app with hot reload working
+- no custom pages or components yet
 
 ---
 
@@ -265,22 +249,23 @@ Also, references from higher-level docs were updated after the MVP was moved int
 - stack decision draft
 - backend folder structure
 - backend FastAPI base skeleton
+- Python environment setup (pyenv + Python 3.12.13)
+- backend dependencies installed
+- full SQLAlchemy ORM models
+- initial Alembic migration
+- repository layer implementation
+- services connected to database
 - frontend folder structure
+- frontend Vite + React + TypeScript bootstrap
 
 ### Not complete yet
 
-- Python environment setup
-- dependency installation
-- ORM models for full schema
-- Alembic initial migration
-- repository layer
-- actual services using database access
 - import pipeline from Garmin files
 - metrics calculations
 - dashboard aggregation endpoints
-- frontend app bootstrap
-- frontend pages and forms
+- custom frontend pages and components
 - data flow between frontend and backend
+- user interface screens (dashboard, daily log, weekly review)
 
 ---
 
@@ -288,12 +273,12 @@ Also, references from higher-level docs were updated after the MVP was moved int
 
 Recommended order:
 
-1. Configure Python environment for `MVP/backend`.
-2. Install backend dependencies from `backend/pyproject.toml`.
-3. Translate `MVP/schema-postgresql.sql` into SQLAlchemy ORM models.
-4. Create the first Alembic migration.
-5. Add a minimal repository layer and connect the existing placeholder services to the database.
-6. Bootstrap the frontend with Vite + React + TypeScript.
+1. ✅ Configure Python environment for `MVP/backend`. - COMPLETED
+2. ✅ Install backend dependencies from `backend/pyproject.toml`. - COMPLETED
+3. ✅ Translate `MVP/schema-postgresql.sql` into SQLAlchemy ORM models. - COMPLETED
+4. ✅ Create the first Alembic migration. - COMPLETED
+5. ✅ Add a minimal repository layer and connect the existing placeholder services to the database. - COMPLETED
+6. ✅ Bootstrap the frontend with Vite + React + TypeScript. - COMPLETED
 7. Create the first frontend screens:
    - today dashboard
    - daily log
@@ -306,12 +291,12 @@ Recommended order:
 
 If resuming in a fresh chat, the best first prompt is effectively:
 
-> Set up the backend environment for `MVP/backend`, install dependencies, convert the SQL schema into SQLAlchemy models, and create the initial Alembic migration.
+> Create the first frontend screens for the MVP: today dashboard, daily log, and weekly review. The backend is fully set up and running.
 
 Reason:
-- the backend skeleton already exists,
-- the database design is the most concrete technical asset already produced,
-- and the rest of the implementation depends on stabilizing the data model first.
+- the backend is complete and functional,
+- the frontend is bootstrapped and ready for development,
+- implementing the core user interface screens will make the MVP usable for the primary workflow.
 
 ---
 
@@ -323,6 +308,17 @@ Important context to preserve:
 - weight trend must remain separate from aerobic index
 - indoor substitutions due to weather are an explicit first-class concept
 - Garmin devices are central to automated ingestion
-- the current backend code is a skeleton only, not a connected application yet
-- the frontend has not been bootstrapped yet
-- environment setup was interrupted, so unresolved imports are currently expected
+- the backend is fully functional with SQLite database and connected services
+- the frontend is bootstrapped with Vite + React + TypeScript and running
+- both servers are currently running (backend on :8000, frontend on :5173)
+- next priority is implementing the core UI screens for the MVP workflow
+
+---
+
+## 12. Current running state
+
+As of the last update, both development servers are running:
+- **Backend**: http://localhost:8000 (FastAPI with SQLite database)
+- **Frontend**: http://localhost:5173 (Vite + React + TypeScript)
+
+The MVP foundation is complete and ready for UI development.
