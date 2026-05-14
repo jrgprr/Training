@@ -769,9 +769,15 @@ textarea {
   color: #166534;
 }
 
-.badge-partial {
+.badge-partial,
+.badge-partial_completed {
   background: rgba(217, 119, 6, 0.14);
   color: #92400e;
+}
+
+.badge-failed {
+  background: rgba(220, 38, 38, 0.14);
+  color: #991b1b;
 }
 
 .badge-pending {
