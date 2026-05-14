@@ -332,6 +332,86 @@ class GarminImportStorageStateTests(unittest.TestCase):
                 self.assertTrue(jobs[0]["partial_completion"])
                 self.assertEqual(jobs[0]["retry_suitability"], "inspect_before_retry")
 
+    def test_persist_batch_retry_creates_new_attempt_and_preserves_canonical_idempotency(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.object(GarminImportStorage, "_auto_link_garmin_activities", return_value=(0, 0)):
+                initialize_database()
+                storage = GarminImportStorage()
+
+                with storage_module_connection(database_path) as connection:
+                    create_minimal_exec_tables(connection)
+
+                request = GarminImportRequest(
+                    season_id=2026,
+                    date_from="2026-05-05",
+                    date_to="2026-05-05",
+                    include_daily_metrics=True,
+                )
+                batch = GarminImportBatch(
+                    request=request,
+                    metadata=ImportFetchMetadata(
+                        source_system="garmin",
+                        source_label="garminconnect",
+                        date_from="2026-05-05",
+                        date_to="2026-05-05",
+                        notes=["batch ok"],
+                    ),
+                    activities=[
+                        NormalizedActivity(
+                            external_activity_id="123",
+                            activity_date="2026-05-05",
+                            started_at=None,
+                            discipline="strength_training",
+                            activity_type="Fuerza",
+                            duration_seconds=1800,
+                            distance_meters=None,
+                            ascent_meters=None,
+                            calories=200,
+                            avg_hr=None,
+                            max_hr=None,
+                            avg_power=None,
+                            normalized_power=None,
+                            training_load=None,
+                            avg_pace_seconds_per_km=None,
+                        )
+                    ],
+                    daily_metrics=[
+                        NormalizedDailyMetric(
+                            metric_date="2026-05-05",
+                            resting_hr=50,
+                        )
+                    ],
+                )
+
+                first_summary = storage.persist_batch(batch)
+                second_summary = storage.persist_batch(batch)
+
+                self.assertNotEqual(first_summary.import_job_id, second_summary.import_job_id)
+                self.assertEqual(first_summary.status, "completed")
+                self.assertEqual(second_summary.status, "completed")
+                self.assertEqual(first_summary.breakdown.activity_rows_inserted, 1)
+                self.assertEqual(first_summary.breakdown.activity_rows_updated, 0)
+                self.assertEqual(second_summary.breakdown.activity_rows_inserted, 0)
+                self.assertEqual(second_summary.breakdown.activity_rows_updated, 1)
+                self.assertEqual(first_summary.breakdown.daily_metric_rows_inserted, 1)
+                self.assertEqual(second_summary.breakdown.daily_metric_rows_updated, 1)
+                self.assertEqual(second_summary.retry_suitability, "safe_to_retry")
+
+                jobs = storage.list_import_jobs()
+                self.assertEqual(len(jobs), 2)
+                self.assertEqual(jobs[0]["import_job_id"], second_summary.import_job_id)
+                self.assertEqual(jobs[1]["import_job_id"], first_summary.import_job_id)
+
+                with storage_module_connection(database_path) as connection:
+                    activity_total = connection.execute("SELECT COUNT(*) AS total FROM exec_activities").fetchone()["total"]
+                    metric_total = connection.execute("SELECT COUNT(*) AS total FROM exec_daily_metrics").fetchone()["total"]
+
+                self.assertEqual(activity_total, 1)
+                self.assertEqual(metric_total, 1)
+
 
 @contextmanager
 def storage_module_connection(database_path: Path):
@@ -344,3 +424,49 @@ def storage_module_connection(database_path: Path):
         connection.commit()
     finally:
         connection.close()
+
+
+def create_minimal_exec_tables(connection):
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activities (
+            activity_id INTEGER PRIMARY KEY,
+            season_id INTEGER NOT NULL,
+            source_system TEXT NOT NULL,
+            external_activity_id TEXT,
+            activity_date TEXT NOT NULL,
+            started_at TEXT,
+            discipline TEXT,
+            activity_type TEXT,
+            duration_seconds INTEGER,
+            distance_meters REAL,
+            ascent_meters REAL,
+            calories REAL,
+            avg_hr REAL,
+            max_hr REAL,
+            avg_power REAL,
+            normalized_power REAL,
+            training_load REAL,
+            avg_pace_seconds_per_km REAL,
+            raw_payload_path TEXT,
+            notes TEXT,
+            UNIQUE (source_system, external_activity_id)
+        );
+        CREATE TABLE IF NOT EXISTS exec_daily_metrics (
+            daily_metric_id INTEGER PRIMARY KEY,
+            season_id INTEGER NOT NULL,
+            metric_date TEXT NOT NULL,
+            source_system TEXT NOT NULL,
+            weight_kg REAL,
+            sleep_hours REAL,
+            sleep_quality TEXT,
+            resting_hr REAL,
+            hrv REAL,
+            body_battery REAL,
+            subjective_energy INTEGER,
+            subjective_fatigue INTEGER,
+            notes TEXT,
+            UNIQUE (season_id, metric_date, source_system)
+        );
+        """
+    )
