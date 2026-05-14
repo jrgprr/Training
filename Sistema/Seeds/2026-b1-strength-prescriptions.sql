@@ -1,0 +1,101 @@
+INSERT OR IGNORE INTO plan_session_prescriptions (
+    prescription_id, planned_session_id, prescription_type, title,
+    focus_primary, focus_secondary, estimated_duration_min, estimated_duration_max,
+    target_rpe_min, target_rpe_max, warmup_notes, cooldown_notes,
+    execution_notes, adaptation_notes, source_markdown_path
+) VALUES
+(10103, 10103, 'strength', 'B1 Semana 01 · Reactivacion', 'empuje y traccion basica', 'core antirotacion', 30, 35, 6.0, 7.0, 'Movilidad toracica y escapular, 1-2 series de band pull-aparts, 1-2 series de face pulls con banda, plancha corta o dead bug y 2 series progresivas del primer ejercicio.', 'Respiracion, movilidad suave de hombro y toracica, descarga ligera de cuello y dorsales.', 'Terminar con sensacion de activacion, no de desgaste.', 'Si deja fatiga residual para jueves, cortar una serie por ejercicio antes de bajar carga.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md'),
+(10203, 10203, 'strength', 'B1 Semana 02 · Continuidad', 'empuje y traccion con algo mas de volumen', 'core antiextension y transporte', 35, 40, 6.0, 7.0, 'Mismo calentamiento base de B1 con 2 series progresivas del primer ejercicio.', 'Respiracion y movilidad suave de hombro y toracica.', 'Jueves debe sentirse normal de hombros y espalda, con fatiga local baja.', 'Si llegas cargado de bici, quita una serie del bloque complementario.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md'),
+(10303, 10303, 'strength', 'B1 Semana 03 · Progresion suave', 'traccion vertical y banca', 'control escapular y core', 40, 45, 6.0, 7.0, 'Mismo calentamiento base de B1 con especial atencion a escapulas y hombro.', 'Respiracion nasal y movilidad toracica suave.', 'Sesion solida, pero sin restar calidad a la bici del jueves.', 'Si el RPE real se acerca a 8, repetir carga la semana siguiente.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md'),
+(10403, 10403, 'strength', 'B1 Semana 04 · Absorcion', 'mantener patrones con baja carga', 'core suave y control escapular', 25, 35, 5.0, 6.0, 'Version reducida del calentamiento base, sin alargar la parte central.', 'Respiracion y descarga ligera de cuello y dorsales.', 'Debe sobrar sensacion de frescura al terminar.', 'Mantener muy contenida; si dudas, quitar una serie.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md'),
+(10503, 10503, 'strength', 'B1 Semana 05 · Segundo empuje controlado', 'banca y dominadas', 'core lateral y flexion de cadera', 40, 45, 6.0, 7.0, 'Calentamiento base completo y 2 series progresivas de banca.', 'Respiracion y movilidad suave de hombro.', 'Exigido, pero sin agujetas fuertes ni sensacion de castigo general.', 'Si la tecnica cae, repetir carga y recortar una serie del accesorio.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md'),
+(10603, 10603, 'strength', 'B1 Semana 06 · Validacion', 'sesion repetible y facil de encajar', 'core y control escapular', 35, 40, 6.0, 7.0, 'Calentamiento base de B1 con foco en movilidad toracica y activacion escapular.', 'Respiracion, movilidad suave y cierre corto.', 'Debe dejar confianza para entrar en B2, no necesidad de descargar.', 'Mejor quedarse corto que interferir con jueves o sabado.', '2026/Bloques/B1-Reconstruccion-solida/Fuerza-tren-superior-y-core.md');
+
+INSERT OR IGNORE INTO plan_prescription_blocks (
+    prescription_block_id, prescription_id, sequence_order, block_type, block_name, objective, rounds, rest_seconds, notes
+) VALUES
+(101031, 10103, 1, 'main', 'Bloque principal', 'Reactivar empuje y traccion con tecnica limpia.', NULL, 90, NULL),
+(101032, 10103, 2, 'accessory', 'Complementarios', 'Añadir trabajo de hombro y traccion vertical sin interferencia.', NULL, 75, NULL),
+(101033, 10103, 3, 'core', 'Core', 'Recuperar rigidez del tronco sin fatiga excesiva.', NULL, 60, NULL),
+(102031, 10203, 1, 'main', 'Bloque principal', 'Repetir la sesion con un poco mas de trabajo util.', NULL, 90, NULL),
+(102032, 10203, 2, 'accessory', 'Complementarios', 'Completar empuje inclinado y traccion asistida.', NULL, 75, NULL),
+(102033, 10203, 3, 'core', 'Core y transporte', 'Combinar control del tronco con estabilidad cargada.', NULL, 60, NULL),
+(103031, 10303, 1, 'main', 'Bloque principal', 'Semana mas constructiva del bloque sin pasar de RPE 7.', NULL, 105, NULL),
+(103032, 10303, 2, 'accessory', 'Complementarios', 'Mantener empuje vertical y trabajo escapular.', NULL, 75, NULL),
+(103033, 10303, 3, 'core', 'Core', 'Core antiextension y antirotacion.', NULL, 60, NULL),
+(104031, 10403, 1, 'main', 'Bloque principal', 'Mantener patrones con volumen reducido.', NULL, 90, NULL),
+(104032, 10403, 2, 'accessory', 'Complementarios', 'Mantener tono sin acumular cansancio.', NULL, 60, NULL),
+(104033, 10403, 3, 'core', 'Core', 'Salir con sensacion de frescura.', NULL, 45, NULL),
+(105031, 10503, 1, 'main', 'Bloque principal', 'Consolidar una sesion robusta dentro del caracter de B1.', NULL, 105, NULL),
+(105032, 10503, 2, 'accessory', 'Complementarios', 'Sumar inclinacion, remo y hombro sin castigar.', NULL, 75, NULL),
+(105033, 10503, 3, 'core', 'Core', 'Estabilidad lateral y flexion de cadera controlada.', NULL, 60, NULL),
+(106031, 10603, 1, 'main', 'Bloque principal', 'Confirmar que la sesion se puede repetir tal cual.', NULL, 90, NULL),
+(106032, 10603, 2, 'accessory', 'Complementarios', 'Mantener hombro y traccion accesoria.', NULL, 60, NULL),
+(106033, 10603, 3, 'core', 'Core', 'Cerrar con estabilidad de tronco y baja fatiga.', NULL, 45, NULL);
+
+INSERT OR IGNORE INTO plan_prescription_exercises (
+    prescription_exercise_id, prescription_block_id, sequence_order, exercise_name, movement_pattern, equipment, unilateral_mode, sets_count, reps_min, reps_max, hold_seconds_min, hold_seconds_max, distance_meters, target_rpe_min, target_rpe_max, target_rir_min, target_rir_max, tempo, load_guidance, optional_flag, substitution_group, notes
+) VALUES
+(1010311, 101031, 1, 'Press banca con mancuernas', 'horizontal_push', 'mancuernas,banco', 'none', 3, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Cargas comodas y tecnica limpia.', 0, 'banca_horizontal', NULL),
+(1010312, 101031, 2, 'Remo con mancuerna a una mano', 'horizontal_pull', 'mancuerna,banco', 'each_side', 3, 10, 10, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Controlar escapula y tronco.', 0, 'remo_horizontal', NULL),
+(1010321, 101032, 1, 'Press militar con mancuernas sentado', 'vertical_push', 'mancuernas,banco', 'none', 2, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Ligero y sin dolor de hombro.', 0, 'empuje_vertical', NULL),
+(1010322, 101032, 2, 'Dominadas asistidas con banda', 'vertical_pull', 'barra,banda', 'none', 3, 4, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Subida controlada y sin balanceo.', 0, 'traccion_vertical', 'Puede hacerse como dominada controlada si el nivel lo permite.'),
+(1010331, 101033, 1, 'Pallof press con banda', 'anti_rotation', 'banda', 'each_side', 3, 10, 10, NULL, NULL, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Mantener pelvis estable.', 0, 'core_antirotacion', NULL),
+(1010332, 101033, 2, 'Plancha lateral', 'lateral_core', 'peso corporal', 'each_side', 3, NULL, NULL, 20, 30, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Alinear costillas y pelvis.', 0, 'core_lateral', NULL),
+(1020311, 102031, 1, 'Press banca con barra', 'horizontal_push', 'barra,banco', 'none', 4, 6, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Subir solo si la semana 01 fue comoda.', 0, 'banca_horizontal', NULL),
+(1020312, 102031, 2, 'Remo con barra', 'horizontal_pull', 'barra', 'none', 4, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Torso firme y recorrido consistente.', 0, 'remo_horizontal', NULL),
+(1020321, 102032, 1, 'Press inclinado con mancuernas', 'incline_push', 'mancuernas,banco', 'none', 3, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Mantener control escapular.', 0, 'empuje_inclinado', NULL),
+(1020322, 102032, 2, 'Dominadas asistidas o jalon con banda', 'vertical_pull', 'barra,banda', 'none', 3, 5, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Escoger la opcion que no irrite hombro ni codo.', 0, 'traccion_vertical', NULL),
+(1020331, 102033, 1, 'Dead bug con mancuerna ligera o banda', 'anti_extension', 'mancuerna,banda', 'each_side', 3, 8, 8, NULL, NULL, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Exhalar y fijar zona media.', 0, 'core_antiextension', NULL),
+(1020332, 102033, 2, 'Farmer carry o suitcase carry', 'carry', 'mancuerna', 'each_side', 3, NULL, NULL, NULL, NULL, 25, 6.0, 6.0, NULL, NULL, NULL, 'Caminar estable sin inclinarse.', 0, 'carry', 'Objetivo practico 20-30 m por lado.'),
+(1030311, 103031, 1, 'Press banca con barra', 'horizontal_push', 'barra,banco', 'none', 4, 6, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Primera semana realmente constructiva.', 0, 'banca_horizontal', NULL),
+(1030312, 103031, 2, 'Dominadas asistidas o estrictas', 'vertical_pull', 'barra,banda', 'none', 4, 4, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Elegir version que deje repeticiones en reserva.', 0, 'traccion_vertical', NULL),
+(1030313, 103031, 3, 'Remo con mancuerna a una mano', 'horizontal_pull', 'mancuerna,banco', 'each_side', 3, 8, 10, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Sin rotar tronco.', 0, 'remo_horizontal', NULL),
+(1030321, 103032, 1, 'Press militar con barra o mancuernas', 'vertical_push', 'barra,mancuernas', 'none', 3, 6, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Prioridad a la version que cuide mejor el hombro.', 0, 'empuje_vertical', NULL),
+(1030322, 103032, 2, 'Elevaciones Y-T-W o face pulls con banda', 'scapular_control', 'banco,banda', 'none', 2, 10, 12, NULL, NULL, NULL, 5.0, 6.0, NULL, NULL, NULL, 'Trabajo fino, sin fatiga alta.', 0, 'escapular', NULL),
+(1030331, 103033, 1, 'Hanging knee raise', 'hip_flexion_core', 'barra', 'none', 3, 8, 10, NULL, NULL, NULL, 6.0, 7.0, NULL, NULL, NULL, 'Balanceo minimo.', 0, 'core_flexion', NULL),
+(1030332, 103033, 2, 'Pallof press isometrico', 'anti_rotation', 'banda', 'each_side', 2, NULL, NULL, 20, 25, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Mantener costillas abajo.', 0, 'core_antirotacion', NULL),
+(1040311, 104031, 1, 'Press banca con mancuernas', 'horizontal_push', 'mancuernas,banco', 'none', 2, 8, 8, NULL, NULL, NULL, 5.0, 6.0, 3.0, 3.0, NULL, 'Semana de absorcion.', 0, 'banca_horizontal', NULL),
+(1040312, 104031, 2, 'Remo con mancuerna a una mano', 'horizontal_pull', 'mancuerna,banco', 'each_side', 2, 8, 8, NULL, NULL, NULL, 5.0, 6.0, 3.0, 3.0, NULL, 'Solo para mantener patron.', 0, 'remo_horizontal', NULL),
+(1040321, 104032, 1, 'Press militar ligero', 'vertical_push', 'mancuernas', 'none', 2, 8, 8, NULL, NULL, NULL, 5.0, 6.0, 3.0, 3.0, NULL, 'Muy limpio y comodo.', 0, 'empuje_vertical', NULL),
+(1040322, 104032, 2, 'Dominadas asistidas o jalon con banda', 'vertical_pull', 'barra,banda', 'none', 2, 4, 5, NULL, NULL, NULL, 5.0, 6.0, 3.0, 3.0, NULL, 'Dejar sensacion de frescura.', 0, 'traccion_vertical', NULL),
+(1040323, 104032, 3, 'Face pull con banda', 'scapular_control', 'banda', 'none', 2, 12, 12, NULL, NULL, NULL, 5.0, 6.0, NULL, NULL, NULL, 'Recorrido suave y controlado.', 0, 'escapular', NULL),
+(1040331, 104033, 1, 'Dead bug', 'anti_extension', 'peso corporal', 'each_side', 2, 8, 8, NULL, NULL, NULL, 5.0, 6.0, NULL, NULL, NULL, 'Exhalar en cada repeticion.', 0, 'core_antiextension', NULL),
+(1040332, 104033, 2, 'Plancha lateral', 'lateral_core', 'peso corporal', 'each_side', 2, NULL, NULL, 20, 20, NULL, 5.0, 6.0, NULL, NULL, NULL, 'Salir con sensacion de reserva.', 0, 'core_lateral', NULL),
+(1050311, 105031, 1, 'Press banca con barra', 'horizontal_push', 'barra,banco', 'none', 4, 5, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Segundo empuje controlado del bloque.', 0, 'banca_horizontal', NULL),
+(1050312, 105031, 2, 'Dominadas asistidas o estrictas', 'vertical_pull', 'barra,banda', 'none', 4, 4, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Sin llegar al fallo.', 0, 'traccion_vertical', NULL),
+(1050321, 105032, 1, 'Press inclinado con mancuernas', 'incline_push', 'mancuernas,banco', 'none', 3, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Complementario de empuje.', 0, 'empuje_inclinado', NULL),
+(1050322, 105032, 2, 'Remo con barra o en banco', 'horizontal_pull', 'barra,banco', 'none', 3, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Elegir la variante mas estable.', 0, 'remo_horizontal', NULL),
+(1050323, 105032, 3, 'Press militar con mancuernas', 'vertical_push', 'mancuernas', 'none', 2, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Solo si el hombro lo tolera bien.', 0, 'empuje_vertical', NULL),
+(1050331, 105033, 1, 'Suitcase carry con mancuerna pesada', 'carry', 'mancuerna', 'each_side', 3, NULL, NULL, NULL, NULL, 30, 6.0, 7.0, NULL, NULL, NULL, 'Objetivo practico 25-35 m por lado.', 0, 'carry', NULL),
+(1050332, 105033, 2, 'Hanging knee raise o reverse crunch en banco', 'hip_flexion_core', 'barra,banco', 'none', 3, 8, 10, NULL, NULL, NULL, 6.0, 7.0, NULL, NULL, NULL, 'Escoger la variante mas limpia.', 0, 'core_flexion', NULL),
+(1060311, 106031, 1, 'Press banca con barra o mancuernas', 'horizontal_push', 'barra,mancuernas,banco', 'none', 3, 6, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Version mas repetible y facil de encajar.', 0, 'banca_horizontal', NULL),
+(1060312, 106031, 2, 'Dominadas asistidas o estrictas', 'vertical_pull', 'barra,banda', 'none', 3, 4, 6, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Salir con sensacion de control.', 0, 'traccion_vertical', NULL),
+(1060313, 106031, 3, 'Remo con mancuerna a una mano', 'horizontal_pull', 'mancuerna,banco', 'each_side', 3, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Tecnica limpia y sin prisa.', 0, 'remo_horizontal', NULL),
+(1060321, 106032, 1, 'Press militar sentado con mancuernas', 'vertical_push', 'mancuernas,banco', 'none', 2, 8, 8, NULL, NULL, NULL, 6.0, 7.0, 2.0, 3.0, NULL, 'Solo complemento, no protagonista.', 0, 'empuje_vertical', NULL),
+(1060322, 106032, 2, 'Face pull con banda', 'scapular_control', 'banda', 'none', 2, 12, 12, NULL, NULL, NULL, 5.0, 6.0, NULL, NULL, NULL, 'Mantener hombro y escápula activos.', 0, 'escapular', NULL),
+(1060331, 106033, 1, 'Pallof press', 'anti_rotation', 'banda', 'each_side', 2, 10, 10, NULL, NULL, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Sin rotacion del tronco.', 0, 'core_antirotacion', NULL),
+(1060332, 106033, 2, 'Plancha lateral o hollow hold', 'lateral_core', 'peso corporal', 'none', 2, NULL, NULL, 20, 30, NULL, 6.0, 6.0, NULL, NULL, NULL, 'Elegir la opcion que deje mejor control.', 0, 'core_lateral', 'Se pueden hacer 2 o 3 series segun frescura.');
+
+INSERT OR IGNORE INTO plan_prescription_exercise_options (
+    exercise_option_id, prescription_exercise_id, sequence_order, option_name, equipment, condition_notes
+) VALUES
+(10103221, 1010322, 1, 'Dominadas controladas', 'barra', 'Usar si salen limpias sin acercarse al fallo.'),
+(10103222, 1010322, 2, 'Jalon alto con banda', 'banda', 'Usar si la dominada irrita hombro o codo.'),
+(10203221, 1020322, 1, 'Dominadas asistidas', 'barra,banda', 'Opcion preferente si el gesto sienta bien.'),
+(10203222, 1020322, 2, 'Jalon con banda', 'banda', 'Sustituir si hay carga excesiva en codo u hombro.'),
+(10203321, 1020332, 1, 'Farmer carry', 'mancuernas', 'Usar si se tolera bien carga bilateral.'),
+(10203322, 1020332, 2, 'Suitcase carry', 'mancuerna', 'Usar si quieres enfatizar estabilidad lateral.'),
+(10303121, 1030312, 1, 'Dominadas estrictas', 'barra', 'Solo si dejas 2-3 repeticiones en reserva.'),
+(10303122, 1030312, 2, 'Dominadas asistidas', 'barra,banda', 'Mantener si aun no compensa pasar a estrictas.'),
+(10303211, 1030321, 1, 'Press militar con barra', 'barra', 'Elegir si el hombro lo tolera con naturalidad.'),
+(10303212, 1030321, 2, 'Press militar con mancuernas', 'mancuernas', 'Preferible si da mejor trayectoria y control.'),
+(10303221, 1030322, 1, 'Elevaciones Y-T-W en banco inclinado', 'banco', 'Opcion de control escapular.'),
+(10303222, 1030322, 2, 'Face pulls con banda', 'banda', 'Usar si necesitas una opcion mas simple.'),
+(10503231, 1050323, 1, 'Landmine press improvisado', 'barra', 'Sustituir si el hombro no tolera bien el press militar.'),
+(10503321, 1050332, 1, 'Hanging knee raise', 'barra', 'Usar si puedes evitar balanceo.'),
+(10503322, 1050332, 2, 'Reverse crunch en banco', 'banco', 'Usar si necesitas una opcion mas controlada.'),
+(10603111, 1060311, 1, 'Press banca con barra', 'barra,banco', 'Usar si es la version mas estable y repetible.'),
+(10603112, 1060311, 2, 'Press banca con mancuernas', 'mancuernas,banco', 'Usar si las mancuernas resultan mas comodas.'),
+(10603321, 1060332, 1, 'Plancha lateral', 'peso corporal', 'Opcion preferente si quieres estabilidad lateral.'),
+(10603322, 1060332, 2, 'Hollow hold', 'peso corporal', 'Opcion si toleras bien la flexion isometrica del tronco.');
