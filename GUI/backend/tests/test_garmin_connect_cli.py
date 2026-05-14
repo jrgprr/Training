@@ -92,6 +92,8 @@ class GarminConnectCliTests(unittest.TestCase):
             status="completed",
             rows_detected=1,
             rows_loaded=1,
+            request_scope=request.to_scope_dict(),
+            retry_suitability="safe_to_retry",
             notes=["done"],
             breakdown=ImportJobBreakdown(),
         )
@@ -119,6 +121,8 @@ class GarminConnectCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["mode"], "apply")
         self.assertEqual(payload["import_job"]["import_job_id"], 99)
+        self.assertEqual(payload["import_job"]["retry_suitability"], "safe_to_retry")
+        self.assertEqual(payload["import_job"]["request_scope"]["season_id"], 2026)
 
     def test_apply_marks_job_failed_when_fetch_errors(self) -> None:
         stdout = io.StringIO()
@@ -134,7 +138,13 @@ class GarminConnectCliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         storage.start_import_job.assert_called_once()
-        storage.fail_import_job.assert_called_once_with(41, notes=["Importacion Garmin fallida durante fetch.", "fetch roto"])
+        storage.fail_import_job.assert_called_once_with(
+            41,
+            notes=["Importacion Garmin fallida durante fetch.", "fetch roto"],
+            failure_stage="fetch",
+            failure_class="transport_rate_limit",
+            operator_detail="fetch roto",
+        )
         self.assertEqual(stdout.getvalue(), "")
         payload = json.loads(stderr.getvalue())
         self.assertEqual(payload["status"], "error")
