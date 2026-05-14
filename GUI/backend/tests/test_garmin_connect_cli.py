@@ -14,6 +14,7 @@ from app.imports.garmin_connect import GarminConnectImportError, run_cli
 from app.imports.pipeline import GarminImportPreview
 from app.imports.storage import GarminImportStorage, ImportJobSummary
 from app.imports.contracts import ImportJobBreakdown
+from app.main import get_import_job, get_import_jobs
 
 
 class GarminConnectCliTests(unittest.TestCase):
@@ -411,6 +412,81 @@ class GarminImportStorageStateTests(unittest.TestCase):
 
                 self.assertEqual(activity_total, 1)
                 self.assertEqual(metric_total, 1)
+
+
+class GarminImportApiPayloadTests(unittest.TestCase):
+    def test_import_job_endpoints_return_history_payload_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ):
+                initialize_database()
+                storage = GarminImportStorage()
+                import_job_id = storage.start_import_job(
+                    season_id=2026,
+                    source_system="garmin",
+                    import_type="garminconnect",
+                    source_path="2026-05-04:2026-05-10",
+                    request_date_from="2026-05-04",
+                    request_date_to="2026-05-10",
+                    include_daily_metrics=True,
+                    notes=["Importacion Garmin iniciada."],
+                )
+                storage.fail_import_job(
+                    import_job_id,
+                    notes=["Importacion Garmin fallida durante fetch.", "auth rota"],
+                    rows_detected=4,
+                    rows_loaded=1,
+                    failure_stage="configuration",
+                    failure_class="configuration_authentication",
+                    operator_detail="auth rota",
+                    breakdown=ImportJobBreakdown(
+                        activity_rows_detected=3,
+                        activity_rows_inserted=1,
+                        activity_rows_updated=0,
+                        activity_rows_skipped=2,
+                        daily_metric_rows_detected=1,
+                        daily_metric_rows_inserted=0,
+                        daily_metric_rows_updated=0,
+                        daily_metric_rows_skipped=1,
+                    ),
+                )
+
+                jobs = get_import_jobs()
+                self.assertEqual(len(jobs), 1)
+                job = jobs[0]
+                self.assertEqual(job["import_job_id"], import_job_id)
+                self.assertEqual(job["status"], "failed")
+                self.assertEqual(job["failure_stage"], "configuration")
+                self.assertEqual(job["failure_class"], "configuration_authentication")
+                self.assertEqual(job["retry_suitability"], "safe_to_retry")
+                self.assertFalse(job["partial_completion"])
+                self.assertEqual(job["operator_detail"], "auth rota")
+                self.assertEqual(
+                    job["request_scope"],
+                    {
+                        "season_id": 2026,
+                        "date_from": "2026-05-04",
+                        "date_to": "2026-05-10",
+                        "include_daily_metrics": True,
+                    },
+                )
+                self.assertEqual(job["breakdown"]["activity_rows_detected"], 3)
+                self.assertEqual(job["breakdown"]["activity_rows_skipped"], 2)
+                self.assertEqual(job["breakdown"]["daily_metric_rows_detected"], 1)
+
+                detail_job = get_import_job(import_job_id)
+                self.assertEqual(detail_job["import_job_id"], import_job_id)
+                self.assertEqual(detail_job["request_scope"]["season_id"], 2026)
+                self.assertEqual(detail_job["request_scope"]["date_from"], "2026-05-04")
+                self.assertEqual(detail_job["request_scope"]["date_to"], "2026-05-10")
+                self.assertTrue(detail_job["request_scope"]["include_daily_metrics"])
+                self.assertEqual(detail_job["failure_stage"], "configuration")
+                self.assertEqual(detail_job["failure_class"], "configuration_authentication")
+                self.assertEqual(detail_job["retry_suitability"], "safe_to_retry")
+                self.assertEqual(detail_job["operator_detail"], "auth rota")
+                self.assertEqual(detail_job["staging_counts"], {"activities": 0, "daily_metrics": 0})
 
 
 @contextmanager

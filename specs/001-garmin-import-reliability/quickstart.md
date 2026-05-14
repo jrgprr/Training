@@ -11,10 +11,10 @@ Validated on 2026-05-14 in the local Linux development environment:
 - The live failure path without Garmin credentials returns HTTP 400.
 - Import-job history is exposed through the API and rendered in the existing GUI history surface.
 - Legacy import-job rows that do not contain `request_scope` no longer break the GUI.
+- A live Garmin import using environment credentials succeeds for scope `2026-05-05` to `2026-05-05`.
+- Repeating that same live scope creates distinct import attempts while preserving canonical Garmin row counts.
 
 Not yet validated in this environment:
-- A successful live Garmin import using real credentials or an existing token store.
-- A repeated live rerun of the same Garmin scope against the remote source.
 - A live partial-completion case triggered from a real Garmin run.
 
 ## Prerequisites
@@ -90,4 +90,6 @@ Expected result after implementation:
 - The second run records inserted/updated/skipped counts correctly.
 
 Current note:
-- This step remains pending in live validation because the current environment does not have Garmin credentials or token store configured.
+- Validated live on 2026-05-14 with scope `2026-05-05` to `2026-05-05`.
+- Two distinct completed attempts were recorded as jobs `19` and `20`.
+- Canonical counts for that scope remained stable at 3 Garmin activities and 2 Garmin daily metrics.

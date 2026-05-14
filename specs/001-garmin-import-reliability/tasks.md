@@ -18,8 +18,8 @@
 
 **Purpose**: Lock the task slice to the existing Garmin import flow and prepare shared implementation targets.
 
-- [ ] T001 Confirm the feature scope and validation path in `specs/001-garmin-import-reliability/plan.md`, `specs/001-garmin-import-reliability/contracts/garmin-import-api.md`, and `specs/001-garmin-import-reliability/quickstart.md` before code changes begin.
-- [ ] T002 Identify the shared implementation surface in `Sistema/schema.sql`, `GUI/backend/app/imports/contracts.py`, `GUI/backend/app/imports/storage.py`, `GUI/backend/app/main.py`, `GUI/backend/tests/test_garmin_connect_cli.py`, and `GUI/frontend/src/App.tsx`.
+- [x] T001 Confirm the feature scope and validation path in `specs/001-garmin-import-reliability/plan.md`, `specs/001-garmin-import-reliability/contracts/garmin-import-api.md`, and `specs/001-garmin-import-reliability/quickstart.md` before code changes begin.
+- [x] T002 Identify the shared implementation surface in `Sistema/schema.sql`, `GUI/backend/app/imports/contracts.py`, `GUI/backend/app/imports/storage.py`, `GUI/backend/app/main.py`, `GUI/backend/tests/test_garmin_connect_cli.py`, and `GUI/frontend/src/App.tsx`.
 
 ---
 
@@ -29,10 +29,10 @@
 
 **⚠️ CRITICAL**: No user story work should start until this phase is complete.
 
-- [ ] T003 Update `Sistema/schema.sql` so `meta_import_jobs` stores request scope, finished timestamp, failure stage, failure class, retry suitability, partial-completion state, operator detail, and per-data-class breakdown columns.
-- [ ] T004 [P] Extend Garmin import dataclasses and serialization helpers in `GUI/backend/app/imports/contracts.py` to represent the enriched attempt state and breakdown fields returned by the API.
-- [ ] T005 [P] Refactor shared import-job persistence and serialization in `GUI/backend/app/imports/storage.py` so start, success, failure, and listing/detail reads use explicit structured fields instead of notes-only state.
-- [ ] T006 Add shared backend rules for terminal status, failure classification, and retry suitability in `GUI/backend/app/imports/storage.py` and `GUI/backend/app/imports/pipeline.py` so all stories consume one canonical interpretation.
+- [x] T003 Update `Sistema/schema.sql` so `meta_import_jobs` stores request scope, finished timestamp, failure stage, failure class, retry suitability, partial-completion state, operator detail, and per-data-class breakdown columns.
+- [x] T004 [P] Extend Garmin import dataclasses and serialization helpers in `GUI/backend/app/imports/contracts.py` to represent the enriched attempt state and breakdown fields returned by the API.
+- [x] T005 [P] Refactor shared import-job persistence and serialization in `GUI/backend/app/imports/storage.py` so start, success, failure, and listing/detail reads use explicit structured fields instead of notes-only state.
+- [x] T006 Add shared backend rules for terminal status, failure classification, and retry suitability in `GUI/backend/app/imports/storage.py` and `GUI/backend/app/imports/pipeline.py` so all stories consume one canonical interpretation.
 
 **Checkpoint**: SQLite schema and shared backend import-job model are ready for story work.
 
@@ -46,15 +46,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering successful completion and zero-result completion with enriched terminal import-job fields.
-- [ ] T008 [P] [US1] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering configuration/authentication failure, transport failure, and persistence failure classification with terminal import-job persistence.
+- [x] T007 [P] [US1] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering successful completion and zero-result completion with enriched terminal import-job fields.
+- [x] T008 [P] [US1] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering configuration/authentication failure, transport failure, and persistence failure classification with terminal import-job persistence.
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Update Garmin fetch/pipeline flow in `GUI/backend/app/imports/pipeline.py` and `GUI/backend/app/imports/garmin_connect.py` so fetch and normalization failures surface the stage and class required by the spec.
-- [ ] T010 [US1] Update run-path persistence in `GUI/backend/app/imports/storage.py` so successful, failed, zero-result, and partial attempts write finished timestamps, operator detail, and per-data-class counts.
-- [ ] T011 [US1] Update Garmin run/preview endpoints in `GUI/backend/app/main.py` so HTTP responses and terminal job writes stay aligned with the enriched contract for success and failure cases.
-- [ ] T012 [US1] Run `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_garmin_connect_cli` to validate the P1 slice.
+- [x] T009 [US1] Update Garmin fetch/pipeline flow in `GUI/backend/app/imports/pipeline.py` and `GUI/backend/app/imports/garmin_connect.py` so fetch and normalization failures surface the stage and class required by the spec.
+- [x] T010 [US1] Update run-path persistence in `GUI/backend/app/imports/storage.py` so successful, failed, zero-result, and partial attempts write finished timestamps, operator detail, and per-data-class counts.
+- [x] T011 [US1] Update Garmin run/preview endpoints in `GUI/backend/app/main.py` so HTTP responses and terminal job writes stay aligned with the enriched contract for success and failure cases.
+- [x] T012 [US1] Run `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_garmin_connect_cli` to validate the P1 slice.
 
 **Checkpoint**: Garmin import attempts are always durably recorded with explicit completion or classified failure.
 
@@ -68,15 +68,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering repeated scope retries creating new attempt rows without overwriting prior history.
-- [ ] T014 [P] [US2] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering partial completion and `inspect_before_retry` outcomes plus idempotent canonical writes on rerun.
+- [x] T013 [P] [US2] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering repeated scope retries creating new attempt rows without overwriting prior history.
+- [x] T014 [P] [US2] Add backend tests in `GUI/backend/tests/test_garmin_connect_cli.py` covering partial completion and `inspect_before_retry` outcomes plus idempotent canonical writes on rerun.
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Update canonical persistence logic in `GUI/backend/app/imports/storage.py` to record inserted, updated, and skipped counts per data class while preserving the existing stable-identity upsert behavior.
-- [ ] T016 [US2] Extend import-job list/detail reads in `GUI/backend/app/imports/storage.py` to expose request scope, failure stage, failure class, retry suitability, and partial-completion fields for history review.
-- [ ] T017 [US2] Update `GET /api/import-jobs`, `GET /api/import-jobs/{import_job_id}`, and `POST /api/imports/garmin-connect/run` in `GUI/backend/app/main.py` to return the enriched retry-safety fields defined in `specs/001-garmin-import-reliability/contracts/garmin-import-api.md`.
-- [ ] T018 [US2] Run `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_garmin_connect_cli` and verify the retry/history scenarios from `specs/001-garmin-import-reliability/quickstart.md`.
+- [x] T015 [US2] Update canonical persistence logic in `GUI/backend/app/imports/storage.py` to record inserted, updated, and skipped counts per data class while preserving the existing stable-identity upsert behavior.
+- [x] T016 [US2] Extend import-job list/detail reads in `GUI/backend/app/imports/storage.py` to expose request scope, failure stage, failure class, retry suitability, and partial-completion fields for history review.
+- [x] T017 [US2] Update `GET /api/import-jobs`, `GET /api/import-jobs/{import_job_id}`, and `POST /api/imports/garmin-connect/run` in `GUI/backend/app/main.py` to return the enriched retry-safety fields defined in `specs/001-garmin-import-reliability/contracts/garmin-import-api.md`.
+- [x] T018 [US2] Run `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_garmin_connect_cli` and verify the retry/history scenarios from `specs/001-garmin-import-reliability/quickstart.md`.
 
 **Checkpoint**: Operators can diagnose prior attempts and rerun the same scope safely without losing history or creating unintended duplicates.
 
@@ -90,14 +90,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T019 [P] [US3] Add or update frontend-facing API/state tests in `GUI/backend/tests/test_garmin_connect_cli.py` for import-job payload fields needed by the existing history surface.
+- [x] T019 [P] [US3] Add or update frontend-facing API/state tests in `GUI/backend/tests/test_garmin_connect_cli.py` for import-job payload fields needed by the existing history surface.
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Extend Garmin import and history state types plus rendering in `GUI/frontend/src/App.tsx` to display backend-provided status, failure class, failed stage, retry suitability, and per-run breakdown.
-- [ ] T021 [P] [US3] Update presentation styling in `GUI/frontend/src/styles.css` only as needed to keep the added Garmin history metadata readable in the existing surface.
-- [ ] T022 [US3] Confirm `GUI/frontend/src/App.tsx` does not derive Garmin retry logic locally and consumes only backend-provided fields for operator visibility.
-- [ ] T023 [US3] Run the GUI smoke path from `specs/001-garmin-import-reliability/quickstart.md` against `http://127.0.0.1:5173/` and verify the existing Garmin surfaces show the new state without a new dashboard.
+- [x] T020 [US3] Extend Garmin import and history state types plus rendering in `GUI/frontend/src/App.tsx` to display backend-provided status, failure class, failed stage, retry suitability, and per-run breakdown.
+- [x] T021 [P] [US3] Update presentation styling in `GUI/frontend/src/styles.css` only as needed to keep the added Garmin history metadata readable in the existing surface.
+- [x] T022 [US3] Confirm `GUI/frontend/src/App.tsx` does not derive Garmin retry logic locally and consumes only backend-provided fields for operator visibility.
+- [x] T023 [US3] Run the GUI smoke path from `specs/001-garmin-import-reliability/quickstart.md` against `http://127.0.0.1:5173/` and verify the existing Garmin surfaces show the new state without a new dashboard.
 
 **Checkpoint**: Operator visibility is sufficient and minimal, with Garmin logic still owned by the backend.
 
@@ -107,9 +107,9 @@
 
 **Purpose**: Finish cross-story validation and documentation consistency.
 
-- [ ] T024 [P] Reconcile the final API/state field names across `GUI/backend/app/imports/contracts.py`, `GUI/backend/app/imports/storage.py`, `GUI/backend/app/main.py`, and `GUI/frontend/src/App.tsx`.
-- [ ] T025 [P] Update implementation notes in `specs/001-garmin-import-reliability/quickstart.md` if the concrete validation commands or expected payload fields change during implementation.
-- [ ] T026 Run the full quickstart validation in `specs/001-garmin-import-reliability/quickstart.md`, including backend tests, failure-path curl checks, import history inspection, GUI visibility, and safe rerun verification.
+- [x] T024 [P] Reconcile the final API/state field names across `GUI/backend/app/imports/contracts.py`, `GUI/backend/app/imports/storage.py`, `GUI/backend/app/main.py`, and `GUI/frontend/src/App.tsx`.
+- [x] T025 [P] Update implementation notes in `specs/001-garmin-import-reliability/quickstart.md` if the concrete validation commands or expected payload fields change during implementation.
+- [x] T026 Run the full quickstart validation in `specs/001-garmin-import-reliability/quickstart.md`, including backend tests, failure-path curl checks, import history inspection, GUI visibility, and safe rerun verification.
 
 ---
 
