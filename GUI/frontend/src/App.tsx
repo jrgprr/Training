@@ -316,7 +316,7 @@ type ImportJob = {
   retry_suitability: string | null;
   partial_completion: boolean;
   operator_detail: string | null;
-  request_scope: {
+  request_scope?: {
     season_id: number;
     date_from: string | null;
     date_to: string | null;
@@ -403,6 +403,15 @@ function formatFailureClassLabel(failureClass: string | null): string {
     return "Persistencia o transaccion";
   }
   return "Sin clasificar";
+}
+
+function getImportJobScope(job: ImportJob) {
+  return job.request_scope ?? {
+    season_id: job.season_id,
+    date_from: job.source_path?.split(":")[0] ?? null,
+    date_to: job.source_path?.split(":")[1] ?? null,
+    include_daily_metrics: false,
+  };
 }
 
 const emptyGarminImportForm = (): GarminImportFormState => ({
@@ -1302,6 +1311,9 @@ export default function App() {
 
           <div className="panel-list import-jobs-list">
             {importJobs.map((job) => (
+              (() => {
+                const scope = getImportJobScope(job);
+                return (
               <article key={job.import_job_id} className="import-job-card">
                 <div className="item-head">
                   <strong>Job {job.import_job_id}</strong>
@@ -1311,9 +1323,9 @@ export default function App() {
                 <small>{toDateTimeLabel(job.imported_at)}</small>
                 {job.finished_at ? <small>Finalizado: {toDateTimeLabel(job.finished_at)}</small> : null}
                 <div className="import-job-meta">
-                  <span>Temporada: {job.request_scope.season_id}</span>
-                  <span>Rango: {job.request_scope.date_from ?? "?"} a {job.request_scope.date_to ?? "?"}</span>
-                  <span>Metricas diarias: {job.request_scope.include_daily_metrics ? "si" : "no"}</span>
+                  <span>Temporada: {scope.season_id}</span>
+                  <span>Rango: {scope.date_from ?? "?"} a {scope.date_to ?? "?"}</span>
+                  <span>Metricas diarias: {scope.include_daily_metrics ? "si" : "no"}</span>
                   <span>Retry: {formatRetrySuitabilityLabel(job.retry_suitability)}</span>
                   {job.failure_stage ? <span>Etapa: {formatFailureStageLabel(job.failure_stage)}</span> : null}
                   {job.failure_class ? <span>Clase: {formatFailureClassLabel(job.failure_class)}</span> : null}
@@ -1346,6 +1358,8 @@ export default function App() {
                   </div>
                 ) : null}
               </article>
+                );
+              })()
             ))}
             {importJobs.length === 0 ? (
               <div className="empty-state-card">
