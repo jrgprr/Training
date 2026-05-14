@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from .contracts import GarminImportBatch, ImportJobBreakdown
+from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState
 from ..db import get_connection
 
 LEGACY_PENDING_NOTE = "Pendiente persistir staging e import jobs en la siguiente fase."
 PERSISTENCE_READY_NOTE = "Carga preparada para persistencia en staging y tablas finales."
 LEGACY_BREAKDOWN_NOTE = "Detalle inserted/updated no disponible para este job historico."
+RETRY_SAFE_TO_RETRY = "safe_to_retry"
+RETRY_INSPECT_BEFORE = "inspect_before_retry"
 
 
 @dataclass(slots=True)
@@ -18,16 +20,38 @@ class ImportJobSummary:
     status: str
     rows_detected: int
     rows_loaded: int
-    notes: list[str]
-    breakdown: ImportJobBreakdown
+    source_system: str = "garmin"
+    import_type: str = "garminconnect"
+    source_path: str | None = None
+    imported_at: str | None = None
+    finished_at: str | None = None
+    request_scope: dict[str, Any] | None = None
+    failure_stage: str | None = None
+    failure_class: str | None = None
+    retry_suitability: str | None = None
+    partial_completion: bool = False
+    operator_detail: str | None = None
+    notes: list[str] = field(default_factory=list)
+    breakdown: ImportJobBreakdown = field(default_factory=ImportJobBreakdown)
     has_breakdown_details: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "import_job_id": self.import_job_id,
+            "source_system": self.source_system,
+            "import_type": self.import_type,
+            "source_path": self.source_path,
+            "imported_at": self.imported_at,
+            "finished_at": self.finished_at,
+            "request_scope": self.request_scope,
             "status": self.status,
             "rows_detected": self.rows_detected,
             "rows_loaded": self.rows_loaded,
+            "failure_stage": self.failure_stage,
+            "failure_class": self.failure_class,
+            "retry_suitability": self.retry_suitability,
+            "partial_completion": self.partial_completion,
+            "operator_detail": self.operator_detail,
             "notes": self.notes,
             "breakdown": self.breakdown.to_dict(),
             "has_breakdown_details": self.has_breakdown_details,
@@ -227,6 +251,46 @@ class GarminImportStorage:
     def _serialize_job_details(notes: list[str], breakdown: ImportJobBreakdown) -> str:
         return json.dumps({"messages": notes, "breakdown": breakdown.to_dict()}, ensure_ascii=True)
 
+    @staticmethod
+    def _derive_retry_suitability(
+        *,
+        status: str,
+        failure_stage: str | None = None,
+        failure_class: str | None = None,
+        partial_completion: bool = False,
+    ) -> str | None:
+        if status == "running":
+            return None
+        if partial_completion or status == "partial_completed":
+            return RETRY_INSPECT_BEFORE
+        if failure_class in {"source_data_normalization", "persistence_transaction"}:
+            return RETRY_INSPECT_BEFORE
+        if failure_stage in {"normalize", "persist"}:
+            return RETRY_INSPECT_BEFORE
+        return RETRY_SAFE_TO_RETRY
+
+    @staticmethod
+    def _build_request_scope(
+        *,
+        season_id: int,
+        request_date_from: str | None,
+        request_date_to: str | None,
+        include_daily_metrics: int | bool | None,
+    ) -> dict[str, Any]:
+        return {
+            "season_id": season_id,
+            "date_from": request_date_from,
+            "date_to": request_date_to,
+            "include_daily_metrics": bool(include_daily_metrics),
+        }
+
+    @staticmethod
+    def _coerce_notes(notes: list[str] | None, operator_detail: str | None = None) -> list[str]:
+        normalized = list(notes or [])
+        if operator_detail and operator_detail not in normalized:
+            normalized.append(operator_detail)
+        return normalized
+
     def start_import_job(
         self,
         *,
@@ -234,6 +298,9 @@ class GarminImportStorage:
         source_system: str = "garmin",
         import_type: str | None = None,
         source_path: str | None = None,
+        request_date_from: str | None = None,
+        request_date_to: str | None = None,
+        include_daily_metrics: bool = True,
         notes: list[str] | None = None,
     ) -> int:
         breakdown = ImportJobBreakdown()
@@ -243,14 +310,22 @@ class GarminImportStorage:
                 """
                 INSERT INTO meta_import_jobs (
                     season_id, source_system, import_type, source_path,
-                    rows_detected, rows_loaded, status, notes
-                ) VALUES (?, ?, ?, ?, 0, 0, 'running', ?)
+                    request_date_from, request_date_to, include_daily_metrics,
+                    rows_detected, rows_loaded, status, failure_stage, failure_class,
+                    retry_suitability, partial_completion, operator_detail,
+                    activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                    daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                    notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'running', NULL, NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, 0, 0, ?)
                 """,
                 (
                     season_id,
                     source_system,
                     import_type or self.DEFAULT_IMPORT_TYPE,
                     source_path,
+                    request_date_from,
+                    request_date_to,
+                    1 if include_daily_metrics else 0,
                     self._serialize_job_details(initial_notes, breakdown),
                 ),
             )
@@ -264,20 +339,50 @@ class GarminImportStorage:
         rows_detected: int = 0,
         rows_loaded: int = 0,
         status: str = "failed",
+        failure_stage: str | None = None,
+        failure_class: str | None = None,
+        partial_completion: bool = False,
+        operator_detail: str | None = None,
         breakdown: ImportJobBreakdown | None = None,
     ) -> None:
+        effective_breakdown = breakdown or ImportJobBreakdown()
+        effective_notes = self._coerce_notes(notes, operator_detail)
         with get_connection() as connection:
             connection.execute(
                 """
                 UPDATE meta_import_jobs
-                SET rows_detected = ?, rows_loaded = ?, status = ?, notes = ?
+                SET rows_detected = ?, rows_loaded = ?, status = ?,
+                    finished_at = CURRENT_TIMESTAMP,
+                    failure_stage = ?, failure_class = ?, retry_suitability = ?,
+                    partial_completion = ?, operator_detail = ?,
+                    activity_rows_detected = ?, activity_rows_inserted = ?, activity_rows_updated = ?, activity_rows_skipped = ?,
+                    daily_metric_rows_detected = ?, daily_metric_rows_inserted = ?, daily_metric_rows_updated = ?, daily_metric_rows_skipped = ?,
+                    notes = ?
                 WHERE import_job_id = ?
                 """,
                 (
                     rows_detected,
                     rows_loaded,
                     status,
-                    self._serialize_job_details(notes, breakdown or ImportJobBreakdown()),
+                    failure_stage,
+                    failure_class,
+                    self._derive_retry_suitability(
+                        status=status,
+                        failure_stage=failure_stage,
+                        failure_class=failure_class,
+                        partial_completion=partial_completion,
+                    ),
+                    1 if partial_completion else 0,
+                    operator_detail,
+                    effective_breakdown.activity_rows_detected,
+                    effective_breakdown.activity_rows_inserted,
+                    effective_breakdown.activity_rows_updated,
+                    effective_breakdown.activity_rows_skipped,
+                    effective_breakdown.daily_metric_rows_detected,
+                    effective_breakdown.daily_metric_rows_inserted,
+                    effective_breakdown.daily_metric_rows_updated,
+                    effective_breakdown.daily_metric_rows_skipped,
+                    self._serialize_job_details(effective_notes, effective_breakdown),
                     import_job_id,
                 ),
             )
@@ -339,7 +444,10 @@ class GarminImportStorage:
         counts = batch.counts()
         rows_detected = counts["activities_detected"] + counts["daily_metrics_detected"]
         rows_loaded = 0
-        breakdown = ImportJobBreakdown()
+        breakdown = ImportJobBreakdown(
+            activity_rows_detected=counts["activities_detected"],
+            daily_metric_rows_detected=counts["daily_metrics_detected"],
+        )
 
         with get_connection() as connection:
             if import_job_id is None:
@@ -347,15 +455,25 @@ class GarminImportStorage:
                     """
                     INSERT INTO meta_import_jobs (
                         season_id, source_system, import_type, source_path,
-                        rows_detected, rows_loaded, status, notes
-                    ) VALUES (?, ?, ?, ?, ?, 0, 'running', ?)
+                        request_date_from, request_date_to, include_daily_metrics,
+                        rows_detected, rows_loaded, status, failure_stage, failure_class,
+                        retry_suitability, partial_completion, operator_detail,
+                        activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                        daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                        notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'running', NULL, NULL, NULL, 0, NULL, ?, 0, 0, 0, ?, 0, 0, 0, ?)
                     """,
                     (
                         batch.request.season_id,
                         batch.metadata.source_system,
                         batch.metadata.source_label,
                         f"{batch.request.date_from}:{batch.request.date_to}",
+                        batch.request.date_from,
+                        batch.request.date_to,
+                        1 if batch.request.include_daily_metrics else 0,
                         rows_detected,
+                        breakdown.activity_rows_detected,
+                        breakdown.daily_metric_rows_detected,
                         self._serialize_job_details(batch.metadata.notes, breakdown),
                     ),
                 )
@@ -364,11 +482,19 @@ class GarminImportStorage:
                 connection.execute(
                     """
                     UPDATE meta_import_jobs
-                    SET rows_detected = ?, status = 'running', notes = ?
+                    SET request_date_from = ?, request_date_to = ?, include_daily_metrics = ?,
+                        rows_detected = ?, status = 'running',
+                        activity_rows_detected = ?, daily_metric_rows_detected = ?,
+                        notes = ?
                     WHERE import_job_id = ?
                     """,
                     (
+                        batch.request.date_from,
+                        batch.request.date_to,
+                        1 if batch.request.include_daily_metrics else 0,
                         rows_detected,
+                        breakdown.activity_rows_detected,
+                        breakdown.daily_metric_rows_detected,
                         self._serialize_job_details(batch.metadata.notes, breakdown),
                         import_job_id,
                     ),
@@ -553,23 +679,97 @@ class GarminImportStorage:
             final_notes.append(f"Activities inserted/updated: {breakdown.activity_rows_inserted}/{breakdown.activity_rows_updated}")
             final_notes.append(f"Daily metrics inserted/updated: {breakdown.daily_metric_rows_inserted}/{breakdown.daily_metric_rows_updated}")
             final_notes.append(self.AUTO_LINK_NOTE.format(inserted=auto_link_inserted, retained=auto_link_retained))
+            breakdown.activity_rows_skipped = max(
+                breakdown.activity_rows_detected - breakdown.activity_rows_inserted - breakdown.activity_rows_updated,
+                0,
+            )
+            breakdown.daily_metric_rows_skipped = max(
+                breakdown.daily_metric_rows_detected - breakdown.daily_metric_rows_inserted - breakdown.daily_metric_rows_updated,
+                0,
+            )
+            operator_detail = "Importacion Garmin completada."
             connection.execute(
                 """
                 UPDATE meta_import_jobs
-                SET rows_loaded = ?, status = 'completed', notes = ?
+                SET rows_loaded = ?, status = 'completed', finished_at = CURRENT_TIMESTAMP,
+                    failure_stage = NULL, failure_class = NULL, retry_suitability = ?,
+                    partial_completion = 0, operator_detail = ?,
+                    activity_rows_detected = ?, activity_rows_inserted = ?, activity_rows_updated = ?, activity_rows_skipped = ?,
+                    daily_metric_rows_detected = ?, daily_metric_rows_inserted = ?, daily_metric_rows_updated = ?, daily_metric_rows_skipped = ?,
+                    notes = ?
                 WHERE import_job_id = ?
                 """,
-                (rows_loaded, self._serialize_job_details(final_notes, breakdown), import_job_id),
+                (
+                    rows_loaded,
+                    self._derive_retry_suitability(status="completed"),
+                    operator_detail,
+                    breakdown.activity_rows_detected,
+                    breakdown.activity_rows_inserted,
+                    breakdown.activity_rows_updated,
+                    breakdown.activity_rows_skipped,
+                    breakdown.daily_metric_rows_detected,
+                    breakdown.daily_metric_rows_inserted,
+                    breakdown.daily_metric_rows_updated,
+                    breakdown.daily_metric_rows_skipped,
+                    self._serialize_job_details(final_notes, breakdown),
+                    import_job_id,
+                ),
             )
 
         return ImportJobSummary(
             import_job_id=import_job_id,
+            source_system=batch.metadata.source_system,
+            import_type=batch.metadata.source_label,
+            source_path=f"{batch.request.date_from}:{batch.request.date_to}",
+            request_scope=batch.request.to_scope_dict(),
             status="completed",
             rows_detected=rows_detected,
             rows_loaded=rows_loaded,
+            retry_suitability=self._derive_retry_suitability(status="completed"),
+            operator_detail=operator_detail,
             notes=final_notes,
             breakdown=breakdown,
             has_breakdown_details=True,
+        )
+
+    def _state_from_row(self, row: dict[str, Any], notes: list[str], legacy_breakdown: ImportJobBreakdown, has_breakdown_details: bool) -> ImportJobState:
+        column_breakdown = ImportJobBreakdown(
+            activity_rows_detected=int(row.get("activity_rows_detected") or 0),
+            activity_rows_inserted=int(row.get("activity_rows_inserted") or 0),
+            activity_rows_updated=int(row.get("activity_rows_updated") or 0),
+            activity_rows_skipped=int(row.get("activity_rows_skipped") or 0),
+            daily_metric_rows_detected=int(row.get("daily_metric_rows_detected") or 0),
+            daily_metric_rows_inserted=int(row.get("daily_metric_rows_inserted") or 0),
+            daily_metric_rows_updated=int(row.get("daily_metric_rows_updated") or 0),
+            daily_metric_rows_skipped=int(row.get("daily_metric_rows_skipped") or 0),
+        )
+        effective_breakdown = column_breakdown
+        if effective_breakdown.to_dict() == ImportJobBreakdown().to_dict() and legacy_breakdown.to_dict() != ImportJobBreakdown().to_dict():
+            effective_breakdown = legacy_breakdown
+
+        return ImportJobState(
+            source_system=str(row.get("source_system") or "garmin"),
+            import_type=str(row.get("import_type") or self.DEFAULT_IMPORT_TYPE),
+            source_path=row.get("source_path"),
+            imported_at=row.get("imported_at"),
+            finished_at=row.get("finished_at"),
+            request_scope=self._build_request_scope(
+                season_id=int(row.get("season_id") or 0),
+                request_date_from=row.get("request_date_from"),
+                request_date_to=row.get("request_date_to"),
+                include_daily_metrics=row.get("include_daily_metrics"),
+            ),
+            status=str(row.get("status") or "unknown"),
+            rows_detected=int(row.get("rows_detected") or 0),
+            rows_loaded=int(row.get("rows_loaded") or 0),
+            failure_stage=row.get("failure_stage"),
+            failure_class=row.get("failure_class"),
+            retry_suitability=row.get("retry_suitability"),
+            partial_completion=bool(row.get("partial_completion")),
+            operator_detail=row.get("operator_detail"),
+            notes=notes,
+            breakdown=effective_breakdown,
+            has_breakdown_details=has_breakdown_details or effective_breakdown.to_dict() != ImportJobBreakdown().to_dict(),
         )
 
     def list_import_jobs(self) -> list[dict[str, Any]]:
@@ -577,7 +777,12 @@ class GarminImportStorage:
             rows = connection.execute(
                 """
                 SELECT import_job_id, season_id, source_system, import_type, source_path,
-                       imported_at, rows_detected, rows_loaded, status, notes
+                       imported_at, finished_at, request_date_from, request_date_to, include_daily_metrics,
+                       rows_detected, rows_loaded, status, failure_stage, failure_class,
+                       retry_suitability, partial_completion, operator_detail,
+                       activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                       daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                       notes
                 FROM meta_import_jobs
                 ORDER BY import_job_id DESC
                 """
@@ -586,9 +791,22 @@ class GarminImportStorage:
         for row in rows:
             result = dict(row)
             details = self._deserialize_job_details(result.get("notes"))
-            result["notes"] = details["messages"]
-            result["breakdown"] = details["breakdown"]
-            result["has_breakdown_details"] = details["has_breakdown_details"]
+            state = self._state_from_row(
+                result,
+                details["messages"],
+                ImportJobBreakdown.from_dict(details["breakdown"]),
+                bool(details["has_breakdown_details"]),
+            )
+            result["request_scope"] = state.request_scope
+            result["finished_at"] = state.finished_at
+            result["failure_stage"] = state.failure_stage
+            result["failure_class"] = state.failure_class
+            result["retry_suitability"] = state.retry_suitability
+            result["partial_completion"] = state.partial_completion
+            result["operator_detail"] = state.operator_detail
+            result["notes"] = state.notes
+            result["breakdown"] = state.breakdown.to_dict()
+            result["has_breakdown_details"] = state.has_breakdown_details
             results.append(result)
         return results
 
@@ -596,8 +814,13 @@ class GarminImportStorage:
         with get_connection() as connection:
             job = connection.execute(
                 """
-                SELECT import_job_id, season_id, source_system, import_type, source_path,
-                       imported_at, rows_detected, rows_loaded, status, notes
+                  SELECT import_job_id, season_id, source_system, import_type, source_path,
+                      imported_at, finished_at, request_date_from, request_date_to, include_daily_metrics,
+                      rows_detected, rows_loaded, status, failure_stage, failure_class,
+                      retry_suitability, partial_completion, operator_detail,
+                      activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                      daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                      notes
                 FROM meta_import_jobs
                 WHERE import_job_id = ?
                 """,
@@ -616,9 +839,22 @@ class GarminImportStorage:
 
         result = dict(job)
         details = self._deserialize_job_details(result.get("notes"))
-        result["notes"] = details["messages"]
-        result["breakdown"] = details["breakdown"]
-        result["has_breakdown_details"] = details["has_breakdown_details"]
+        state = self._state_from_row(
+            result,
+            details["messages"],
+            ImportJobBreakdown.from_dict(details["breakdown"]),
+            bool(details["has_breakdown_details"]),
+        )
+        result["request_scope"] = state.request_scope
+        result["finished_at"] = state.finished_at
+        result["failure_stage"] = state.failure_stage
+        result["failure_class"] = state.failure_class
+        result["retry_suitability"] = state.retry_suitability
+        result["partial_completion"] = state.partial_completion
+        result["operator_detail"] = state.operator_detail
+        result["notes"] = state.notes
+        result["breakdown"] = state.breakdown.to_dict()
+        result["has_breakdown_details"] = state.has_breakdown_details
         result["staging_counts"] = {
             "activities": int(activities["total"]),
             "daily_metrics": int(daily_metrics["total"]),

@@ -544,6 +544,9 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
         source_system="garmin",
         import_type="garminconnect",
         source_path=f"{request.date_from}:{request.date_to}",
+        request_date_from=request.date_from,
+        request_date_to=request.date_to,
+        include_daily_metrics=request.include_daily_metrics,
         notes=["Importacion Garmin iniciada.", "Pendiente de fetch desde Garmin Connect."],
     )
     try:
