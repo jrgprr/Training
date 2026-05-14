@@ -33,6 +33,40 @@ class GarminConnectImportError(RuntimeError):
     pass
 
 
+class GarminConnectAuthenticationImportError(GarminConnectImportError):
+    pass
+
+
+class GarminConnectTransportImportError(GarminConnectImportError):
+    pass
+
+
+def classify_garmin_failure(error: Exception) -> dict[str, str]:
+    if isinstance(error, GarminConnectNotConfiguredError | GarminConnectAuthenticationImportError):
+        return {
+            "failure_stage": "configuration",
+            "failure_class": "configuration_authentication",
+            "operator_detail": str(error),
+        }
+    if isinstance(error, GarminConnectTransportImportError | GarminConnectImportError):
+        return {
+            "failure_stage": "fetch",
+            "failure_class": "transport_rate_limit",
+            "operator_detail": str(error),
+        }
+    if isinstance(error, NotImplementedError):
+        return {
+            "failure_stage": "normalize",
+            "failure_class": "source_data_normalization",
+            "operator_detail": str(error),
+        }
+    return {
+        "failure_stage": "persist",
+        "failure_class": "persistence_transaction",
+        "operator_detail": str(error),
+    }
+
+
 @dataclass(slots=True)
 class GarminConnectConfiguration:
     username: str | None
@@ -176,11 +210,11 @@ class GarminConnectAdapter:
         try:
             client.login(self.configuration.tokenstore_path)
         except GarminConnectAuthenticationError as error:
-            raise GarminConnectImportError("Fallo de autenticacion con Garmin Connect.") from error
+            raise GarminConnectAuthenticationImportError("Fallo de autenticacion con Garmin Connect.") from error
         except GarminConnectTooManyRequestsError as error:
-            raise GarminConnectImportError("Garmin Connect ha limitado temporalmente las peticiones.") from error
+            raise GarminConnectTransportImportError("Garmin Connect ha limitado temporalmente las peticiones.") from error
         except GarminConnectConnectionError as error:
-            raise GarminConnectImportError("No se pudo conectar con Garmin Connect.") from error
+            raise GarminConnectTransportImportError("No se pudo conectar con Garmin Connect.") from error
         self._client = client
         return client
 
@@ -527,12 +561,22 @@ def run_cli(argv: list[str] | None = None) -> int:
             source_system="garmin",
             import_type="garminconnect",
             source_path=f"{request.date_from}:{request.date_to}",
+            request_date_from=request.date_from,
+            request_date_to=request.date_to,
+            include_daily_metrics=request.include_daily_metrics,
             notes=["Importacion Garmin iniciada.", "Pendiente de fetch desde Garmin Connect."],
         )
         try:
             batch = pipeline.run(request)
         except (GarminConnectNotConfiguredError, GarminConnectImportError, NotImplementedError) as error:
-            storage.fail_import_job(import_job_id, notes=["Importacion Garmin fallida durante fetch.", str(error)])
+            failure = classify_garmin_failure(error)
+            storage.fail_import_job(
+                import_job_id,
+                notes=["Importacion Garmin fallida durante fetch.", str(error)],
+                failure_stage=failure["failure_stage"],
+                failure_class=failure["failure_class"],
+                operator_detail=failure["operator_detail"],
+            )
             raise
 
         try:
@@ -540,10 +584,14 @@ def run_cli(argv: list[str] | None = None) -> int:
         except Exception as error:
             counts = batch.counts()
             rows_detected = counts["activities_detected"] + counts["daily_metrics_detected"]
+            failure = classify_garmin_failure(error)
             storage.fail_import_job(
                 import_job_id,
                 notes=["Importacion Garmin fallida durante persistencia.", str(error)],
                 rows_detected=rows_detected,
+                failure_stage=failure["failure_stage"],
+                failure_class=failure["failure_class"],
+                operator_detail=failure["operator_detail"],
             )
             raise
 

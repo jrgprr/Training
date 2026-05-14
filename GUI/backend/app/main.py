@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .db import get_connection, get_database_path, initialize_database
-from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage
+from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 
 app = FastAPI(title="Training System GUI API", version="0.2.0")
 
@@ -544,29 +544,57 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
         source_system="garmin",
         import_type="garminconnect",
         source_path=f"{request.date_from}:{request.date_to}",
+        request_date_from=request.date_from,
+        request_date_to=request.date_to,
+        include_daily_metrics=request.include_daily_metrics,
         notes=["Importacion Garmin iniciada.", "Pendiente de fetch desde Garmin Connect."],
     )
     try:
         batch = pipeline.run(request)
     except GarminConnectNotConfiguredError as error:
-        storage.fail_import_job(import_job_id, notes=["Importacion Garmin fallida.", str(error)])
+        failure = classify_garmin_failure(error)
+        storage.fail_import_job(
+            import_job_id,
+            notes=["Importacion Garmin fallida.", str(error)],
+            failure_stage=failure["failure_stage"],
+            failure_class=failure["failure_class"],
+            operator_detail=failure["operator_detail"],
+        )
         raise HTTPException(status_code=400, detail=str(error)) from error
     except GarminConnectImportError as error:
-        storage.fail_import_job(import_job_id, notes=["Importacion Garmin fallida durante fetch.", str(error)])
+        failure = classify_garmin_failure(error)
+        storage.fail_import_job(
+            import_job_id,
+            notes=["Importacion Garmin fallida durante fetch.", str(error)],
+            failure_stage=failure["failure_stage"],
+            failure_class=failure["failure_class"],
+            operator_detail=failure["operator_detail"],
+        )
         raise HTTPException(status_code=502, detail=str(error)) from error
     except NotImplementedError as error:
-        storage.fail_import_job(import_job_id, notes=["Importacion Garmin no implementada para esta operacion.", str(error)])
+        failure = classify_garmin_failure(error)
+        storage.fail_import_job(
+            import_job_id,
+            notes=["Importacion Garmin no implementada para esta operacion.", str(error)],
+            failure_stage=failure["failure_stage"],
+            failure_class=failure["failure_class"],
+            operator_detail=failure["operator_detail"],
+        )
         raise HTTPException(status_code=501, detail=str(error)) from error
     try:
         summary = storage.persist_batch(batch, import_job_id=import_job_id)
     except Exception as error:
         counts = batch.counts()
         rows_detected = counts["activities_detected"] + counts["daily_metrics_detected"]
+        failure = classify_garmin_failure(error)
         storage.fail_import_job(
             import_job_id,
             notes=["Importacion Garmin fallida durante persistencia.", str(error)],
             rows_detected=rows_detected,
             status="failed",
+            failure_stage=failure["failure_stage"],
+            failure_class=failure["failure_class"],
+            operator_detail=failure["operator_detail"],
         )
         raise
 

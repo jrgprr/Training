@@ -39,9 +39,26 @@ CREATE TABLE IF NOT EXISTS meta_import_jobs (
     import_type TEXT NOT NULL,
     source_path TEXT,
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT,
+    request_date_from TEXT,
+    request_date_to TEXT,
+    include_daily_metrics INTEGER NOT NULL DEFAULT 1,
     rows_detected INTEGER,
     rows_loaded INTEGER,
     status TEXT NOT NULL,
+    failure_stage TEXT,
+    failure_class TEXT,
+    retry_suitability TEXT,
+    partial_completion INTEGER NOT NULL DEFAULT 0,
+    operator_detail TEXT,
+    activity_rows_detected INTEGER NOT NULL DEFAULT 0,
+    activity_rows_inserted INTEGER NOT NULL DEFAULT 0,
+    activity_rows_updated INTEGER NOT NULL DEFAULT 0,
+    activity_rows_skipped INTEGER NOT NULL DEFAULT 0,
+    daily_metric_rows_detected INTEGER NOT NULL DEFAULT 0,
+    daily_metric_rows_inserted INTEGER NOT NULL DEFAULT 0,
+    daily_metric_rows_updated INTEGER NOT NULL DEFAULT 0,
+    daily_metric_rows_skipped INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
@@ -230,4 +247,34 @@ def initialize_database() -> None:
         connection.executescript(WEEKLY_REVIEW_SCHEMA)
         connection.executescript(IMPORT_SCHEMA)
         connection.executescript(PRESCRIPTION_SCHEMA)
+        _ensure_import_job_columns(connection)
         normalize_existing_manual_activity_disciplines(connection)
+
+
+def _ensure_import_job_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(meta_import_jobs)").fetchall()
+    }
+    expected_columns = {
+        "finished_at": "ALTER TABLE meta_import_jobs ADD COLUMN finished_at TEXT",
+        "request_date_from": "ALTER TABLE meta_import_jobs ADD COLUMN request_date_from TEXT",
+        "request_date_to": "ALTER TABLE meta_import_jobs ADD COLUMN request_date_to TEXT",
+        "include_daily_metrics": "ALTER TABLE meta_import_jobs ADD COLUMN include_daily_metrics INTEGER NOT NULL DEFAULT 1",
+        "failure_stage": "ALTER TABLE meta_import_jobs ADD COLUMN failure_stage TEXT",
+        "failure_class": "ALTER TABLE meta_import_jobs ADD COLUMN failure_class TEXT",
+        "retry_suitability": "ALTER TABLE meta_import_jobs ADD COLUMN retry_suitability TEXT",
+        "partial_completion": "ALTER TABLE meta_import_jobs ADD COLUMN partial_completion INTEGER NOT NULL DEFAULT 0",
+        "operator_detail": "ALTER TABLE meta_import_jobs ADD COLUMN operator_detail TEXT",
+        "activity_rows_detected": "ALTER TABLE meta_import_jobs ADD COLUMN activity_rows_detected INTEGER NOT NULL DEFAULT 0",
+        "activity_rows_inserted": "ALTER TABLE meta_import_jobs ADD COLUMN activity_rows_inserted INTEGER NOT NULL DEFAULT 0",
+        "activity_rows_updated": "ALTER TABLE meta_import_jobs ADD COLUMN activity_rows_updated INTEGER NOT NULL DEFAULT 0",
+        "activity_rows_skipped": "ALTER TABLE meta_import_jobs ADD COLUMN activity_rows_skipped INTEGER NOT NULL DEFAULT 0",
+        "daily_metric_rows_detected": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_detected INTEGER NOT NULL DEFAULT 0",
+        "daily_metric_rows_inserted": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_inserted INTEGER NOT NULL DEFAULT 0",
+        "daily_metric_rows_updated": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_updated INTEGER NOT NULL DEFAULT 0",
+        "daily_metric_rows_skipped": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_skipped INTEGER NOT NULL DEFAULT 0",
+    }
+    for column_name, statement in expected_columns.items():
+        if column_name not in existing_columns:
+            connection.execute(statement)

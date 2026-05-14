@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from .contracts import GarminImportBatch, ImportJobBreakdown
+from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState
 from ..db import get_connection
 
 LEGACY_PENDING_NOTE = "Pendiente persistir staging e import jobs en la siguiente fase."
 PERSISTENCE_READY_NOTE = "Carga preparada para persistencia en staging y tablas finales."
 LEGACY_BREAKDOWN_NOTE = "Detalle inserted/updated no disponible para este job historico."
+RETRY_SAFE_TO_RETRY = "safe_to_retry"
+RETRY_INSPECT_BEFORE = "inspect_before_retry"
 
 
 @dataclass(slots=True)
@@ -18,16 +20,38 @@ class ImportJobSummary:
     status: str
     rows_detected: int
     rows_loaded: int
-    notes: list[str]
-    breakdown: ImportJobBreakdown
+    source_system: str = "garmin"
+    import_type: str = "garminconnect"
+    source_path: str | None = None
+    imported_at: str | None = None
+    finished_at: str | None = None
+    request_scope: dict[str, Any] | None = None
+    failure_stage: str | None = None
+    failure_class: str | None = None
+    retry_suitability: str | None = None
+    partial_completion: bool = False
+    operator_detail: str | None = None
+    notes: list[str] = field(default_factory=list)
+    breakdown: ImportJobBreakdown = field(default_factory=ImportJobBreakdown)
     has_breakdown_details: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "import_job_id": self.import_job_id,
+            "source_system": self.source_system,
+            "import_type": self.import_type,
+            "source_path": self.source_path,
+            "imported_at": self.imported_at,
+            "finished_at": self.finished_at,
+            "request_scope": self.request_scope,
             "status": self.status,
             "rows_detected": self.rows_detected,
             "rows_loaded": self.rows_loaded,
+            "failure_stage": self.failure_stage,
+            "failure_class": self.failure_class,
+            "retry_suitability": self.retry_suitability,
+            "partial_completion": self.partial_completion,
+            "operator_detail": self.operator_detail,
             "notes": self.notes,
             "breakdown": self.breakdown.to_dict(),
             "has_breakdown_details": self.has_breakdown_details,
@@ -227,6 +251,57 @@ class GarminImportStorage:
     def _serialize_job_details(notes: list[str], breakdown: ImportJobBreakdown) -> str:
         return json.dumps({"messages": notes, "breakdown": breakdown.to_dict()}, ensure_ascii=True)
 
+    @staticmethod
+    def _finalize_skipped_counts(breakdown: ImportJobBreakdown) -> None:
+        breakdown.activity_rows_skipped = max(
+            breakdown.activity_rows_detected - breakdown.activity_rows_inserted - breakdown.activity_rows_updated,
+            0,
+        )
+        breakdown.daily_metric_rows_skipped = max(
+            breakdown.daily_metric_rows_detected - breakdown.daily_metric_rows_inserted - breakdown.daily_metric_rows_updated,
+            0,
+        )
+
+    @staticmethod
+    def _derive_retry_suitability(
+        *,
+        status: str,
+        failure_stage: str | None = None,
+        failure_class: str | None = None,
+        partial_completion: bool = False,
+    ) -> str | None:
+        if status == "running":
+            return None
+        if partial_completion or status == "partial_completed":
+            return RETRY_INSPECT_BEFORE
+        if failure_class in {"source_data_normalization", "persistence_transaction"}:
+            return RETRY_INSPECT_BEFORE
+        if failure_stage in {"normalize", "persist"}:
+            return RETRY_INSPECT_BEFORE
+        return RETRY_SAFE_TO_RETRY
+
+    @staticmethod
+    def _build_request_scope(
+        *,
+        season_id: int,
+        request_date_from: str | None,
+        request_date_to: str | None,
+        include_daily_metrics: int | bool | None,
+    ) -> dict[str, Any]:
+        return {
+            "season_id": season_id,
+            "date_from": request_date_from,
+            "date_to": request_date_to,
+            "include_daily_metrics": bool(include_daily_metrics),
+        }
+
+    @staticmethod
+    def _coerce_notes(notes: list[str] | None, operator_detail: str | None = None) -> list[str]:
+        normalized = list(notes or [])
+        if operator_detail and operator_detail not in normalized:
+            normalized.append(operator_detail)
+        return normalized
+
     def start_import_job(
         self,
         *,
@@ -234,6 +309,9 @@ class GarminImportStorage:
         source_system: str = "garmin",
         import_type: str | None = None,
         source_path: str | None = None,
+        request_date_from: str | None = None,
+        request_date_to: str | None = None,
+        include_daily_metrics: bool = True,
         notes: list[str] | None = None,
     ) -> int:
         breakdown = ImportJobBreakdown()
@@ -243,14 +321,22 @@ class GarminImportStorage:
                 """
                 INSERT INTO meta_import_jobs (
                     season_id, source_system, import_type, source_path,
-                    rows_detected, rows_loaded, status, notes
-                ) VALUES (?, ?, ?, ?, 0, 0, 'running', ?)
+                    request_date_from, request_date_to, include_daily_metrics,
+                    rows_detected, rows_loaded, status, failure_stage, failure_class,
+                    retry_suitability, partial_completion, operator_detail,
+                    activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                    daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                    notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 'running', NULL, NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, 0, 0, 0, ?)
                 """,
                 (
                     season_id,
                     source_system,
                     import_type or self.DEFAULT_IMPORT_TYPE,
                     source_path,
+                    request_date_from,
+                    request_date_to,
+                    1 if include_daily_metrics else 0,
                     self._serialize_job_details(initial_notes, breakdown),
                 ),
             )
@@ -264,20 +350,50 @@ class GarminImportStorage:
         rows_detected: int = 0,
         rows_loaded: int = 0,
         status: str = "failed",
+        failure_stage: str | None = None,
+        failure_class: str | None = None,
+        partial_completion: bool = False,
+        operator_detail: str | None = None,
         breakdown: ImportJobBreakdown | None = None,
     ) -> None:
+        effective_breakdown = breakdown or ImportJobBreakdown()
+        effective_notes = self._coerce_notes(notes, operator_detail)
         with get_connection() as connection:
             connection.execute(
                 """
                 UPDATE meta_import_jobs
-                SET rows_detected = ?, rows_loaded = ?, status = ?, notes = ?
+                SET rows_detected = ?, rows_loaded = ?, status = ?,
+                    finished_at = CURRENT_TIMESTAMP,
+                    failure_stage = ?, failure_class = ?, retry_suitability = ?,
+                    partial_completion = ?, operator_detail = ?,
+                    activity_rows_detected = ?, activity_rows_inserted = ?, activity_rows_updated = ?, activity_rows_skipped = ?,
+                    daily_metric_rows_detected = ?, daily_metric_rows_inserted = ?, daily_metric_rows_updated = ?, daily_metric_rows_skipped = ?,
+                    notes = ?
                 WHERE import_job_id = ?
                 """,
                 (
                     rows_detected,
                     rows_loaded,
                     status,
-                    self._serialize_job_details(notes, breakdown or ImportJobBreakdown()),
+                    failure_stage,
+                    failure_class,
+                    self._derive_retry_suitability(
+                        status=status,
+                        failure_stage=failure_stage,
+                        failure_class=failure_class,
+                        partial_completion=partial_completion,
+                    ),
+                    1 if partial_completion else 0,
+                    operator_detail,
+                    effective_breakdown.activity_rows_detected,
+                    effective_breakdown.activity_rows_inserted,
+                    effective_breakdown.activity_rows_updated,
+                    effective_breakdown.activity_rows_skipped,
+                    effective_breakdown.daily_metric_rows_detected,
+                    effective_breakdown.daily_metric_rows_inserted,
+                    effective_breakdown.daily_metric_rows_updated,
+                    effective_breakdown.daily_metric_rows_skipped,
+                    self._serialize_job_details(effective_notes, effective_breakdown),
                     import_job_id,
                 ),
             )
@@ -339,7 +455,10 @@ class GarminImportStorage:
         counts = batch.counts()
         rows_detected = counts["activities_detected"] + counts["daily_metrics_detected"]
         rows_loaded = 0
-        breakdown = ImportJobBreakdown()
+        breakdown = ImportJobBreakdown(
+            activity_rows_detected=counts["activities_detected"],
+            daily_metric_rows_detected=counts["daily_metrics_detected"],
+        )
 
         with get_connection() as connection:
             if import_job_id is None:
@@ -347,15 +466,25 @@ class GarminImportStorage:
                     """
                     INSERT INTO meta_import_jobs (
                         season_id, source_system, import_type, source_path,
-                        rows_detected, rows_loaded, status, notes
-                    ) VALUES (?, ?, ?, ?, ?, 0, 'running', ?)
+                        request_date_from, request_date_to, include_daily_metrics,
+                        rows_detected, rows_loaded, status, failure_stage, failure_class,
+                        retry_suitability, partial_completion, operator_detail,
+                        activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                        daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                        notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'running', NULL, NULL, NULL, 0, NULL, ?, 0, 0, 0, ?, 0, 0, 0, ?)
                     """,
                     (
                         batch.request.season_id,
                         batch.metadata.source_system,
                         batch.metadata.source_label,
                         f"{batch.request.date_from}:{batch.request.date_to}",
+                        batch.request.date_from,
+                        batch.request.date_to,
+                        1 if batch.request.include_daily_metrics else 0,
                         rows_detected,
+                        breakdown.activity_rows_detected,
+                        breakdown.daily_metric_rows_detected,
                         self._serialize_job_details(batch.metadata.notes, breakdown),
                     ),
                 )
@@ -364,182 +493,215 @@ class GarminImportStorage:
                 connection.execute(
                     """
                     UPDATE meta_import_jobs
-                    SET rows_detected = ?, status = 'running', notes = ?
+                    SET request_date_from = ?, request_date_to = ?, include_daily_metrics = ?,
+                        rows_detected = ?, status = 'running',
+                        activity_rows_detected = ?, daily_metric_rows_detected = ?,
+                        notes = ?
                     WHERE import_job_id = ?
                     """,
                     (
+                        batch.request.date_from,
+                        batch.request.date_to,
+                        1 if batch.request.include_daily_metrics else 0,
                         rows_detected,
+                        breakdown.activity_rows_detected,
+                        breakdown.daily_metric_rows_detected,
                         self._serialize_job_details(batch.metadata.notes, breakdown),
                         import_job_id,
                     ),
                 )
 
-            for activity in batch.activities:
-                existing_activity = connection.execute(
-                    """
-                    SELECT activity_id
-                    FROM exec_activities
-                    WHERE source_system = ? AND external_activity_id = ?
-                    """,
-                    (batch.metadata.source_system, activity.external_activity_id),
-                ).fetchone()
-                connection.execute(
-                    """
-                    INSERT INTO staging_garmin_activities (
-                        import_job_id, season_id, source_system, external_activity_id, activity_date,
-                        started_at, discipline, activity_type, duration_seconds, distance_meters,
-                        ascent_meters, calories, avg_hr, max_hr, avg_power, normalized_power,
-                        training_load, avg_pace_seconds_per_km, raw_payload_path, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        import_job_id,
-                        batch.request.season_id,
-                        batch.metadata.source_system,
-                        activity.external_activity_id,
-                        activity.activity_date,
-                        activity.started_at,
-                        activity.discipline,
-                        activity.activity_type,
-                        activity.duration_seconds,
-                        activity.distance_meters,
-                        activity.ascent_meters,
-                        activity.calories,
-                        activity.avg_hr,
-                        activity.max_hr,
-                        activity.avg_power,
-                        activity.normalized_power,
-                        activity.training_load,
-                        activity.avg_pace_seconds_per_km,
-                        activity.raw_payload_path,
-                        activity.notes,
-                    ),
-                )
-                connection.execute(
-                    """
-                    INSERT INTO exec_activities (
-                        season_id, source_system, external_activity_id, activity_date, started_at,
-                        discipline, activity_type, duration_seconds, distance_meters, ascent_meters,
-                        calories, avg_hr, max_hr, avg_power, normalized_power, training_load,
-                        avg_pace_seconds_per_km, raw_payload_path, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(source_system, external_activity_id) DO UPDATE SET
-                        activity_date = excluded.activity_date,
-                        started_at = excluded.started_at,
-                        discipline = excluded.discipline,
-                        activity_type = excluded.activity_type,
-                        duration_seconds = excluded.duration_seconds,
-                        distance_meters = excluded.distance_meters,
-                        ascent_meters = excluded.ascent_meters,
-                        calories = excluded.calories,
-                        avg_hr = excluded.avg_hr,
-                        max_hr = excluded.max_hr,
-                        avg_power = excluded.avg_power,
-                        normalized_power = excluded.normalized_power,
-                        training_load = excluded.training_load,
-                        avg_pace_seconds_per_km = excluded.avg_pace_seconds_per_km,
-                        raw_payload_path = excluded.raw_payload_path,
-                        notes = excluded.notes
-                    """,
-                    (
-                        batch.request.season_id,
-                        batch.metadata.source_system,
-                        activity.external_activity_id,
-                        activity.activity_date,
-                        activity.started_at,
-                        activity.discipline,
-                        activity.activity_type,
-                        activity.duration_seconds,
-                        activity.distance_meters,
-                        activity.ascent_meters,
-                        activity.calories,
-                        activity.avg_hr,
-                        activity.max_hr,
-                        activity.avg_power,
-                        activity.normalized_power,
-                        activity.training_load,
-                        activity.avg_pace_seconds_per_km,
-                        activity.raw_payload_path,
-                        activity.notes,
-                    ),
-                )
-                if existing_activity is None:
-                    breakdown.activity_rows_inserted += 1
-                else:
-                    breakdown.activity_rows_updated += 1
-                rows_loaded += 1
+            activity_error: Exception | None = None
+            daily_metric_error: Exception | None = None
 
-            for metric in batch.daily_metrics:
-                existing_metric = connection.execute(
-                    """
-                    SELECT daily_metric_id
-                    FROM exec_daily_metrics
-                    WHERE season_id = ? AND metric_date = ? AND source_system = ?
-                    """,
-                    (batch.request.season_id, metric.metric_date, batch.metadata.source_system),
-                ).fetchone()
-                connection.execute(
-                    """
-                    INSERT INTO staging_garmin_daily_metrics (
-                        import_job_id, season_id, source_system, metric_date, weight_kg, sleep_hours,
-                        sleep_quality, resting_hr, hrv, body_battery, subjective_energy,
-                        subjective_fatigue, notes, raw_payload_path
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        import_job_id,
-                        batch.request.season_id,
-                        batch.metadata.source_system,
-                        metric.metric_date,
-                        metric.weight_kg,
-                        metric.sleep_hours,
-                        metric.sleep_quality,
-                        metric.resting_hr,
-                        metric.hrv,
-                        metric.body_battery,
-                        metric.subjective_energy,
-                        metric.subjective_fatigue,
-                        metric.notes,
-                        metric.raw_payload_path,
-                    ),
-                )
-                connection.execute(
-                    """
-                    INSERT INTO exec_daily_metrics (
-                        season_id, metric_date, source_system, weight_kg, sleep_hours, sleep_quality,
-                        resting_hr, hrv, body_battery, subjective_energy, subjective_fatigue, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
-                        weight_kg = excluded.weight_kg,
-                        sleep_hours = excluded.sleep_hours,
-                        sleep_quality = excluded.sleep_quality,
-                        resting_hr = excluded.resting_hr,
-                        hrv = excluded.hrv,
-                        body_battery = excluded.body_battery,
-                        subjective_energy = excluded.subjective_energy,
-                        subjective_fatigue = excluded.subjective_fatigue,
-                        notes = excluded.notes
-                    """,
-                    (
-                        batch.request.season_id,
-                        metric.metric_date,
-                        batch.metadata.source_system,
-                        metric.weight_kg,
-                        metric.sleep_hours,
-                        metric.sleep_quality,
-                        metric.resting_hr,
-                        metric.hrv,
-                        metric.body_battery,
-                        metric.subjective_energy,
-                        metric.subjective_fatigue,
-                        metric.notes,
-                    ),
-                )
-                if existing_metric is None:
-                    breakdown.daily_metric_rows_inserted += 1
-                else:
-                    breakdown.daily_metric_rows_updated += 1
-                rows_loaded += 1
+            connection.execute("SAVEPOINT garmin_activities")
+            try:
+                activity_rows_loaded = 0
+                for activity in batch.activities:
+                    existing_activity = connection.execute(
+                        """
+                        SELECT activity_id
+                        FROM exec_activities
+                        WHERE source_system = ? AND external_activity_id = ?
+                        """,
+                        (batch.metadata.source_system, activity.external_activity_id),
+                    ).fetchone()
+                    connection.execute(
+                        """
+                        INSERT INTO staging_garmin_activities (
+                            import_job_id, season_id, source_system, external_activity_id, activity_date,
+                            started_at, discipline, activity_type, duration_seconds, distance_meters,
+                            ascent_meters, calories, avg_hr, max_hr, avg_power, normalized_power,
+                            training_load, avg_pace_seconds_per_km, raw_payload_path, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            import_job_id,
+                            batch.request.season_id,
+                            batch.metadata.source_system,
+                            activity.external_activity_id,
+                            activity.activity_date,
+                            activity.started_at,
+                            activity.discipline,
+                            activity.activity_type,
+                            activity.duration_seconds,
+                            activity.distance_meters,
+                            activity.ascent_meters,
+                            activity.calories,
+                            activity.avg_hr,
+                            activity.max_hr,
+                            activity.avg_power,
+                            activity.normalized_power,
+                            activity.training_load,
+                            activity.avg_pace_seconds_per_km,
+                            activity.raw_payload_path,
+                            activity.notes,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activities (
+                            season_id, source_system, external_activity_id, activity_date, started_at,
+                            discipline, activity_type, duration_seconds, distance_meters, ascent_meters,
+                            calories, avg_hr, max_hr, avg_power, normalized_power, training_load,
+                            avg_pace_seconds_per_km, raw_payload_path, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(source_system, external_activity_id) DO UPDATE SET
+                            activity_date = excluded.activity_date,
+                            started_at = excluded.started_at,
+                            discipline = excluded.discipline,
+                            activity_type = excluded.activity_type,
+                            duration_seconds = excluded.duration_seconds,
+                            distance_meters = excluded.distance_meters,
+                            ascent_meters = excluded.ascent_meters,
+                            calories = excluded.calories,
+                            avg_hr = excluded.avg_hr,
+                            max_hr = excluded.max_hr,
+                            avg_power = excluded.avg_power,
+                            normalized_power = excluded.normalized_power,
+                            training_load = excluded.training_load,
+                            avg_pace_seconds_per_km = excluded.avg_pace_seconds_per_km,
+                            raw_payload_path = excluded.raw_payload_path,
+                            notes = excluded.notes
+                        """,
+                        (
+                            batch.request.season_id,
+                            batch.metadata.source_system,
+                            activity.external_activity_id,
+                            activity.activity_date,
+                            activity.started_at,
+                            activity.discipline,
+                            activity.activity_type,
+                            activity.duration_seconds,
+                            activity.distance_meters,
+                            activity.ascent_meters,
+                            activity.calories,
+                            activity.avg_hr,
+                            activity.max_hr,
+                            activity.avg_power,
+                            activity.normalized_power,
+                            activity.training_load,
+                            activity.avg_pace_seconds_per_km,
+                            activity.raw_payload_path,
+                            activity.notes,
+                        ),
+                    )
+                    if existing_activity is None:
+                        breakdown.activity_rows_inserted += 1
+                    else:
+                        breakdown.activity_rows_updated += 1
+                    activity_rows_loaded += 1
+                rows_loaded += activity_rows_loaded
+            except Exception as error:
+                connection.execute("ROLLBACK TO SAVEPOINT garmin_activities")
+                breakdown.activity_rows_inserted = 0
+                breakdown.activity_rows_updated = 0
+                activity_error = error
+            finally:
+                connection.execute("RELEASE SAVEPOINT garmin_activities")
+
+            connection.execute("SAVEPOINT garmin_daily_metrics")
+            try:
+                daily_metric_rows_loaded = 0
+                for metric in batch.daily_metrics:
+                    existing_metric = connection.execute(
+                        """
+                        SELECT daily_metric_id
+                        FROM exec_daily_metrics
+                        WHERE season_id = ? AND metric_date = ? AND source_system = ?
+                        """,
+                        (batch.request.season_id, metric.metric_date, batch.metadata.source_system),
+                    ).fetchone()
+                    connection.execute(
+                        """
+                        INSERT INTO staging_garmin_daily_metrics (
+                            import_job_id, season_id, source_system, metric_date, weight_kg, sleep_hours,
+                            sleep_quality, resting_hr, hrv, body_battery, subjective_energy,
+                            subjective_fatigue, notes, raw_payload_path
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            import_job_id,
+                            batch.request.season_id,
+                            batch.metadata.source_system,
+                            metric.metric_date,
+                            metric.weight_kg,
+                            metric.sleep_hours,
+                            metric.sleep_quality,
+                            metric.resting_hr,
+                            metric.hrv,
+                            metric.body_battery,
+                            metric.subjective_energy,
+                            metric.subjective_fatigue,
+                            metric.notes,
+                            metric.raw_payload_path,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_daily_metrics (
+                            season_id, metric_date, source_system, weight_kg, sleep_hours, sleep_quality,
+                            resting_hr, hrv, body_battery, subjective_energy, subjective_fatigue, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
+                            weight_kg = excluded.weight_kg,
+                            sleep_hours = excluded.sleep_hours,
+                            sleep_quality = excluded.sleep_quality,
+                            resting_hr = excluded.resting_hr,
+                            hrv = excluded.hrv,
+                            body_battery = excluded.body_battery,
+                            subjective_energy = excluded.subjective_energy,
+                            subjective_fatigue = excluded.subjective_fatigue,
+                            notes = excluded.notes
+                        """,
+                        (
+                            batch.request.season_id,
+                            metric.metric_date,
+                            batch.metadata.source_system,
+                            metric.weight_kg,
+                            metric.sleep_hours,
+                            metric.sleep_quality,
+                            metric.resting_hr,
+                            metric.hrv,
+                            metric.body_battery,
+                            metric.subjective_energy,
+                            metric.subjective_fatigue,
+                            metric.notes,
+                        ),
+                    )
+                    if existing_metric is None:
+                        breakdown.daily_metric_rows_inserted += 1
+                    else:
+                        breakdown.daily_metric_rows_updated += 1
+                    daily_metric_rows_loaded += 1
+                rows_loaded += daily_metric_rows_loaded
+            except Exception as error:
+                connection.execute("ROLLBACK TO SAVEPOINT garmin_daily_metrics")
+                breakdown.daily_metric_rows_inserted = 0
+                breakdown.daily_metric_rows_updated = 0
+                daily_metric_error = error
+            finally:
+                connection.execute("RELEASE SAVEPOINT garmin_daily_metrics")
 
             auto_link_inserted, auto_link_retained = self._auto_link_garmin_activities(
                 connection,
@@ -553,23 +715,127 @@ class GarminImportStorage:
             final_notes.append(f"Activities inserted/updated: {breakdown.activity_rows_inserted}/{breakdown.activity_rows_updated}")
             final_notes.append(f"Daily metrics inserted/updated: {breakdown.daily_metric_rows_inserted}/{breakdown.daily_metric_rows_updated}")
             final_notes.append(self.AUTO_LINK_NOTE.format(inserted=auto_link_inserted, retained=auto_link_retained))
+            self._finalize_skipped_counts(breakdown)
+
+            if activity_error is not None and daily_metric_error is not None:
+                raise daily_metric_error
+
+            if activity_error is not None or daily_metric_error is not None:
+                partial_error = activity_error or daily_metric_error
+                partial_notes = list(final_notes)
+                partial_notes.append(f"Persistencia parcial Garmin: {partial_error}")
+                operator_detail = str(partial_error)
+                status = "partial_completed"
+                failure_stage = "persist"
+                failure_class = "persistence_transaction"
+                partial_completion = True
+            else:
+                partial_notes = final_notes
+                operator_detail = "Importacion Garmin completada."
+                status = "completed"
+                failure_stage = None
+                failure_class = None
+                partial_completion = False
+
             connection.execute(
                 """
                 UPDATE meta_import_jobs
-                SET rows_loaded = ?, status = 'completed', notes = ?
+                SET rows_loaded = ?, status = ?, finished_at = CURRENT_TIMESTAMP,
+                    failure_stage = ?, failure_class = ?, retry_suitability = ?,
+                    partial_completion = ?, operator_detail = ?,
+                    activity_rows_detected = ?, activity_rows_inserted = ?, activity_rows_updated = ?, activity_rows_skipped = ?,
+                    daily_metric_rows_detected = ?, daily_metric_rows_inserted = ?, daily_metric_rows_updated = ?, daily_metric_rows_skipped = ?,
+                    notes = ?
                 WHERE import_job_id = ?
                 """,
-                (rows_loaded, self._serialize_job_details(final_notes, breakdown), import_job_id),
+                (
+                    rows_loaded,
+                    status,
+                    failure_stage,
+                    failure_class,
+                    self._derive_retry_suitability(
+                        status=status,
+                        failure_stage=failure_stage,
+                        failure_class=failure_class,
+                        partial_completion=partial_completion,
+                    ),
+                    1 if partial_completion else 0,
+                    operator_detail,
+                    breakdown.activity_rows_detected,
+                    breakdown.activity_rows_inserted,
+                    breakdown.activity_rows_updated,
+                    breakdown.activity_rows_skipped,
+                    breakdown.daily_metric_rows_detected,
+                    breakdown.daily_metric_rows_inserted,
+                    breakdown.daily_metric_rows_updated,
+                    breakdown.daily_metric_rows_skipped,
+                    self._serialize_job_details(partial_notes, breakdown),
+                    import_job_id,
+                ),
             )
 
         return ImportJobSummary(
             import_job_id=import_job_id,
-            status="completed",
+            source_system=batch.metadata.source_system,
+            import_type=batch.metadata.source_label,
+            source_path=f"{batch.request.date_from}:{batch.request.date_to}",
+            request_scope=batch.request.to_scope_dict(),
+            status=status,
             rows_detected=rows_detected,
             rows_loaded=rows_loaded,
-            notes=final_notes,
+            failure_stage=failure_stage,
+            failure_class=failure_class,
+            retry_suitability=self._derive_retry_suitability(
+                status=status,
+                failure_stage=failure_stage,
+                failure_class=failure_class,
+                partial_completion=partial_completion,
+            ),
+            partial_completion=partial_completion,
+            operator_detail=operator_detail,
+            notes=partial_notes,
             breakdown=breakdown,
             has_breakdown_details=True,
+        )
+
+    def _state_from_row(self, row: dict[str, Any], notes: list[str], legacy_breakdown: ImportJobBreakdown, has_breakdown_details: bool) -> ImportJobState:
+        column_breakdown = ImportJobBreakdown(
+            activity_rows_detected=int(row.get("activity_rows_detected") or 0),
+            activity_rows_inserted=int(row.get("activity_rows_inserted") or 0),
+            activity_rows_updated=int(row.get("activity_rows_updated") or 0),
+            activity_rows_skipped=int(row.get("activity_rows_skipped") or 0),
+            daily_metric_rows_detected=int(row.get("daily_metric_rows_detected") or 0),
+            daily_metric_rows_inserted=int(row.get("daily_metric_rows_inserted") or 0),
+            daily_metric_rows_updated=int(row.get("daily_metric_rows_updated") or 0),
+            daily_metric_rows_skipped=int(row.get("daily_metric_rows_skipped") or 0),
+        )
+        effective_breakdown = column_breakdown
+        if effective_breakdown.to_dict() == ImportJobBreakdown().to_dict() and legacy_breakdown.to_dict() != ImportJobBreakdown().to_dict():
+            effective_breakdown = legacy_breakdown
+
+        return ImportJobState(
+            source_system=str(row.get("source_system") or "garmin"),
+            import_type=str(row.get("import_type") or self.DEFAULT_IMPORT_TYPE),
+            source_path=row.get("source_path"),
+            imported_at=row.get("imported_at"),
+            finished_at=row.get("finished_at"),
+            request_scope=self._build_request_scope(
+                season_id=int(row.get("season_id") or 0),
+                request_date_from=row.get("request_date_from"),
+                request_date_to=row.get("request_date_to"),
+                include_daily_metrics=row.get("include_daily_metrics"),
+            ),
+            status=str(row.get("status") or "unknown"),
+            rows_detected=int(row.get("rows_detected") or 0),
+            rows_loaded=int(row.get("rows_loaded") or 0),
+            failure_stage=row.get("failure_stage"),
+            failure_class=row.get("failure_class"),
+            retry_suitability=row.get("retry_suitability"),
+            partial_completion=bool(row.get("partial_completion")),
+            operator_detail=row.get("operator_detail"),
+            notes=notes,
+            breakdown=effective_breakdown,
+            has_breakdown_details=has_breakdown_details or effective_breakdown.to_dict() != ImportJobBreakdown().to_dict(),
         )
 
     def list_import_jobs(self) -> list[dict[str, Any]]:
@@ -577,7 +843,12 @@ class GarminImportStorage:
             rows = connection.execute(
                 """
                 SELECT import_job_id, season_id, source_system, import_type, source_path,
-                       imported_at, rows_detected, rows_loaded, status, notes
+                       imported_at, finished_at, request_date_from, request_date_to, include_daily_metrics,
+                       rows_detected, rows_loaded, status, failure_stage, failure_class,
+                       retry_suitability, partial_completion, operator_detail,
+                       activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                       daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                       notes
                 FROM meta_import_jobs
                 ORDER BY import_job_id DESC
                 """
@@ -586,9 +857,22 @@ class GarminImportStorage:
         for row in rows:
             result = dict(row)
             details = self._deserialize_job_details(result.get("notes"))
-            result["notes"] = details["messages"]
-            result["breakdown"] = details["breakdown"]
-            result["has_breakdown_details"] = details["has_breakdown_details"]
+            state = self._state_from_row(
+                result,
+                details["messages"],
+                ImportJobBreakdown.from_dict(details["breakdown"]),
+                bool(details["has_breakdown_details"]),
+            )
+            result["request_scope"] = state.request_scope
+            result["finished_at"] = state.finished_at
+            result["failure_stage"] = state.failure_stage
+            result["failure_class"] = state.failure_class
+            result["retry_suitability"] = state.retry_suitability
+            result["partial_completion"] = state.partial_completion
+            result["operator_detail"] = state.operator_detail
+            result["notes"] = state.notes
+            result["breakdown"] = state.breakdown.to_dict()
+            result["has_breakdown_details"] = state.has_breakdown_details
             results.append(result)
         return results
 
@@ -596,8 +880,13 @@ class GarminImportStorage:
         with get_connection() as connection:
             job = connection.execute(
                 """
-                SELECT import_job_id, season_id, source_system, import_type, source_path,
-                       imported_at, rows_detected, rows_loaded, status, notes
+                  SELECT import_job_id, season_id, source_system, import_type, source_path,
+                      imported_at, finished_at, request_date_from, request_date_to, include_daily_metrics,
+                      rows_detected, rows_loaded, status, failure_stage, failure_class,
+                      retry_suitability, partial_completion, operator_detail,
+                      activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
+                      daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                      notes
                 FROM meta_import_jobs
                 WHERE import_job_id = ?
                 """,
@@ -616,9 +905,22 @@ class GarminImportStorage:
 
         result = dict(job)
         details = self._deserialize_job_details(result.get("notes"))
-        result["notes"] = details["messages"]
-        result["breakdown"] = details["breakdown"]
-        result["has_breakdown_details"] = details["has_breakdown_details"]
+        state = self._state_from_row(
+            result,
+            details["messages"],
+            ImportJobBreakdown.from_dict(details["breakdown"]),
+            bool(details["has_breakdown_details"]),
+        )
+        result["request_scope"] = state.request_scope
+        result["finished_at"] = state.finished_at
+        result["failure_stage"] = state.failure_stage
+        result["failure_class"] = state.failure_class
+        result["retry_suitability"] = state.retry_suitability
+        result["partial_completion"] = state.partial_completion
+        result["operator_detail"] = state.operator_detail
+        result["notes"] = state.notes
+        result["breakdown"] = state.breakdown.to_dict()
+        result["has_breakdown_details"] = state.has_breakdown_details
         result["staging_counts"] = {
             "activities": int(activities["total"]),
             "daily_metrics": int(daily_metrics["total"]),

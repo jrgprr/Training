@@ -12,6 +12,14 @@ class GarminImportRequest:
     date_to: str
     include_daily_metrics: bool = True
 
+    def to_scope_dict(self) -> dict[str, Any]:
+        return {
+            "season_id": self.season_id,
+            "date_from": self.date_from,
+            "date_to": self.date_to,
+            "include_daily_metrics": self.include_daily_metrics,
+        }
+
 
 @dataclass(slots=True)
 class ImportFetchMetadata:
@@ -85,13 +93,53 @@ class GarminImportBatch:
 
 @dataclass(slots=True)
 class ImportJobBreakdown:
+    activity_rows_detected: int = 0
     activity_rows_inserted: int = 0
     activity_rows_updated: int = 0
+    activity_rows_skipped: int = 0
+    daily_metric_rows_detected: int = 0
     daily_metric_rows_inserted: int = 0
     daily_metric_rows_updated: int = 0
+    daily_metric_rows_skipped: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any] | None) -> "ImportJobBreakdown":
+        if not isinstance(payload, dict):
+            return cls()
+        values: dict[str, int] = {}
+        for field_name in cls.__dataclass_fields__:
+            raw_value = payload.get(field_name, 0)
+            values[field_name] = int(raw_value) if raw_value is not None else 0
+        return cls(**values)
+
+
+@dataclass(slots=True)
+class ImportJobState:
+    source_system: str
+    import_type: str
+    source_path: str | None
+    imported_at: str | None
+    finished_at: str | None
+    request_scope: dict[str, Any]
+    status: str
+    rows_detected: int
+    rows_loaded: int
+    failure_stage: str | None = None
+    failure_class: str | None = None
+    retry_suitability: str | None = None
+    partial_completion: bool = False
+    operator_detail: str | None = None
+    notes: list[str] = field(default_factory=list)
+    breakdown: ImportJobBreakdown = field(default_factory=ImportJobBreakdown)
+    has_breakdown_details: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["breakdown"] = self.breakdown.to_dict()
+        return payload
 
 
 def iter_dates(date_from: str, date_to: str) -> list[str]:

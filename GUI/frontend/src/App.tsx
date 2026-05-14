@@ -307,15 +307,31 @@ type ImportJob = {
   import_type: string;
   source_path: string | null;
   imported_at: string;
+  finished_at: string | null;
   rows_detected: number;
   rows_loaded: number;
   status: string;
+  failure_stage: string | null;
+  failure_class: string | null;
+  retry_suitability: string | null;
+  partial_completion: boolean;
+  operator_detail: string | null;
+  request_scope?: {
+    season_id: number;
+    date_from: string | null;
+    date_to: string | null;
+    include_daily_metrics: boolean;
+  };
   notes: string[];
   breakdown: {
+    activity_rows_detected: number;
     activity_rows_inserted: number;
     activity_rows_updated: number;
+    activity_rows_skipped: number;
+    daily_metric_rows_detected: number;
     daily_metric_rows_inserted: number;
     daily_metric_rows_updated: number;
+    daily_metric_rows_skipped: number;
   };
   has_breakdown_details: boolean;
 };
@@ -334,11 +350,69 @@ type GarminImportRunResponse = {
     status: string;
     rows_detected: number;
     rows_loaded: number;
+    finished_at: string | null;
+    failure_stage: string | null;
+    failure_class: string | null;
+    retry_suitability: string | null;
+    partial_completion: boolean;
+    operator_detail: string | null;
+    request_scope: ImportJob["request_scope"];
     notes: string[];
     breakdown: ImportJob["breakdown"];
     has_breakdown_details: boolean;
   };
 };
+
+function formatRetrySuitabilityLabel(retrySuitability: string | null): string {
+  if (retrySuitability === "safe_to_retry") {
+    return "Reintento seguro";
+  }
+  if (retrySuitability === "inspect_before_retry") {
+    return "Inspeccionar antes de reintentar";
+  }
+  return "Sin clasificar";
+}
+
+function formatFailureStageLabel(failureStage: string | null): string {
+  if (failureStage === "configuration") {
+    return "Configuracion";
+  }
+  if (failureStage === "fetch") {
+    return "Fetch";
+  }
+  if (failureStage === "normalize") {
+    return "Normalizacion";
+  }
+  if (failureStage === "persist") {
+    return "Persistencia";
+  }
+  return "Sin etapa";
+}
+
+function formatFailureClassLabel(failureClass: string | null): string {
+  if (failureClass === "configuration_authentication") {
+    return "Configuracion o autenticacion";
+  }
+  if (failureClass === "transport_rate_limit") {
+    return "Transporte o rate limit";
+  }
+  if (failureClass === "source_data_normalization") {
+    return "Datos origen o normalizacion";
+  }
+  if (failureClass === "persistence_transaction") {
+    return "Persistencia o transaccion";
+  }
+  return "Sin clasificar";
+}
+
+function getImportJobScope(job: ImportJob) {
+  return job.request_scope ?? {
+    season_id: job.season_id,
+    date_from: job.source_path?.split(":")[0] ?? null,
+    date_to: job.source_path?.split(":")[1] ?? null,
+    include_daily_metrics: false,
+  };
+}
 
 const emptyGarminImportForm = (): GarminImportFormState => ({
   date_from: "2026-05-04",
@@ -945,7 +1019,9 @@ export default function App() {
         );
       }
       const result = (await response.json()) as GarminImportRunResponse;
-      setSubmissionMessage(`Importacion Garmin completada: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas.`);
+      setSubmissionMessage(
+        `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.`,
+      );
       await loadImportJobs();
       await loadSeasonActivities(selectedSeason.season_id);
       if (selectedWeek) {
@@ -1235,6 +1311,9 @@ export default function App() {
 
           <div className="panel-list import-jobs-list">
             {importJobs.map((job) => (
+              (() => {
+                const scope = getImportJobScope(job);
+                return (
               <article key={job.import_job_id} className="import-job-card">
                 <div className="item-head">
                   <strong>Job {job.import_job_id}</strong>
@@ -1242,15 +1321,30 @@ export default function App() {
                 </div>
                 <span>{job.source_path ?? "Sin rango"}</span>
                 <small>{toDateTimeLabel(job.imported_at)}</small>
+                {job.finished_at ? <small>Finalizado: {toDateTimeLabel(job.finished_at)}</small> : null}
+                <div className="import-job-meta">
+                  <span>Temporada: {scope.season_id}</span>
+                  <span>Rango: {scope.date_from ?? "?"} a {scope.date_to ?? "?"}</span>
+                  <span>Metricas diarias: {scope.include_daily_metrics ? "si" : "no"}</span>
+                  <span>Retry: {formatRetrySuitabilityLabel(job.retry_suitability)}</span>
+                  {job.failure_stage ? <span>Etapa: {formatFailureStageLabel(job.failure_stage)}</span> : null}
+                  {job.failure_class ? <span>Clase: {formatFailureClassLabel(job.failure_class)}</span> : null}
+                  {job.partial_completion ? <span>Resultado parcial</span> : null}
+                </div>
+                {job.operator_detail ? <p className="import-job-detail">{job.operator_detail}</p> : null}
                 <div className="import-job-grid">
                   <span>Detectadas: {job.rows_detected}</span>
                   <span>Cargadas: {job.rows_loaded}</span>
                   {job.has_breakdown_details ? (
                     <>
+                      <span>Act. det: {job.breakdown.activity_rows_detected}</span>
                       <span>Act. +: {job.breakdown.activity_rows_inserted}</span>
                       <span>Act. upd: {job.breakdown.activity_rows_updated}</span>
+                      <span>Act. skip: {job.breakdown.activity_rows_skipped}</span>
+                      <span>Met. det: {job.breakdown.daily_metric_rows_detected}</span>
                       <span>Met. +: {job.breakdown.daily_metric_rows_inserted}</span>
                       <span>Met. upd: {job.breakdown.daily_metric_rows_updated}</span>
+                      <span>Met. skip: {job.breakdown.daily_metric_rows_skipped}</span>
                     </>
                   ) : (
                     <span className="import-job-grid-note">Breakdown inserted/updated no disponible</span>
@@ -1264,6 +1358,8 @@ export default function App() {
                   </div>
                 ) : null}
               </article>
+                );
+              })()
             ))}
             {importJobs.length === 0 ? (
               <div className="empty-state-card">

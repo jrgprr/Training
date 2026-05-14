@@ -196,10 +196,24 @@ textarea {
 
 .import-job-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.import-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.import-job-detail {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
 }
 
 .import-job-grid-note {
@@ -755,9 +769,15 @@ textarea {
   color: #166534;
 }
 
-.badge-partial {
+.badge-partial,
+.badge-partial_completed {
   background: rgba(217, 119, 6, 0.14);
   color: #92400e;
+}
+
+.badge-failed {
+  background: rgba(220, 38, 38, 0.14);
+  color: #991b1b;
 }
 
 .badge-pending {
