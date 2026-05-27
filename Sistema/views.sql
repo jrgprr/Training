@@ -75,3 +75,29 @@ JOIN plan_meso_blocks b ON b.block_id = w.block_id
 LEFT JOIN link_plan_execution l ON l.planned_session_id = ps.planned_session_id
 LEFT JOIN exec_activities ea ON ea.activity_id = l.activity_id
 LEFT JOIN review_daily_reviews rr ON rr.planned_session_id = ps.planned_session_id;
+
+CREATE VIEW IF NOT EXISTS vw_exec_segment_history AS
+SELECT
+    se.segment_id,
+    s.source_system,
+    s.external_segment_id,
+    s.segment_name,
+    s.discipline,
+    s.distance_meters,
+    s.ascent_meters,
+    s.average_grade_percent,
+    se.segment_effort_id,
+    se.external_segment_effort_id,
+    se.activity_id,
+    se.activity_date,
+    ea.external_activity_id,
+    se.started_at,
+    se.elapsed_time_seconds,
+    se.avg_power,
+    se.avg_cadence,
+    se.avg_heart_rate,
+    se.max_heart_rate,
+    se.notes
+FROM exec_segment_efforts se
+JOIN exec_segments s ON s.segment_id = se.segment_id
+JOIN exec_activities ea ON ea.activity_id = se.activity_id;
