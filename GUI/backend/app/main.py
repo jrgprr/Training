@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
+from .segments import get_segment_history, list_segments
 
 app = FastAPI(title="Training System GUI API", version="0.2.0")
 
@@ -52,6 +53,12 @@ class GarminConnectImportPayload(BaseModel):
     date_from: str
     date_to: str
     include_daily_metrics: bool = True
+
+
+class SegmentListQuery(BaseModel):
+    season_id: int
+    query: str | None = None
+    limit: int = 50
 
 
 def get_week_context(week_id: int) -> dict[str, Any]:
@@ -598,10 +605,25 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
         )
         raise
 
+    counts = dict(batch.counts())
+    counts["segment_efforts_loaded"] = (
+        summary.breakdown.segment_efforts_inserted + summary.breakdown.segment_efforts_updated
+    )
+    counts["segment_activities_with_data"] = summary.breakdown.segment_activities_with_data
+
     return {
         "status": "ok",
-        "counts": batch.counts(),
-        "metadata": batch.metadata.to_dict(),
+        "counts": counts,
+        "metadata": {
+            **batch.metadata.to_dict(),
+            "segment_summary": {
+                "activities_with_segment_data": summary.breakdown.segment_activities_with_data,
+                "activities_without_segment_data": max(
+                    summary.breakdown.segment_activities_checked - summary.breakdown.segment_activities_with_data,
+                    0,
+                ),
+            },
+        },
         "import_job": summary.to_dict(),
     }
 
@@ -619,6 +641,27 @@ def get_import_job(import_job_id: int) -> dict[str, Any]:
     if job is None:
         raise HTTPException(status_code=404, detail=f"No existe el import job {import_job_id}.")
     return job
+
+
+@app.get("/api/segments")
+def get_segments(season_id: int, query: str | None = None, limit: int = 50) -> dict[str, Any]:
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit debe ser mayor que 0.")
+    if limit > 200:
+        raise HTTPException(status_code=400, detail="limit no puede ser mayor que 200.")
+    return {"items": list_segments(season_id=season_id, query=query, limit=limit)}
+
+
+@app.get("/api/segments/{segment_id}/history")
+def get_segment_history_endpoint(segment_id: int, limit: int = 20) -> dict[str, Any]:
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit debe ser mayor que 0.")
+    if limit > 200:
+        raise HTTPException(status_code=400, detail="limit no puede ser mayor que 200.")
+    history = get_segment_history(segment_id=segment_id, limit=limit)
+    if history is None:
+        raise HTTPException(status_code=404, detail=f"No existe el segmento {segment_id}.")
+    return history
 
 
 @app.get("/api/activities/{activity_id}")

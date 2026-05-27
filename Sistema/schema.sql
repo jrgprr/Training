@@ -214,6 +214,9 @@ CREATE TABLE IF NOT EXISTS exec_activities (
     normalized_power REAL,
     training_load REAL,
     avg_pace_seconds_per_km REAL,
+    segment_data_status TEXT NOT NULL DEFAULT 'not_checked',
+    segment_effort_count INTEGER NOT NULL DEFAULT 0,
+    segment_checked_at TEXT,
     perceived_exertion INTEGER,
     subjective_feeling TEXT,
     source_file TEXT,
@@ -242,6 +245,45 @@ CREATE TABLE IF NOT EXISTS exec_daily_metrics (
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
 
+CREATE TABLE IF NOT EXISTS exec_segments (
+    segment_id INTEGER PRIMARY KEY,
+    source_system TEXT NOT NULL,
+    external_segment_id TEXT NOT NULL,
+    segment_name TEXT,
+    discipline TEXT,
+    distance_meters REAL,
+    ascent_meters REAL,
+    average_grade_percent REAL,
+    first_seen_activity_id INTEGER,
+    last_seen_activity_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_system, external_segment_id),
+    FOREIGN KEY (first_seen_activity_id) REFERENCES exec_activities (activity_id),
+    FOREIGN KEY (last_seen_activity_id) REFERENCES exec_activities (activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_segment_efforts (
+    segment_effort_id INTEGER PRIMARY KEY,
+    source_system TEXT NOT NULL,
+    external_segment_effort_id TEXT NOT NULL,
+    segment_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    activity_date TEXT NOT NULL,
+    started_at TEXT,
+    elapsed_time_seconds INTEGER,
+    avg_power REAL,
+    avg_cadence REAL,
+    avg_heart_rate REAL,
+    max_heart_rate REAL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_system, external_segment_effort_id),
+    FOREIGN KEY (segment_id) REFERENCES exec_segments (segment_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
 CREATE TABLE IF NOT EXISTS link_plan_execution (
     link_id INTEGER PRIMARY KEY,
     planned_session_id INTEGER NOT NULL,
@@ -254,6 +296,10 @@ CREATE TABLE IF NOT EXISTS link_plan_execution (
     FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id),
     UNIQUE (planned_session_id, activity_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_exec_segments_name ON exec_segments (segment_name);
+CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_segment_date ON exec_segment_efforts (segment_id, activity_date DESC);
+CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_activity ON exec_segment_efforts (activity_id);
 
 CREATE TABLE IF NOT EXISTS review_daily_reviews (
     daily_review_id INTEGER PRIMARY KEY,

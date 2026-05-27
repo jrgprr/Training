@@ -4,8 +4,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState
-from ..db import get_connection
+from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState, NormalizedActivity, NormalizedSegmentEffort
+from ..db import _ensure_exec_activity_segment_columns, get_connection
 
 LEGACY_PENDING_NOTE = "Pendiente persistir staging e import jobs en la siguiente fase."
 PERSISTENCE_READY_NOTE = "Carga preparada para persistencia en staging y tablas finales."
@@ -261,6 +261,10 @@ class GarminImportStorage:
             breakdown.daily_metric_rows_detected - breakdown.daily_metric_rows_inserted - breakdown.daily_metric_rows_updated,
             0,
         )
+        breakdown.segment_efforts_skipped = max(
+            breakdown.segment_efforts_detected - breakdown.segment_efforts_inserted - breakdown.segment_efforts_updated,
+            0,
+        )
 
     @staticmethod
     def _derive_retry_suitability(
@@ -301,6 +305,212 @@ class GarminImportStorage:
         if operator_detail and operator_detail not in normalized:
             normalized.append(operator_detail)
         return normalized
+
+    def _persist_activity_segments(
+        self,
+        connection: Any,
+        *,
+        source_system: str,
+        activity_row_id: int,
+        activity: NormalizedActivity,
+        breakdown: ImportJobBreakdown,
+    ) -> None:
+        if activity.segment_data_status != "not_checked":
+            breakdown.segment_activities_checked += 1
+        if activity.segment_effort_count > 0:
+            breakdown.segment_activities_with_data += 1
+        breakdown.segment_efforts_detected += activity.segment_effort_count
+
+        if activity.segment_data_status != "not_checked":
+            current_effort_ids = [effort.external_segment_effort_id for effort in activity.segments]
+            if current_effort_ids:
+                placeholders = ", ".join("?" for _ in current_effort_ids)
+                connection.execute(
+                    f"""
+                    DELETE FROM exec_segment_efforts
+                    WHERE source_system = ?
+                      AND activity_id = ?
+                      AND external_segment_effort_id NOT IN ({placeholders})
+                    """,
+                    (source_system, activity_row_id, *current_effort_ids),
+                )
+            else:
+                connection.execute(
+                    """
+                    DELETE FROM exec_segment_efforts
+                    WHERE source_system = ? AND activity_id = ?
+                    """,
+                    (source_system, activity_row_id),
+                )
+
+        for effort in activity.segments:
+            segment_id = self._upsert_segment_definition(
+                connection,
+                source_system=source_system,
+                activity_row_id=activity_row_id,
+                effort=effort,
+            )
+            existing_effort = connection.execute(
+                """
+                SELECT segment_effort_id
+                FROM exec_segment_efforts
+                WHERE source_system = ? AND external_segment_effort_id = ?
+                """,
+                (source_system, effort.external_segment_effort_id),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO exec_segment_efforts (
+                    source_system, external_segment_effort_id, segment_id, activity_id, activity_date,
+                    started_at, elapsed_time_seconds, avg_power, avg_cadence, avg_heart_rate, max_heart_rate, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_system, external_segment_effort_id) DO UPDATE SET
+                    segment_id = excluded.segment_id,
+                    activity_id = excluded.activity_id,
+                    activity_date = excluded.activity_date,
+                    started_at = excluded.started_at,
+                    elapsed_time_seconds = excluded.elapsed_time_seconds,
+                    avg_power = excluded.avg_power,
+                    avg_cadence = excluded.avg_cadence,
+                    avg_heart_rate = excluded.avg_heart_rate,
+                    max_heart_rate = excluded.max_heart_rate,
+                    notes = excluded.notes,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    source_system,
+                    effort.external_segment_effort_id,
+                    segment_id,
+                    activity_row_id,
+                    activity.activity_date,
+                    effort.started_at,
+                    effort.elapsed_time_seconds,
+                    effort.avg_power,
+                    effort.avg_cadence,
+                    effort.avg_heart_rate,
+                    effort.max_heart_rate,
+                    effort.notes,
+                ),
+            )
+            if existing_effort is None:
+                breakdown.segment_efforts_inserted += 1
+            else:
+                breakdown.segment_efforts_updated += 1
+
+        connection.execute(
+            """
+            UPDATE exec_activities
+            SET segment_data_status = ?,
+                segment_effort_count = ?,
+                segment_checked_at = COALESCE(?, CURRENT_TIMESTAMP)
+            WHERE activity_id = ?
+            """,
+            (
+                activity.segment_data_status,
+                activity.segment_effort_count,
+                activity.segment_checked_at,
+                activity_row_id,
+            ),
+        )
+
+    @staticmethod
+    def _upsert_segment_definition(
+        connection: Any,
+        *,
+        source_system: str,
+        activity_row_id: int,
+        effort: NormalizedSegmentEffort,
+    ) -> int:
+        definition = effort.definition
+        connection.execute(
+            """
+            INSERT INTO exec_segments (
+                source_system, external_segment_id, segment_name, discipline,
+                distance_meters, ascent_meters, average_grade_percent,
+                first_seen_activity_id, last_seen_activity_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_system, external_segment_id) DO UPDATE SET
+                segment_name = excluded.segment_name,
+                discipline = excluded.discipline,
+                distance_meters = excluded.distance_meters,
+                ascent_meters = excluded.ascent_meters,
+                average_grade_percent = excluded.average_grade_percent,
+                last_seen_activity_id = excluded.last_seen_activity_id,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                source_system,
+                definition.external_segment_id,
+                definition.segment_name,
+                definition.discipline,
+                definition.distance_meters,
+                definition.ascent_meters,
+                definition.average_grade_percent,
+                activity_row_id,
+                activity_row_id,
+            ),
+        )
+        segment_row = connection.execute(
+            """
+            SELECT segment_id
+            FROM exec_segments
+            WHERE source_system = ? AND external_segment_id = ?
+            """,
+            (source_system, definition.external_segment_id),
+        ).fetchone()
+        if segment_row is None:
+            raise RuntimeError("No se pudo resolver el segmento persistido.")
+        return int(segment_row["segment_id"])
+
+    @staticmethod
+    def _ensure_segment_storage_schema(connection: Any) -> None:
+        _ensure_exec_activity_segment_columns(connection)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exec_segments (
+                segment_id INTEGER PRIMARY KEY,
+                source_system TEXT NOT NULL,
+                external_segment_id TEXT NOT NULL,
+                segment_name TEXT,
+                discipline TEXT,
+                distance_meters REAL,
+                ascent_meters REAL,
+                average_grade_percent REAL,
+                first_seen_activity_id INTEGER,
+                last_seen_activity_id INTEGER,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (source_system, external_segment_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exec_segment_efforts (
+                segment_effort_id INTEGER PRIMARY KEY,
+                source_system TEXT NOT NULL,
+                external_segment_effort_id TEXT NOT NULL,
+                segment_id INTEGER NOT NULL,
+                activity_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                started_at TEXT,
+                elapsed_time_seconds INTEGER,
+                avg_power REAL,
+                avg_cadence REAL,
+                avg_heart_rate REAL,
+                max_heart_rate REAL,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (source_system, external_segment_effort_id)
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_exec_segments_name ON exec_segments (segment_name)")
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_segment_date ON exec_segment_efforts (segment_id, activity_date DESC)"
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_activity ON exec_segment_efforts (activity_id)")
 
     def start_import_job(
         self,
@@ -461,6 +671,7 @@ class GarminImportStorage:
         )
 
         with get_connection() as connection:
+            self._ensure_segment_storage_schema(connection)
             if import_job_id is None:
                 cursor = connection.execute(
                     """
@@ -564,8 +775,9 @@ class GarminImportStorage:
                             season_id, source_system, external_activity_id, activity_date, started_at,
                             discipline, activity_type, duration_seconds, distance_meters, ascent_meters,
                             calories, avg_hr, max_hr, avg_power, normalized_power, training_load,
-                            avg_pace_seconds_per_km, raw_payload_path, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            avg_pace_seconds_per_km, segment_data_status, segment_effort_count, segment_checked_at,
+                            raw_payload_path, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(source_system, external_activity_id) DO UPDATE SET
                             activity_date = excluded.activity_date,
                             started_at = excluded.started_at,
@@ -581,6 +793,9 @@ class GarminImportStorage:
                             normalized_power = excluded.normalized_power,
                             training_load = excluded.training_load,
                             avg_pace_seconds_per_km = excluded.avg_pace_seconds_per_km,
+                            segment_data_status = excluded.segment_data_status,
+                            segment_effort_count = excluded.segment_effort_count,
+                            segment_checked_at = excluded.segment_checked_at,
                             raw_payload_path = excluded.raw_payload_path,
                             notes = excluded.notes
                         """,
@@ -602,9 +817,29 @@ class GarminImportStorage:
                             activity.normalized_power,
                             activity.training_load,
                             activity.avg_pace_seconds_per_km,
+                            activity.segment_data_status,
+                            activity.segment_effort_count,
+                            activity.segment_checked_at,
                             activity.raw_payload_path,
                             activity.notes,
                         ),
+                    )
+                    persisted_activity = connection.execute(
+                        """
+                        SELECT activity_id
+                        FROM exec_activities
+                        WHERE source_system = ? AND external_activity_id = ?
+                        """,
+                        (batch.metadata.source_system, activity.external_activity_id),
+                    ).fetchone()
+                    if persisted_activity is None:
+                        raise RuntimeError("No se pudo resolver la actividad Garmin persistida.")
+                    self._persist_activity_segments(
+                        connection,
+                        source_system=batch.metadata.source_system,
+                        activity_row_id=int(persisted_activity["activity_id"]),
+                        activity=activity,
+                        breakdown=breakdown,
                     )
                     if existing_activity is None:
                         breakdown.activity_rows_inserted += 1
@@ -714,6 +949,12 @@ class GarminImportStorage:
             final_notes.append(f"Daily metrics staged: {len(batch.daily_metrics)}")
             final_notes.append(f"Activities inserted/updated: {breakdown.activity_rows_inserted}/{breakdown.activity_rows_updated}")
             final_notes.append(f"Daily metrics inserted/updated: {breakdown.daily_metric_rows_inserted}/{breakdown.daily_metric_rows_updated}")
+            final_notes.append(
+                f"Segments checked/with-data: {breakdown.segment_activities_checked}/{breakdown.segment_activities_with_data}"
+            )
+            final_notes.append(
+                f"Segment efforts inserted/updated: {breakdown.segment_efforts_inserted}/{breakdown.segment_efforts_updated}"
+            )
             final_notes.append(self.AUTO_LINK_NOTE.format(inserted=auto_link_inserted, retained=auto_link_retained))
             self._finalize_skipped_counts(breakdown)
 
@@ -745,6 +986,8 @@ class GarminImportStorage:
                     partial_completion = ?, operator_detail = ?,
                     activity_rows_detected = ?, activity_rows_inserted = ?, activity_rows_updated = ?, activity_rows_skipped = ?,
                     daily_metric_rows_detected = ?, daily_metric_rows_inserted = ?, daily_metric_rows_updated = ?, daily_metric_rows_skipped = ?,
+                    segment_activities_checked = ?, segment_activities_with_data = ?,
+                    segment_efforts_detected = ?, segment_efforts_inserted = ?, segment_efforts_updated = ?, segment_efforts_skipped = ?,
                     notes = ?
                 WHERE import_job_id = ?
                 """,
@@ -769,6 +1012,12 @@ class GarminImportStorage:
                     breakdown.daily_metric_rows_inserted,
                     breakdown.daily_metric_rows_updated,
                     breakdown.daily_metric_rows_skipped,
+                    breakdown.segment_activities_checked,
+                    breakdown.segment_activities_with_data,
+                    breakdown.segment_efforts_detected,
+                    breakdown.segment_efforts_inserted,
+                    breakdown.segment_efforts_updated,
+                    breakdown.segment_efforts_skipped,
                     self._serialize_job_details(partial_notes, breakdown),
                     import_job_id,
                 ),
@@ -808,6 +1057,12 @@ class GarminImportStorage:
             daily_metric_rows_inserted=int(row.get("daily_metric_rows_inserted") or 0),
             daily_metric_rows_updated=int(row.get("daily_metric_rows_updated") or 0),
             daily_metric_rows_skipped=int(row.get("daily_metric_rows_skipped") or 0),
+            segment_activities_checked=int(row.get("segment_activities_checked") or 0),
+            segment_activities_with_data=int(row.get("segment_activities_with_data") or 0),
+            segment_efforts_detected=int(row.get("segment_efforts_detected") or 0),
+            segment_efforts_inserted=int(row.get("segment_efforts_inserted") or 0),
+            segment_efforts_updated=int(row.get("segment_efforts_updated") or 0),
+            segment_efforts_skipped=int(row.get("segment_efforts_skipped") or 0),
         )
         effective_breakdown = column_breakdown
         if effective_breakdown.to_dict() == ImportJobBreakdown().to_dict() and legacy_breakdown.to_dict() != ImportJobBreakdown().to_dict():
@@ -848,6 +1103,8 @@ class GarminImportStorage:
                        retry_suitability, partial_completion, operator_detail,
                        activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
                        daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                      segment_activities_checked, segment_activities_with_data,
+                      segment_efforts_detected, segment_efforts_inserted, segment_efforts_updated, segment_efforts_skipped,
                        notes
                 FROM meta_import_jobs
                 ORDER BY import_job_id DESC
@@ -886,6 +1143,8 @@ class GarminImportStorage:
                       retry_suitability, partial_completion, operator_detail,
                       activity_rows_detected, activity_rows_inserted, activity_rows_updated, activity_rows_skipped,
                       daily_metric_rows_detected, daily_metric_rows_inserted, daily_metric_rows_updated, daily_metric_rows_skipped,
+                        segment_activities_checked, segment_activities_with_data,
+                        segment_efforts_detected, segment_efforts_inserted, segment_efforts_updated, segment_efforts_skipped,
                       notes
                 FROM meta_import_jobs
                 WHERE import_job_id = ?

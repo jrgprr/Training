@@ -51,6 +51,10 @@ class NormalizedActivity:
     normalized_power: float | None
     training_load: float | None
     avg_pace_seconds_per_km: float | None
+    segment_data_status: str = "not_checked"
+    segment_effort_count: int = 0
+    segment_checked_at: str | None = None
+    segments: list["NormalizedSegmentEffort"] = field(default_factory=list)
     source_file: str | None = None
     raw_payload_path: str | None = None
     notes: str | None = None
@@ -78,6 +82,37 @@ class NormalizedDailyMetric:
 
 
 @dataclass(slots=True)
+class NormalizedSegmentDefinition:
+    external_segment_id: str
+    segment_name: str | None
+    discipline: str | None
+    distance_meters: float | None = None
+    ascent_meters: float | None = None
+    average_grade_percent: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class NormalizedSegmentEffort:
+    definition: NormalizedSegmentDefinition
+    external_segment_effort_id: str
+    started_at: str | None
+    elapsed_time_seconds: int | None
+    avg_power: float | None = None
+    avg_cadence: float | None = None
+    avg_heart_rate: float | None = None
+    max_heart_rate: float | None = None
+    notes: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["definition"] = self.definition.to_dict()
+        return payload
+
+
+@dataclass(slots=True)
 class GarminImportBatch:
     request: GarminImportRequest
     metadata: ImportFetchMetadata
@@ -85,9 +120,21 @@ class GarminImportBatch:
     daily_metrics: list[NormalizedDailyMetric]
 
     def counts(self) -> dict[str, int]:
+        segment_activities_checked = 0
+        segment_activities_with_data = 0
+        segment_efforts_detected = 0
+        for activity in self.activities:
+            if activity.segment_data_status != "not_checked":
+                segment_activities_checked += 1
+            if activity.segment_effort_count > 0:
+                segment_activities_with_data += 1
+            segment_efforts_detected += activity.segment_effort_count
         return {
             "activities_detected": len(self.activities),
             "daily_metrics_detected": len(self.daily_metrics),
+            "segment_activities_checked": segment_activities_checked,
+            "segment_activities_with_data": segment_activities_with_data,
+            "segment_efforts_detected": segment_efforts_detected,
         }
 
 
@@ -101,6 +148,12 @@ class ImportJobBreakdown:
     daily_metric_rows_inserted: int = 0
     daily_metric_rows_updated: int = 0
     daily_metric_rows_skipped: int = 0
+    segment_activities_checked: int = 0
+    segment_activities_with_data: int = 0
+    segment_efforts_detected: int = 0
+    segment_efforts_inserted: int = 0
+    segment_efforts_updated: int = 0
+    segment_efforts_skipped: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)

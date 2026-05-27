@@ -5,6 +5,8 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import Any
 
@@ -15,12 +17,15 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
+from ..db import initialize_database
 from .contracts import (
     GarminImportBatch,
     GarminImportRequest,
     ImportFetchMetadata,
     NormalizedActivity,
     NormalizedDailyMetric,
+    NormalizedSegmentDefinition,
+    NormalizedSegmentEffort,
     iter_dates,
 )
 
@@ -133,6 +138,7 @@ class GarminConnectAdapter:
         "walking",
     }
     HIKING_NAME_HINTS = ("senderismo", "hiking", "trek", "trekking")
+    CYCLING_DISCIPLINES = {"road_biking", "indoor_cycling", "mountain_biking", "cycling"}
 
     def __init__(self, configuration: GarminConnectConfiguration | None = None) -> None:
         self.configuration = configuration or GarminConnectConfiguration.from_environment()
@@ -242,6 +248,15 @@ class GarminConnectAdapter:
         return int(round(numeric_value))
 
     @classmethod
+    def _normalize_segment_distance_meters(cls, value: Any) -> float | None:
+        numeric_value = cls._normalize_numeric(value)
+        if numeric_value is None:
+            return None
+        if numeric_value <= 100:
+            return round(numeric_value * 1000, 3)
+        return numeric_value
+
+    @classmethod
     def _derive_pace_seconds_per_km(cls, discipline: str | None, summary: dict[str, Any], payload: dict[str, Any]) -> float | None:
         avg_pace_seconds_per_km = cls._pick_first(summary, "averagePaceInSecondsPerKilometer")
         if avg_pace_seconds_per_km is not None:
@@ -309,6 +324,477 @@ class GarminConnectAdapter:
             raw_payload_path=None,
             notes=metadata.get("deviceName") if isinstance(metadata, dict) else None,
         )
+
+    @classmethod
+    def _segment_payloads(cls, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        candidate_keys = (
+            "segmentEfforts",
+            "segmentEffortsDTO",
+            "segmentEffortDTOs",
+            "activitySegments",
+            "segments",
+        )
+        for key in candidate_keys:
+            values = payload.get(key)
+            if isinstance(values, list):
+                return [value for value in values if isinstance(value, dict)]
+        for value in payload.values():
+            if isinstance(value, dict):
+                nested = cls._segment_payloads(value)
+                if nested:
+                    return nested
+        return []
+
+    @staticmethod
+    def _normalize_timestamp(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            timestamp = float(value)
+            if timestamp > 10_000_000_000:
+                timestamp /= 1000
+            try:
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+            except (OverflowError, OSError, ValueError):
+                return None
+        return None
+
+    @classmethod
+    def _normalize_segment_efforts(cls, payload: dict[str, Any], activity: NormalizedActivity) -> list[NormalizedSegmentEffort]:
+        efforts: list[NormalizedSegmentEffort] = []
+        for item in cls._segment_payloads(payload):
+            segment_payload = item.get("segment") if isinstance(item.get("segment"), dict) else None
+            if segment_payload is None:
+                segment_payload = item.get("segmentDTO") if isinstance(item.get("segmentDTO"), dict) else None
+            if segment_payload is None:
+                segment_payload = item
+
+            external_segment_id = cls._pick_first(segment_payload, "segmentId", "id", "externalSegmentId")
+            if external_segment_id is None:
+                continue
+
+            started_at = cls._pick_first(item, "startTimeGMT", "startTimeLocal", "beginTimestamp", "startTime")
+            effort_identity = cls._pick_first(item, "segmentEffortId", "effortId", "id", "externalSegmentEffortId")
+            if effort_identity is None and started_at:
+                effort_identity = f"{external_segment_id}:{started_at}"
+            if effort_identity is None:
+                continue
+
+            definition = NormalizedSegmentDefinition(
+                external_segment_id=str(external_segment_id),
+                segment_name=(
+                    str(cls._pick_first(segment_payload, "name", "segmentName", "segmentTitle") or "").strip() or None
+                ),
+                discipline="cycling",
+                distance_meters=cls._normalize_segment_distance_meters(
+                    cls._pick_first(segment_payload, "distance", "distanceInMeters", "segmentDistance")
+                ),
+                ascent_meters=cls._normalize_numeric(
+                    cls._pick_first(segment_payload, "elevationGain", "ascentMeters", "totalAscent")
+                ),
+                average_grade_percent=cls._normalize_numeric(
+                    cls._pick_first(segment_payload, "averageGrade", "avgGrade", "averageGradePercent")
+                ),
+            )
+            efforts.append(
+                NormalizedSegmentEffort(
+                    definition=definition,
+                    external_segment_effort_id=str(effort_identity),
+                    started_at=cls._normalize_timestamp(started_at),
+                    elapsed_time_seconds=cls._normalize_integer(
+                        cls._pick_first(item, "elapsedDuration", "duration", "elapsedTime", "time")
+                    ),
+                    avg_power=cls._normalize_numeric(cls._pick_first(item, "averagePower", "avgPower")),
+                    avg_cadence=cls._normalize_numeric(
+                        cls._pick_first(item, "averageCadence", "averageBikeCadence", "avgBikeCadence", "avgCadence")
+                    ),
+                    avg_heart_rate=cls._normalize_numeric(cls._pick_first(item, "averageHR", "avgHR")),
+                    max_heart_rate=cls._normalize_numeric(cls._pick_first(item, "maxHR", "maximumHR")),
+                    notes=None,
+                )
+            )
+        return efforts
+
+    @staticmethod
+    def _segment_identity_keys(payload: dict[str, Any] | None) -> set[str]:
+        if not isinstance(payload, dict):
+            return set()
+        keys: set[str] = set()
+        for field_name in ("segmentUuid", "segmentPk", "segmentId", "id", "externalSegmentId"):
+            value = payload.get(field_name)
+            if value is not None:
+                keys.add(str(value))
+        return keys
+
+    @classmethod
+    def _favorite_segment_items(cls, payload: list[dict[str, Any]] | dict[str, Any] | None) -> list[dict[str, Any]]:
+        if not isinstance(payload, list):
+            return []
+        return [item for item in payload if isinstance(item, dict) and bool(item.get("favorite"))]
+
+    @classmethod
+    def _filter_detail_efforts_to_favorites(
+        cls,
+        payload: dict[str, Any] | None,
+        favorite_segment_items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {}
+        if not favorite_segment_items:
+            return {}
+
+        allowed_keys: set[str] = set()
+        for item in favorite_segment_items:
+            allowed_keys.update(cls._segment_identity_keys(item))
+
+        filtered_items: list[dict[str, Any]] = []
+        for item in cls._segment_payloads(payload):
+            segment_payload = item.get("segment") if isinstance(item.get("segment"), dict) else None
+            if segment_payload is None:
+                segment_payload = item.get("segmentDTO") if isinstance(item.get("segmentDTO"), dict) else None
+            if segment_payload is None:
+                segment_payload = item
+            if cls._segment_identity_keys(segment_payload) & allowed_keys:
+                filtered_items.append(item)
+
+        if not filtered_items:
+            return {}
+        return {"segmentEfforts": filtered_items}
+
+    @classmethod
+    def _normalize_segment_memberships(
+        cls,
+        payload: list[dict[str, Any]] | dict[str, Any] | None,
+        activity: NormalizedActivity,
+    ) -> list[NormalizedSegmentEffort]:
+        if not isinstance(payload, list):
+            return []
+
+        efforts: list[NormalizedSegmentEffort] = []
+        seen_effort_ids: set[str] = set()
+        for index, item in enumerate(payload):
+            if not isinstance(item, dict):
+                continue
+
+            external_segment_id = cls._pick_first(item, "segmentUuid", "segmentPk", "segmentId", "id")
+            if external_segment_id is None:
+                continue
+
+            effort_identity = f"{activity.external_activity_id}:{external_segment_id}"
+            if effort_identity in seen_effort_ids:
+                effort_identity = f"{effort_identity}:{index}"
+            seen_effort_ids.add(effort_identity)
+
+            efforts.append(
+                NormalizedSegmentEffort(
+                    definition=NormalizedSegmentDefinition(
+                        external_segment_id=str(external_segment_id),
+                        segment_name=(str(cls._pick_first(item, "segmentName", "name") or "").strip() or None),
+                        discipline="cycling",
+                        distance_meters=cls._normalize_segment_distance_meters(
+                            cls._pick_first(item, "segmentDistance", "distance", "distanceInMeters")
+                        ),
+                        ascent_meters=cls._normalize_numeric(
+                            cls._pick_first(item, "ascent", "elevationGain", "ascentMeters", "totalAscent")
+                        ),
+                        average_grade_percent=cls._normalize_numeric(
+                            cls._pick_first(item, "grade", "averageGrade", "avgGrade", "averageGradePercent")
+                        ),
+                    ),
+                    external_segment_effort_id=effort_identity,
+                    started_at=None,
+                    elapsed_time_seconds=None,
+                    avg_power=None,
+                    avg_cadence=None,
+                    avg_heart_rate=None,
+                    max_heart_rate=None,
+                )
+            )
+        return efforts
+
+    @staticmethod
+    def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        earth_radius_m = 6_371_000
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+        return 2 * earth_radius_m * atan2(sqrt(a), sqrt(1 - a))
+
+    @classmethod
+    def _activity_detail_points(cls, payload: dict[str, Any] | None) -> list[dict[str, float]]:
+        if not isinstance(payload, dict):
+            return []
+        metric_descriptors = payload.get("metricDescriptors")
+        metric_rows = payload.get("activityDetailMetrics")
+        if not isinstance(metric_descriptors, list) or not isinstance(metric_rows, list):
+            return []
+
+        descriptor_indexes: dict[str, int] = {}
+        for item in metric_descriptors:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("key")
+            index = item.get("metricsIndex")
+            if isinstance(key, str) and isinstance(index, int):
+                descriptor_indexes[key] = index
+
+        required_keys = {
+            "directLatitude": "latitude",
+            "directLongitude": "longitude",
+            "directTimestamp": "timestamp",
+            "sumDistance": "distance",
+            "sumElapsedDuration": "elapsed_duration",
+        }
+        if not all(key in descriptor_indexes for key in required_keys):
+            return []
+
+        optional_keys = {
+            "directPower": "power",
+            "directBikeCadence": "bike_cadence",
+            "directHeartRate": "heart_rate",
+        }
+
+        points: list[dict[str, float]] = []
+        for row in metric_rows:
+            if not isinstance(row, dict):
+                continue
+            metrics = row.get("metrics")
+            if not isinstance(metrics, list):
+                continue
+
+            point: dict[str, float] = {}
+            valid_point = True
+            for source_key, target_key in required_keys.items():
+                index = descriptor_indexes[source_key]
+                if index >= len(metrics):
+                    valid_point = False
+                    break
+                value = cls._normalize_numeric(metrics[index])
+                if value is None:
+                    valid_point = False
+                    break
+                point[target_key] = value
+            if not valid_point:
+                continue
+
+            for source_key, target_key in optional_keys.items():
+                index = descriptor_indexes.get(source_key)
+                if index is None or index >= len(metrics):
+                    continue
+                value = cls._normalize_numeric(metrics[index])
+                if value is not None:
+                    point[target_key] = value
+            points.append(point)
+        return points
+
+    @classmethod
+    def _reconstruct_segment_effort_candidates(
+        cls,
+        *,
+        activity: NormalizedActivity,
+        membership_effort: NormalizedSegmentEffort,
+        membership_payload: dict[str, Any],
+        segment_detail_payload: dict[str, Any],
+        activity_points: list[dict[str, float]],
+    ) -> list[NormalizedSegmentEffort]:
+        geo_points = segment_detail_payload.get("geoPoints")
+        if not isinstance(geo_points, list) or len(geo_points) < 2 or len(activity_points) < 2:
+            return []
+
+        start_geo = geo_points[0]
+        end_geo = geo_points[-1]
+        if not isinstance(start_geo, dict) or not isinstance(end_geo, dict):
+            return []
+        start_lat = cls._normalize_numeric(start_geo.get("latitude"))
+        start_lon = cls._normalize_numeric(start_geo.get("longitude"))
+        end_lat = cls._normalize_numeric(end_geo.get("latitude"))
+        end_lon = cls._normalize_numeric(end_geo.get("longitude"))
+        segment_distance_m = cls._normalize_segment_distance_meters(
+            cls._pick_first(segment_detail_payload, "distance", "segmentDistance")
+            or membership_effort.definition.distance_meters
+        )
+        target_start_ts = cls._normalize_numeric(membership_payload.get("timeEnteredSegment"))
+        if None in (start_lat, start_lon, end_lat, end_lon, segment_distance_m):
+            return []
+
+        activity_start_ts = activity_points[0]["timestamp"]
+        activity_end_ts = activity_points[-1]["timestamp"]
+        if target_start_ts is not None and not (activity_start_ts - 300_000 <= target_start_ts <= activity_end_ts + 300_000):
+            target_start_ts = None
+
+        start_candidates: list[tuple[float, int, float]] = []
+        for index, point in enumerate(activity_points):
+            start_geo_error = cls._haversine_meters(start_lat, start_lon, point["latitude"], point["longitude"])
+            if target_start_ts is not None:
+                timestamp_delta_ms = abs(point["timestamp"] - target_start_ts)
+                if timestamp_delta_ms <= 90_000 and start_geo_error <= 80:
+                    start_candidates.append((timestamp_delta_ms + start_geo_error * 1000, index, start_geo_error))
+            elif start_geo_error <= 120:
+                start_candidates.append((start_geo_error * 1000, index, start_geo_error))
+        if not start_candidates:
+            return []
+
+        candidate_windows: list[tuple[float, int, int, float, float, float]] = []
+        min_distance_m = segment_distance_m * 0.75
+        max_distance_m = segment_distance_m * 1.35
+
+        for _, start_index, start_geo_error in sorted(start_candidates)[:12]:
+            start_point = activity_points[start_index]
+            best_for_start: tuple[float, int, int, float, float, float] | None = None
+            for index in range(start_index + 1, len(activity_points)):
+                point = activity_points[index]
+                distance_delta = point["distance"] - start_point["distance"]
+                if distance_delta < min_distance_m:
+                    continue
+                if distance_delta > max_distance_m:
+                    break
+                end_geo_error = cls._haversine_meters(end_lat, end_lon, point["latitude"], point["longitude"])
+                distance_error = abs(distance_delta - segment_distance_m)
+                score = start_geo_error + end_geo_error + distance_error / 4
+                candidate = (score, start_index, index, start_geo_error, end_geo_error, distance_delta)
+                if best_for_start is None or candidate < best_for_start:
+                    best_for_start = candidate
+            if best_for_start is not None:
+                candidate_windows.append(best_for_start)
+        if not candidate_windows:
+            return []
+
+        deduped_windows: list[tuple[float, int, int, float, float, float]] = []
+        for candidate in sorted(candidate_windows, key=lambda item: (activity_points[item[1]]["timestamp"], item[0])):
+            if not deduped_windows:
+                deduped_windows.append(candidate)
+                continue
+            previous = deduped_windows[-1]
+            previous_start_ts = activity_points[previous[1]]["timestamp"]
+            current_start_ts = activity_points[candidate[1]]["timestamp"]
+            if abs(current_start_ts - previous_start_ts) < 120_000:
+                if candidate[0] < previous[0]:
+                    deduped_windows[-1] = candidate
+                continue
+            deduped_windows.append(candidate)
+
+        selected_windows: list[tuple[float, int, int, float, float, float]] = []
+        last_end_index = -1
+        for candidate in sorted(deduped_windows, key=lambda item: (item[1], item[2], item[0])):
+            if candidate[1] <= last_end_index:
+                continue
+            selected_windows.append(candidate)
+            last_end_index = candidate[2]
+
+        reconstructed_efforts: list[NormalizedSegmentEffort] = []
+        for occurrence_index, (_, start_index, end_index, start_geo_error, end_geo_error, _) in enumerate(selected_windows, start=1):
+            start_point = activity_points[start_index]
+            end_point = activity_points[end_index]
+            duration_seconds = (end_point["timestamp"] - start_point["timestamp"]) / 1000
+            if duration_seconds <= 0 or start_geo_error > 120 or end_geo_error > 120:
+                continue
+
+            window = activity_points[start_index : end_index + 1]
+
+            def average(metric_name: str) -> float | None:
+                values = [point[metric_name] for point in window if metric_name in point]
+                if not values:
+                    return None
+                return round(sum(values) / len(values), 2)
+
+            started_at = datetime.fromtimestamp(start_point["timestamp"] / 1000, tz=timezone.utc).isoformat()
+            reconstructed_efforts.append(
+                NormalizedSegmentEffort(
+                    definition=NormalizedSegmentDefinition(
+                        external_segment_id=membership_effort.definition.external_segment_id,
+                        segment_name=membership_effort.definition.segment_name,
+                        discipline=membership_effort.definition.discipline,
+                        distance_meters=segment_distance_m,
+                        ascent_meters=membership_effort.definition.ascent_meters,
+                        average_grade_percent=membership_effort.definition.average_grade_percent,
+                    ),
+                    external_segment_effort_id=(
+                        f"{activity.external_activity_id}:{membership_effort.definition.external_segment_id}:{int(start_point['timestamp'])}"
+                    ),
+                    started_at=started_at,
+                    elapsed_time_seconds=cls._normalize_integer(duration_seconds),
+                    avg_power=average("power"),
+                    avg_cadence=average("bike_cadence"),
+                    avg_heart_rate=average("heart_rate"),
+                    max_heart_rate=max((point["heart_rate"] for point in window if "heart_rate" in point), default=None),
+                    notes="reconstructed_from_activity_detail_stream" if occurrence_index >= 1 else None,
+                )
+            )
+        return reconstructed_efforts
+
+    @classmethod
+    def _reconstruct_segment_efforts(
+        cls,
+        *,
+        client: Garmin,
+        activity: NormalizedActivity,
+        membership_payload: list[dict[str, Any]] | dict[str, Any] | None,
+    ) -> list[NormalizedSegmentEffort]:
+        membership_efforts = cls._normalize_segment_memberships(membership_payload, activity)
+        if not membership_efforts or not isinstance(membership_payload, list):
+            return membership_efforts
+
+        try:
+            activity_detail_payload = client.connectapi(f"/activity-service/activity/{activity.external_activity_id}/details")
+        except Exception:
+            return membership_efforts
+
+        activity_points = cls._activity_detail_points(activity_detail_payload)
+        if not activity_points:
+            return membership_efforts
+
+        reconstructed_efforts: list[NormalizedSegmentEffort] = []
+        for item, membership_effort in zip(membership_payload, membership_efforts):
+            if not isinstance(item, dict):
+                continue
+            segment_id = cls._pick_first(item, "segmentUuid", "segmentPk", "segmentId", "id")
+            if segment_id is None:
+                reconstructed_efforts.append(membership_effort)
+                continue
+            try:
+                segment_detail_payload = client.connectapi(f"/segment-service/segment/{segment_id}")
+            except Exception:
+                reconstructed_efforts.append(membership_effort)
+                continue
+            reconstructed_candidates = cls._reconstruct_segment_effort_candidates(
+                activity=activity,
+                membership_effort=membership_effort,
+                membership_payload=item,
+                segment_detail_payload=segment_detail_payload,
+                activity_points=activity_points,
+            )
+            reconstructed_efforts.extend(reconstructed_candidates or [membership_effort])
+        return reconstructed_efforts or membership_efforts
+
+    @classmethod
+    def _apply_segment_details(
+        cls,
+        client: Garmin | None,
+        activity: NormalizedActivity,
+        detail_payload: dict[str, Any] | None,
+        segment_list_payload: list[dict[str, Any]] | dict[str, Any] | None,
+    ) -> None:
+        if activity.discipline not in cls.CYCLING_DISCIPLINES:
+            activity.segment_data_status = "not_applicable"
+            activity.segment_effort_count = 0
+            activity.segments = []
+            activity.segment_checked_at = None
+            return
+
+        favorite_segment_items = cls._favorite_segment_items(segment_list_payload)
+        filtered_detail_payload = cls._filter_detail_efforts_to_favorites(detail_payload, favorite_segment_items)
+        detail_efforts = cls._normalize_segment_efforts(filtered_detail_payload, activity)
+        reconstructed_efforts = (
+            cls._reconstruct_segment_efforts(client=client, activity=activity, membership_payload=favorite_segment_items)
+            if client is not None and not detail_efforts
+            else cls._normalize_segment_memberships(favorite_segment_items, activity)
+        )
+        activity.segments = detail_efforts or reconstructed_efforts
+        activity.segment_effort_count = len(activity.segments)
+        activity.segment_data_status = "available" if activity.segments else "not_available"
+        activity.segment_checked_at = None
 
     @classmethod
     def _extract_sleep_hours(cls, sleep_payload: dict[str, Any]) -> float | None:
@@ -435,6 +921,20 @@ class GarminConnectAdapter:
         artifact_paths: list[str] = []
         artifact_failures = 0
         for activity in activities:
+            if activity.external_activity_id and activity.discipline in self.CYCLING_DISCIPLINES:
+                try:
+                    segment_list_payload = client.connectapi(f"/segment-service/segment/list/{activity.external_activity_id}")
+                except Exception as error:
+                    raise GarminConnectImportError(
+                        f"No se pudo obtener la lista de segmentos para la actividad {activity.external_activity_id}."
+                    ) from error
+                try:
+                    detail_payload = client.get_activity_details(activity.external_activity_id) or {}
+                except Exception as error:
+                    detail_payload = {}
+                self._apply_segment_details(client, activity, detail_payload, segment_list_payload)
+            else:
+                self._apply_segment_details(None, activity, None, None)
             try:
                 artifact_path = self._download_activity_artifact(client, request.season_id, activity)
             except Exception:
@@ -543,6 +1043,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     parser = build_cli_parser()
     args = parser.parse_args(argv)
     request = _request_from_cli_args(args)
+    initialize_database()
 
     from .pipeline import GarminImportPipeline
     from .storage import GarminImportStorage

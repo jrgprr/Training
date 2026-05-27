@@ -332,18 +332,95 @@ type ImportJob = {
     daily_metric_rows_inserted: number;
     daily_metric_rows_updated: number;
     daily_metric_rows_skipped: number;
+    segment_activities_checked: number;
+    segment_activities_with_data: number;
+    segment_efforts_detected: number;
+    segment_efforts_inserted: number;
+    segment_efforts_updated: number;
+    segment_efforts_skipped: number;
   };
   has_breakdown_details: boolean;
 };
+
+type SegmentListItem = {
+  segment_id: number;
+  source_system: string;
+  external_segment_id: string;
+  segment_name: string | null;
+  discipline: string | null;
+  effort_count: number;
+  comparable_effort_count: number;
+  first_activity_date: string | null;
+  last_activity_date: string | null;
+  best_elapsed_time_seconds: number | null;
+  latest_elapsed_time_seconds: number | null;
+  missing_metric_counts: {
+    avg_power: number;
+    avg_cadence: number;
+    avg_heart_rate: number;
+  };
+};
+
+type SegmentHistoryEffort = {
+  segment_effort_id: number;
+  activity_id: number;
+  external_activity_id: string | null;
+  activity_date: string;
+  started_at: string | null;
+  elapsed_time_seconds: number | null;
+  avg_power: number | null;
+  avg_cadence: number | null;
+  avg_heart_rate: number | null;
+  max_heart_rate: number | null;
+  missing_metrics: string[];
+  is_best_effort: boolean;
+  is_latest_effort: boolean;
+  delta_vs_best_seconds: number | null;
+  delta_vs_previous_seconds: number | null;
+};
+
+type SegmentHistoryResponse = {
+  segment: {
+    segment_id: number;
+    external_segment_id: string;
+    segment_name: string | null;
+    discipline: string | null;
+    distance_meters: number | null;
+    ascent_meters: number | null;
+    average_grade_percent: number | null;
+  };
+  summary: {
+    effort_count: number;
+    comparable_effort_count: number;
+    membership_only_count: number;
+    best_effort_id: number | null;
+    latest_effort_id: number | null;
+    trend_status: string;
+    recent_window_size: number;
+    available_metric_names: string[];
+    missing_metric_names: string[];
+  };
+  efforts: SegmentHistoryEffort[];
+};
+
+type SegmentChartMetricKey = "elapsed_time_seconds" | "avg_power" | "avg_cadence" | "avg_heart_rate" | "max_heart_rate";
 
 type GarminImportRunResponse = {
   status: string;
   counts: {
     activities_detected: number;
     daily_metrics_detected: number;
+    segment_activities_checked: number;
+    segment_activities_with_data: number;
+    segment_efforts_detected: number;
+    segment_efforts_loaded: number;
   };
   metadata: {
     notes: string[];
+    segment_summary?: {
+      activities_with_segment_data: number;
+      activities_without_segment_data: number;
+    };
   };
   import_job: {
     import_job_id: number;
@@ -465,6 +542,179 @@ function toGarminAuthModeLabel(status: GarminConnectStatus): string {
 
 function isNotFoundError(error: unknown) {
   return error instanceof Error && error.message.startsWith("Error 404 ");
+}
+
+function formatSecondsLabel(value: number | null) {
+  if (value == null) {
+    return "Sin dato";
+  }
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.abs(value % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatTrendLabel(value: string) {
+  if (value === "improving") {
+    return "Mejorando";
+  }
+  if (value === "declining") {
+    return "Cayendo";
+  }
+  if (value === "stable") {
+    return "Estable";
+  }
+  return "Datos insuficientes";
+}
+
+function formatDeltaLabel(value: number | null) {
+  if (value == null) {
+    return "Sin referencia";
+  }
+  if (value === 0) {
+    return "Igual";
+  }
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value}s`;
+}
+
+function formatSegmentCoverageLabel(effortCount: number, comparableEffortCount: number) {
+  if (effortCount === 0) {
+    return "Sin registros";
+  }
+  if (comparableEffortCount === 0) {
+    return `${effortCount} presencias`;
+  }
+  if (comparableEffortCount === effortCount) {
+    return `${effortCount} esfuerzos`;
+  }
+  return `${comparableEffortCount}/${effortCount} con tiempo`;
+}
+
+function formatMetricValueLabel(metric: SegmentChartMetricKey, value: number) {
+  if (metric === "elapsed_time_seconds") {
+    return formatSecondsLabel(Math.round(value));
+  }
+  if (metric === "avg_power") {
+    return `${Math.round(value)} W`;
+  }
+  if (metric === "avg_cadence") {
+    return `${Math.round(value)} rpm`;
+  }
+  return `${Math.round(value)} ppm`;
+}
+
+function formatMetricAxisLabel(metric: SegmentChartMetricKey) {
+  if (metric === "elapsed_time_seconds") {
+    return "Tiempo";
+  }
+  if (metric === "avg_power") {
+    return "Potencia";
+  }
+  if (metric === "avg_cadence") {
+    return "Cadencia";
+  }
+  if (metric === "avg_heart_rate") {
+    return "FC media";
+  }
+  return "FC max";
+}
+
+function getSegmentEffortMoment(effort: SegmentHistoryEffort) {
+  return Date.parse(effort.started_at ?? `${effort.activity_date}T00:00:00`);
+}
+
+function formatSegmentChartDateLabel(value: number) {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  return new Date(value).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
+  const metricCandidates = [
+    "elapsed_time_seconds",
+    "avg_power",
+    "avg_cadence",
+    "avg_heart_rate",
+    "max_heart_rate",
+  ] as const satisfies readonly SegmentChartMetricKey[];
+  const chartMetrics = metricCandidates.filter((metric) => history.efforts.some((effort) => effort[metric] != null));
+
+  if (chartMetrics.length === 0) {
+    return null;
+  }
+
+  const width = 760;
+  const leftGutter = 92;
+  const rightGutter = 18;
+  const topGutter = 18;
+  const rowHeight = 78;
+  const rowGap = 18;
+  const chartHeight = topGutter + chartMetrics.length * rowHeight + (chartMetrics.length - 1) * rowGap + 46;
+  const plotWidth = width - leftGutter - rightGutter;
+  const chartStartY = topGutter;
+  const timestamps = history.efforts.map(getSegmentEffortMoment);
+  const minTimestamp = Math.min(...timestamps);
+  const maxTimestamp = Math.max(...timestamps);
+  const timestampSpan = Math.max(maxTimestamp - minTimestamp, 1);
+
+  return (
+    <section className="segment-chart-card panel-subcard">
+      <div className="segment-chart-head">
+        <div>
+          <strong>Evolucion del segmento</strong>
+          <p className="segment-missing-copy">Fecha en eje X y una escala propia por metrica para no mezclar unidades.</p>
+        </div>
+      </div>
+      <svg className="segment-evolution-chart" viewBox={`0 0 ${width} ${chartHeight}`} role="img" aria-label="Grafico de evolucion del segmento">
+        {chartMetrics.map((metric, metricIndex) => {
+          const rowTop = chartStartY + metricIndex * (rowHeight + rowGap);
+          const rowBottom = rowTop + rowHeight;
+          const rowMid = rowTop + rowHeight / 2;
+          const values = history.efforts.flatMap((effort) => {
+            const value = effort[metric];
+            return value == null ? [] : [value];
+          });
+          const minValue = Math.min(...values);
+          const maxValue = Math.max(...values);
+          const valueSpan = Math.max(maxValue - minValue, 1);
+          const points = history.efforts.flatMap((effort) => {
+            const value = effort[metric];
+            if (value == null) {
+              return [];
+            }
+            const timestamp = getSegmentEffortMoment(effort);
+            const x = leftGutter + ((timestamp - minTimestamp) / timestampSpan) * plotWidth;
+            const y = rowBottom - ((value - minValue) / valueSpan) * (rowHeight - 16) - 8;
+            return [{ effort, value, x, y }];
+          });
+          const pathData = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+
+          return (
+            <g key={metric}>
+              <line x1={leftGutter} y1={rowBottom} x2={width - rightGutter} y2={rowBottom} className="segment-chart-axis" />
+              <line x1={leftGutter} y1={rowTop} x2={leftGutter} y2={rowBottom} className="segment-chart-axis" />
+              <text x={12} y={rowTop + 16} className="segment-chart-label">{formatMetricAxisLabel(metric)}</text>
+              <text x={12} y={rowMid + 18} className="segment-chart-range">{formatMetricValueLabel(metric, maxValue)}</text>
+              <text x={12} y={rowBottom - 4} className="segment-chart-range">{formatMetricValueLabel(metric, minValue)}</text>
+              {points.length > 1 ? <path d={pathData} className="segment-chart-line" /> : null}
+              {points.map((point) => (
+                <circle key={point.effort.segment_effort_id} cx={point.x} cy={point.y} r={4.5} className="segment-chart-dot">
+                  <title>{`${point.effort.activity_date}${point.effort.started_at ? ` ${toDateTimeLabel(point.effort.started_at)}` : ""} · ${formatMetricAxisLabel(metric)}: ${formatMetricValueLabel(metric, point.value)}`}</title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+
+        <text x={leftGutter} y={chartHeight - 12} className="segment-chart-date">{formatSegmentChartDateLabel(minTimestamp)}</text>
+        <text x={width - rightGutter} y={chartHeight - 12} textAnchor="end" className="segment-chart-date">{formatSegmentChartDateLabel(maxTimestamp)}</text>
+      </svg>
+    </section>
+  );
 }
 
 function toDurationLabel(min: number | null, max: number | null) {
@@ -787,8 +1037,13 @@ export default function App() {
   const [garminStatus, setGarminStatus] = useState<GarminConnectStatus | null>(null);
   const [importForm, setImportForm] = useState<GarminImportFormState>(emptyGarminImportForm);
   const [importPreview, setImportPreview] = useState<GarminImportPreview | null>(null);
+  const [segments, setSegments] = useState<SegmentListItem[]>([]);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+  const [selectedSegmentHistory, setSelectedSegmentHistory] = useState<SegmentHistoryResponse | null>(null);
   const [importing, setImporting] = useState(false);
   const [previewingImport, setPreviewingImport] = useState(false);
+  const [loadingSegments, setLoadingSegments] = useState(false);
+  const [loadingSegmentHistory, setLoadingSegmentHistory] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingSessionPrescription, setLoadingSessionPrescription] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
@@ -852,6 +1107,52 @@ export default function App() {
     }
   }
 
+  async function loadSegmentHistory(segmentId: number) {
+    try {
+      setLoadingSegmentHistory(true);
+      const data = await fetchJson<SegmentHistoryResponse>(`/api/segments/${segmentId}/history?limit=20`);
+      setSelectedSegmentId(segmentId);
+      setSelectedSegmentHistory(data);
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setSelectedSegmentHistory(null);
+        return;
+      }
+      throw requestError;
+    } finally {
+      setLoadingSegmentHistory(false);
+    }
+  }
+
+  async function loadSegments(seasonId: number, preferredSegmentId?: number | null) {
+    try {
+      setLoadingSegments(true);
+      const data = await fetchJson<{ items: SegmentListItem[] }>(`/api/segments?season_id=${seasonId}&limit=24`);
+      setSegments(data.items);
+      const nextSegmentId =
+        preferredSegmentId ??
+        (selectedSegmentId != null && data.items.some((segment) => segment.segment_id === selectedSegmentId)
+          ? selectedSegmentId
+          : data.items[0]?.segment_id ?? null);
+
+      if (nextSegmentId != null) {
+        await loadSegmentHistory(nextSegmentId);
+      } else {
+        setSelectedSegmentId(null);
+        setSelectedSegmentHistory(null);
+      }
+    } catch (requestError) {
+      setSegments([]);
+      setSelectedSegmentId(null);
+      setSelectedSegmentHistory(null);
+      if (!isNotFoundError(requestError)) {
+        throw requestError;
+      }
+    } finally {
+      setLoadingSegments(false);
+    }
+  }
+
   async function handleSeasonSelect(season: Season) {
     try {
       setLoading(true);
@@ -869,6 +1170,9 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedSessionPrescription(null);
+      setSegments([]);
+      setSelectedSegmentId(null);
+      setSelectedSegmentHistory(null);
       setSeasonActivities([]);
       setWeeks([]);
       setSessions([]);
@@ -876,6 +1180,7 @@ export default function App() {
       const [data] = await Promise.all([
         fetchJson<Block[]>(`/api/seasons/${season.season_id}/blocks`),
         loadSeasonActivities(season.season_id),
+        loadSegments(season.season_id),
       ]);
       setBlocks(data);
       const preferredBlock = pickPreferredBlock(data, getTodayIsoDate());
@@ -1020,10 +1325,11 @@ export default function App() {
       }
       const result = (await response.json()) as GarminImportRunResponse;
       setSubmissionMessage(
-        `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.`,
+        `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas y ${result.counts.segment_efforts_loaded} esfuerzos de segmento normalizados. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.`,
       );
       await loadImportJobs();
       await loadSeasonActivities(selectedSeason.season_id);
+      await loadSegments(selectedSeason.season_id, selectedSegmentId);
       if (selectedWeek) {
         await handleWeekSelect(selectedWeek);
       }
@@ -1369,6 +1675,144 @@ export default function App() {
             ) : null}
           </div>
         </section>
+      </section>
+
+      <section className="panel segment-panel">
+        <div className="section-heading">
+          <div>
+            <h2>Segmentos Garmin</h2>
+            <p className="section-subtitle">Lectura minima de historial y evolucion por segmento sobre SQLite canonica.</p>
+          </div>
+        </div>
+
+        <div className="segment-layout">
+          <div className="segment-list">
+            {loadingSegments ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Cargando segmentos</strong>
+                <p>Recuperando segmentos repetidos de la temporada activa.</p>
+              </div>
+            ) : segments.length === 0 ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Sin segmentos</strong>
+                <p>Aun no hay esfuerzos de segmento Garmin guardados para esta temporada.</p>
+              </div>
+            ) : (
+              segments.map((segment) => (
+                <button
+                  key={segment.segment_id}
+                  type="button"
+                  className={`segment-list-item${selectedSegmentId === segment.segment_id ? " selected" : ""}`}
+                  onClick={() => void loadSegmentHistory(segment.segment_id)}
+                >
+                  <div className="segment-list-head">
+                    <strong>{segment.segment_name ?? `Segmento ${segment.segment_id}`}</strong>
+                    <span className={segment.comparable_effort_count > 0 ? "status-pill status-pill-ready" : "status-pill"}>
+                      {formatSegmentCoverageLabel(segment.effort_count, segment.comparable_effort_count)}
+                    </span>
+                  </div>
+                  <div className="segment-list-meta">
+                    <span>Mejor: {formatSecondsLabel(segment.best_elapsed_time_seconds)}</span>
+                    <span>Ultimo: {formatSecondsLabel(segment.latest_elapsed_time_seconds)}</span>
+                    <span>Primero: {segment.first_activity_date ?? "-"}</span>
+                    <span>Ultimo dia: {segment.last_activity_date ?? "-"}</span>
+                  </div>
+                  <p className="segment-missing-copy">
+                    {segment.comparable_effort_count === 0
+                      ? "Garmin confirmo la presencia del segmento en estas actividades, pero no expuso tiempos por intento."
+                      : `Huecos: potencia ${segment.missing_metric_counts.avg_power}, cadencia ${segment.missing_metric_counts.avg_cadence}, FC ${segment.missing_metric_counts.avg_heart_rate}`}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="segment-detail-card panel-subcard">
+            {loadingSegmentHistory ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Cargando detalle</strong>
+                <p>Recuperando historial y resumen del segmento seleccionado.</p>
+              </div>
+            ) : selectedSegmentHistory ? (
+              <>
+                <div className="segment-detail-head">
+                  <div>
+                    <h3>{selectedSegmentHistory.segment.segment_name ?? `Segmento ${selectedSegmentHistory.segment.segment_id}`}</h3>
+                    <p className="section-subtitle">
+                      {selectedSegmentHistory.segment.distance_meters != null ? `${selectedSegmentHistory.segment.distance_meters.toFixed(0)} m` : "Distancia sin dato"}
+                      {selectedSegmentHistory.segment.average_grade_percent != null ? ` · ${selectedSegmentHistory.segment.average_grade_percent.toFixed(1)}% media` : ""}
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      selectedSegmentHistory.summary.comparable_effort_count > 0 &&
+                      selectedSegmentHistory.summary.trend_status === "improving"
+                        ? "status-pill status-pill-ready"
+                        : "status-pill status-pill-missing"
+                    }
+                  >
+                    {selectedSegmentHistory.summary.comparable_effort_count === 0
+                      ? "Solo presencia"
+                      : formatTrendLabel(selectedSegmentHistory.summary.trend_status)}
+                  </span>
+                </div>
+
+                <div className="summary-strip segment-summary-strip">
+                  <article>
+                    <strong>{selectedSegmentHistory.summary.effort_count}</strong>
+                    <span>{selectedSegmentHistory.summary.comparable_effort_count === 0 ? "Presencias" : "Esfuerzos"}</span>
+                  </article>
+                  <article>
+                    <strong>{selectedSegmentHistory.summary.best_effort_id ? formatSecondsLabel(selectedSegmentHistory.efforts.find((effort) => effort.segment_effort_id === selectedSegmentHistory.summary.best_effort_id)?.elapsed_time_seconds ?? null) : "Sin dato"}</strong>
+                    <span>Mejor registro</span>
+                  </article>
+                  <article>
+                    <strong>{selectedSegmentHistory.summary.latest_effort_id ? formatSecondsLabel(selectedSegmentHistory.efforts.find((effort) => effort.segment_effort_id === selectedSegmentHistory.summary.latest_effort_id)?.elapsed_time_seconds ?? null) : "Sin dato"}</strong>
+                    <span>Ultimo intento</span>
+                  </article>
+                </div>
+
+                <p className="segment-availability-copy">
+                  {selectedSegmentHistory.summary.comparable_effort_count === 0
+                    ? `Garmin solo expuso la pertenencia del segmento en ${selectedSegmentHistory.summary.membership_only_count} actividades. Todavia no hay tiempos comparables.`
+                    : `Metricas comparables: ${selectedSegmentHistory.summary.available_metric_names.join(", ")}${selectedSegmentHistory.summary.missing_metric_names.length > 0 ? ` · faltan en algun intento: ${selectedSegmentHistory.summary.missing_metric_names.join(", ")}` : ""}`}
+                </p>
+
+                {selectedSegmentHistory.summary.comparable_effort_count > 0 ? renderSegmentEvolutionChart(selectedSegmentHistory) : null}
+
+                <div className="segment-effort-list">
+                  {selectedSegmentHistory.efforts.map((effort) => (
+                    <article key={effort.segment_effort_id} className="segment-effort-item">
+                      <div className="segment-list-head">
+                        <strong>{effort.activity_date}</strong>
+                        <div className="segment-effort-badges">
+                          {effort.is_best_effort ? <span className="status-pill status-pill-ready">Mejor</span> : null}
+                          {effort.is_latest_effort ? <span className="status-pill">Ultimo</span> : null}
+                        </div>
+                      </div>
+                      <div className="segment-list-meta">
+                        <span>Tiempo: {formatSecondsLabel(effort.elapsed_time_seconds)}</span>
+                        <span>Vs mejor: {formatDeltaLabel(effort.delta_vs_best_seconds)}</span>
+                        <span>Vs previo: {formatDeltaLabel(effort.delta_vs_previous_seconds)}</span>
+                        <span>Potencia: {effort.avg_power != null ? `${effort.avg_power.toFixed(0)} W` : "Sin dato"}</span>
+                        <span>Cadencia: {effort.avg_cadence != null ? `${effort.avg_cadence.toFixed(0)} rpm` : "Sin dato"}</span>
+                        <span>FC: {effort.avg_heart_rate != null ? `${effort.avg_heart_rate.toFixed(0)} ppm` : "Sin dato"}</span>
+                      </div>
+                      {effort.missing_metrics.length > 0 ? (
+                        <p className="segment-missing-copy">Faltan: {effort.missing_metrics.join(", ")}</p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Selecciona un segmento</strong>
+                <p>Cuando existan esfuerzos repetidos, aqui veras su historial cronologico y la tendencia reciente.</p>
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="panel activity-feed-panel">

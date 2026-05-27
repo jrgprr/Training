@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS meta_import_jobs (
     daily_metric_rows_inserted INTEGER NOT NULL DEFAULT 0,
     daily_metric_rows_updated INTEGER NOT NULL DEFAULT 0,
     daily_metric_rows_skipped INTEGER NOT NULL DEFAULT 0,
+    segment_activities_checked INTEGER NOT NULL DEFAULT 0,
+    segment_activities_with_data INTEGER NOT NULL DEFAULT 0,
+    segment_efforts_detected INTEGER NOT NULL DEFAULT 0,
+    segment_efforts_inserted INTEGER NOT NULL DEFAULT 0,
+    segment_efforts_updated INTEGER NOT NULL DEFAULT 0,
+    segment_efforts_skipped INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
@@ -112,6 +118,49 @@ CREATE TABLE IF NOT EXISTS staging_garmin_daily_metrics (
 CREATE INDEX IF NOT EXISTS idx_import_jobs_season_date ON meta_import_jobs (season_id, imported_at DESC);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_activities_job ON staging_garmin_activities (import_job_id);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_metrics_job ON staging_garmin_daily_metrics (import_job_id);
+
+CREATE TABLE IF NOT EXISTS exec_segments (
+    segment_id INTEGER PRIMARY KEY,
+    source_system TEXT NOT NULL,
+    external_segment_id TEXT NOT NULL,
+    segment_name TEXT,
+    discipline TEXT,
+    distance_meters REAL,
+    ascent_meters REAL,
+    average_grade_percent REAL,
+    first_seen_activity_id INTEGER,
+    last_seen_activity_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_system, external_segment_id),
+    FOREIGN KEY (first_seen_activity_id) REFERENCES exec_activities (activity_id),
+    FOREIGN KEY (last_seen_activity_id) REFERENCES exec_activities (activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_segment_efforts (
+    segment_effort_id INTEGER PRIMARY KEY,
+    source_system TEXT NOT NULL,
+    external_segment_effort_id TEXT NOT NULL,
+    segment_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    activity_date TEXT NOT NULL,
+    started_at TEXT,
+    elapsed_time_seconds INTEGER,
+    avg_power REAL,
+    avg_cadence REAL,
+    avg_heart_rate REAL,
+    max_heart_rate REAL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_system, external_segment_effort_id),
+    FOREIGN KEY (segment_id) REFERENCES exec_segments (segment_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_segments_name ON exec_segments (segment_name);
+CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_segment_date ON exec_segment_efforts (segment_id, activity_date DESC);
+CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_activity ON exec_segment_efforts (activity_id);
 """
 
 
@@ -274,6 +323,84 @@ def _ensure_import_job_columns(connection: sqlite3.Connection) -> None:
         "daily_metric_rows_inserted": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_inserted INTEGER NOT NULL DEFAULT 0",
         "daily_metric_rows_updated": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_updated INTEGER NOT NULL DEFAULT 0",
         "daily_metric_rows_skipped": "ALTER TABLE meta_import_jobs ADD COLUMN daily_metric_rows_skipped INTEGER NOT NULL DEFAULT 0",
+        "segment_activities_checked": "ALTER TABLE meta_import_jobs ADD COLUMN segment_activities_checked INTEGER NOT NULL DEFAULT 0",
+        "segment_activities_with_data": "ALTER TABLE meta_import_jobs ADD COLUMN segment_activities_with_data INTEGER NOT NULL DEFAULT 0",
+        "segment_efforts_detected": "ALTER TABLE meta_import_jobs ADD COLUMN segment_efforts_detected INTEGER NOT NULL DEFAULT 0",
+        "segment_efforts_inserted": "ALTER TABLE meta_import_jobs ADD COLUMN segment_efforts_inserted INTEGER NOT NULL DEFAULT 0",
+        "segment_efforts_updated": "ALTER TABLE meta_import_jobs ADD COLUMN segment_efforts_updated INTEGER NOT NULL DEFAULT 0",
+        "segment_efforts_skipped": "ALTER TABLE meta_import_jobs ADD COLUMN segment_efforts_skipped INTEGER NOT NULL DEFAULT 0",
+    }
+    for column_name, statement in expected_columns.items():
+        if column_name not in existing_columns:
+            connection.execute(statement)
+
+    _ensure_exec_activity_segment_columns(connection)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_segments (
+            segment_id INTEGER PRIMARY KEY,
+            source_system TEXT NOT NULL,
+            external_segment_id TEXT NOT NULL,
+            segment_name TEXT,
+            discipline TEXT,
+            distance_meters REAL,
+            ascent_meters REAL,
+            average_grade_percent REAL,
+            first_seen_activity_id INTEGER,
+            last_seen_activity_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (source_system, external_segment_id),
+            FOREIGN KEY (first_seen_activity_id) REFERENCES exec_activities (activity_id),
+            FOREIGN KEY (last_seen_activity_id) REFERENCES exec_activities (activity_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_segment_efforts (
+            segment_effort_id INTEGER PRIMARY KEY,
+            source_system TEXT NOT NULL,
+            external_segment_effort_id TEXT NOT NULL,
+            segment_id INTEGER NOT NULL,
+            activity_id INTEGER NOT NULL,
+            activity_date TEXT NOT NULL,
+            started_at TEXT,
+            elapsed_time_seconds INTEGER,
+            avg_power REAL,
+            avg_cadence REAL,
+            avg_heart_rate REAL,
+            max_heart_rate REAL,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (source_system, external_segment_effort_id),
+            FOREIGN KEY (segment_id) REFERENCES exec_segments (segment_id),
+            FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+        )
+        """
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_exec_segments_name ON exec_segments (segment_name)")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_segment_date ON exec_segment_efforts (segment_id, activity_date DESC)"
+    )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_activity ON exec_segment_efforts (activity_id)")
+
+
+def _ensure_exec_activity_segment_columns(connection: sqlite3.Connection) -> None:
+    exec_activities_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activities'"
+    ).fetchone()
+    if exec_activities_exists is None:
+        return
+    existing_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(exec_activities)").fetchall()
+    }
+    expected_columns = {
+        "segment_data_status": "ALTER TABLE exec_activities ADD COLUMN segment_data_status TEXT NOT NULL DEFAULT 'not_checked'",
+        "segment_effort_count": "ALTER TABLE exec_activities ADD COLUMN segment_effort_count INTEGER NOT NULL DEFAULT 0",
+        "segment_checked_at": "ALTER TABLE exec_activities ADD COLUMN segment_checked_at TEXT",
     }
     for column_name, statement in expected_columns.items():
         if column_name not in existing_columns:
