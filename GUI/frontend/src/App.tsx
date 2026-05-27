@@ -203,6 +203,11 @@ type ActivityDetail = {
   source_file: string | null;
   raw_payload_path: string | null;
   notes: string | null;
+  quality_status: string | null;
+  quality_checked_at: string | null;
+  quality_rule_version: string | null;
+  quality_decision_count: number | null;
+  quality_limited_metric_count: number | null;
   planned_session_id: number | null;
   compliance_status: string | null;
   rationale: string | null;
@@ -262,12 +267,68 @@ type ActivityListItem = {
   subjective_feeling: string | null;
   raw_payload_path: string | null;
   notes: string | null;
+  quality_status: string | null;
+  quality_checked_at: string | null;
+  quality_rule_version: string | null;
+  quality_decision_count: number | null;
+  quality_limited_metric_count: number | null;
   planned_session_id: number | null;
   compliance_status: string | null;
   rationale: string | null;
   actual_summary: string | null;
   general_feeling: string | null;
   next_day_decision: string | null;
+};
+
+type ActivityQualitySummaryImpact = {
+  summary_kind: string;
+  source_value: number | null;
+  trusted_value: number | null;
+  changed_by_filter: boolean;
+  summary_status: string;
+};
+
+type ActivityQualityDecision = {
+  quality_decision_id: number;
+  decision_status: string;
+  start_sample_index: number;
+  end_sample_index: number;
+  reason_code: string;
+  rule_key: string;
+  threshold_low: number | null;
+  threshold_high: number | null;
+  impacted_summary_kinds: string[];
+};
+
+type ActivityQualityMetric = {
+  metric_name: string;
+  metric_status: string;
+  evaluated_reading_count: number;
+  accepted_reading_count: number;
+  excluded_reading_count: number;
+  summary_impacts: ActivityQualitySummaryImpact[];
+  decisions: ActivityQualityDecision[];
+};
+
+type ActivityQualityDetail = {
+  activity: {
+    activity_id: number;
+    external_activity_id: string | null;
+    activity_date: string;
+    quality_status: string | null;
+    quality_checked_at: string | null;
+    quality_rule_version: string | null;
+    source_reading_fingerprint: string | null;
+  };
+  metrics: ActivityQualityMetric[];
+};
+
+type ActivityQualityReplayResponse = {
+  activity_id: number;
+  quality_status: string | null;
+  quality_rule_version: string | null;
+  source_reading_fingerprint: string;
+  result: "created_new_run" | "reused_existing_run";
 };
 
 type GarminImportFormState = {
@@ -338,6 +399,12 @@ type ImportJob = {
     segment_efforts_inserted: number;
     segment_efforts_updated: number;
     segment_efforts_skipped: number;
+    quality_activities_checked: number;
+    quality_activities_filtered: number;
+    quality_runs_created: number;
+    quality_runs_reused: number;
+    quality_decisions_recorded: number;
+    quality_limited_metrics: number;
   };
   has_breakdown_details: boolean;
 };
@@ -414,12 +481,24 @@ type GarminImportRunResponse = {
     segment_activities_with_data: number;
     segment_efforts_detected: number;
     segment_efforts_loaded: number;
+    quality_activities_checked: number;
+    quality_activities_with_exclusions: number;
+    quality_decisions_recorded: number;
+    quality_limited_metrics: number;
+    quality_runs_created: number;
+    quality_runs_reused: number;
   };
   metadata: {
     notes: string[];
     segment_summary?: {
       activities_with_segment_data: number;
       activities_without_segment_data: number;
+    };
+    quality_summary?: {
+      clean_activities: number;
+      filtered_activities: number;
+      limited_activities: number;
+      rule_version: string | null;
     };
   };
   import_job: {
@@ -439,6 +518,164 @@ type GarminImportRunResponse = {
     has_breakdown_details: boolean;
   };
 };
+
+if (false) {
+  const activityQualityDetailTypeCheck = {
+    activity: {
+      activity_id: 1,
+      external_activity_id: "123",
+      activity_date: "2026-05-19",
+      quality_status: "filtered",
+      quality_checked_at: "2026-05-27T18:34:12Z",
+      quality_rule_version: "bad_reading_filter/v1",
+      source_reading_fingerprint: "abc123",
+    },
+    metrics: [
+      {
+        metric_name: "heart_rate",
+        metric_status: "filtered",
+        evaluated_reading_count: 3,
+        accepted_reading_count: 2,
+        excluded_reading_count: 1,
+        summary_impacts: [
+          {
+            summary_kind: "average",
+            source_value: 181,
+            trusted_value: 151,
+            changed_by_filter: true,
+            summary_status: "filtered",
+          },
+        ],
+        decisions: [
+          {
+            quality_decision_id: 1,
+            decision_status: "excluded",
+            start_sample_index: 1,
+            end_sample_index: 1,
+            reason_code: "hr_above_hard_cap",
+            rule_key: "hr_absolute_ceiling",
+            threshold_low: null,
+            threshold_high: 235,
+            impacted_summary_kinds: ["average", "maximum"],
+          },
+        ],
+      },
+    ],
+  } satisfies ActivityQualityDetail;
+
+  const activityListItemTypeCheck = {
+    activity_id: 1,
+    season_id: 2026,
+    source_system: "garmin",
+    external_activity_id: "123",
+    activity_date: "2026-05-19",
+    started_at: "2026-05-19T08:00:00",
+    discipline: "road_biking",
+    activity_type: "Salida larga",
+    duration_seconds: 3600,
+    distance_meters: 25000,
+    ascent_meters: 500,
+    calories: 700,
+    avg_hr: 151,
+    max_hr: 178,
+    avg_power: 250,
+    normalized_power: 265,
+    training_load: 90,
+    avg_pace_seconds_per_km: null,
+    perceived_exertion: 7,
+    subjective_feeling: null,
+    raw_payload_path: "/tmp/123.tcx",
+    notes: null,
+    quality_status: "filtered",
+    quality_checked_at: "2026-05-27T18:34:12Z",
+    quality_rule_version: "bad_reading_filter/v1",
+    quality_decision_count: 1,
+    quality_limited_metric_count: 0,
+    planned_session_id: null,
+    compliance_status: null,
+    rationale: null,
+    actual_summary: null,
+    general_feeling: null,
+    next_day_decision: null,
+  } satisfies ActivityListItem;
+
+  const importRunResponseTypeCheck = {
+    status: "ok",
+    counts: {
+      activities_detected: 1,
+      daily_metrics_detected: 0,
+      segment_activities_checked: 1,
+      segment_activities_with_data: 0,
+      segment_efforts_detected: 0,
+      segment_efforts_loaded: 0,
+      quality_activities_checked: 1,
+      quality_activities_with_exclusions: 1,
+      quality_decisions_recorded: 1,
+      quality_limited_metrics: 0,
+      quality_runs_created: 1,
+      quality_runs_reused: 0,
+    },
+    metadata: {
+      notes: ["Importacion Garmin completada."],
+      segment_summary: {
+        activities_with_segment_data: 0,
+        activities_without_segment_data: 1,
+      },
+      quality_summary: {
+        clean_activities: 0,
+        filtered_activities: 1,
+        limited_activities: 0,
+        rule_version: "bad_reading_filter/v1",
+      },
+    },
+    import_job: {
+      import_job_id: 1,
+      status: "completed",
+      rows_detected: 1,
+      rows_loaded: 1,
+      finished_at: null,
+      failure_stage: null,
+      failure_class: null,
+      retry_suitability: "safe_to_retry",
+      partial_completion: false,
+      operator_detail: null,
+      request_scope: {
+        season_id: 2026,
+        date_from: "2026-05-19",
+        date_to: "2026-05-19",
+        include_daily_metrics: false,
+      },
+      notes: ["Importacion Garmin completada."],
+      breakdown: {
+        activity_rows_detected: 1,
+        activity_rows_inserted: 1,
+        activity_rows_updated: 0,
+        activity_rows_skipped: 0,
+        daily_metric_rows_detected: 0,
+        daily_metric_rows_inserted: 0,
+        daily_metric_rows_updated: 0,
+        daily_metric_rows_skipped: 0,
+        segment_activities_checked: 1,
+        segment_activities_with_data: 0,
+        segment_efforts_detected: 0,
+        segment_efforts_inserted: 0,
+        segment_efforts_updated: 0,
+        segment_efforts_skipped: 0,
+        quality_activities_checked: 1,
+        quality_activities_filtered: 1,
+        quality_runs_created: 1,
+        quality_runs_reused: 0,
+        quality_decisions_recorded: 1,
+        quality_limited_metrics: 0,
+      },
+      has_breakdown_details: true,
+    },
+  } satisfies GarminImportRunResponse;
+
+  void activityQualityDetailTypeCheck;
+  void activityListItemTypeCheck;
+  void importRunResponseTypeCheck;
+}
 
 function formatRetrySuitabilityLabel(retrySuitability: string | null): string {
   if (retrySuitability === "safe_to_retry") {
@@ -1016,6 +1253,101 @@ function isHeartRateRelevantInList(activity: ActivityListItem) {
   return activity.avg_hr != null || activity.max_hr != null;
 }
 
+function formatQualityStatusLabel(status: string | null) {
+  if (status === "clean") {
+    return "calidad limpia";
+  }
+  if (status === "filtered") {
+    return "filtrada";
+  }
+  if (status === "limited") {
+    return "limitada";
+  }
+  if (status === "not_checked") {
+    return "sin revisar";
+  }
+  return "sin revisar";
+}
+
+function toQualityBadgeClass(status: string | null) {
+  if (status === "clean") {
+    return "badge badge-completed";
+  }
+  if (status === "filtered") {
+    return "badge badge-partial";
+  }
+  if (status === "limited") {
+    return "badge badge-failed";
+  }
+  return "badge badge-pending";
+}
+
+function formatMetricNameLabel(metricName: string) {
+  if (metricName === "heart_rate") {
+    return "Frecuencia cardiaca";
+  }
+  if (metricName === "power") {
+    return "Potencia";
+  }
+  if (metricName === "bike_cadence") {
+    return "Cadencia";
+  }
+  return metricName;
+}
+
+function formatQualitySummaryKindLabel(summaryKind: string) {
+  if (summaryKind === "average") {
+    return "Media";
+  }
+  if (summaryKind === "maximum") {
+    return "Maximo";
+  }
+  return summaryKind;
+}
+
+function formatQualityMetricValue(metricName: string, value: number | null) {
+  if (metricName === "heart_rate") {
+    return toMetricLabel(value, " bpm");
+  }
+  if (metricName === "power") {
+    return toMetricLabel(value, " W");
+  }
+  if (metricName === "bike_cadence") {
+    return toMetricLabel(value, " rpm");
+  }
+  return toMetricLabel(value);
+}
+
+function formatQualityDecisionReason(reasonCode: string) {
+  if (reasonCode === "hr_above_hard_cap") {
+    return "FC por encima del techo duro";
+  }
+  return reasonCode;
+}
+
+function formatQualitySampleRange(startSampleIndex: number, endSampleIndex: number) {
+  const start = startSampleIndex + 1;
+  const end = endSampleIndex + 1;
+  if (start === end) {
+    return `muestra ${start}`;
+  }
+  return `muestras ${start}-${end}`;
+}
+
+function formatActivityQualityCompact(activity: Pick<ActivityListItem, "quality_decision_count" | "quality_limited_metric_count" | "quality_checked_at">) {
+  const parts: string[] = [];
+  if ((activity.quality_decision_count ?? 0) > 0) {
+    parts.push(`${activity.quality_decision_count} decisiones`);
+  }
+  if ((activity.quality_limited_metric_count ?? 0) > 0) {
+    parts.push(`${activity.quality_limited_metric_count} metricas limitadas`);
+  }
+  if (activity.quality_checked_at) {
+    parts.push(`rev. ${toDateTimeLabel(activity.quality_checked_at)}`);
+  }
+  return parts.join(" · ") || "Sin detalle adicional";
+}
+
 export default function App() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -1028,6 +1360,7 @@ export default function App() {
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null);
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityDetail | null>(null);
+  const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
   const [selectedSessionPrescription, setSelectedSessionPrescription] = useState<SessionPrescription | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
@@ -1045,10 +1378,12 @@ export default function App() {
   const [loadingSegments, setLoadingSegments] = useState(false);
   const [loadingSegmentHistory, setLoadingSegmentHistory] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
+  const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
   const [loadingSessionPrescription, setLoadingSessionPrescription] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
+  const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
 
   useEffect(() => {
     void loadSeasons();
@@ -1169,6 +1504,7 @@ export default function App() {
       setSelectedWeek(null);
       setWeeklyReview(null);
       setSelectedActivity(null);
+      setSelectedActivityQuality(null);
       setSelectedSessionPrescription(null);
       setSegments([]);
       setSelectedSegmentId(null);
@@ -1204,6 +1540,7 @@ export default function App() {
       setSelectedWeek(null);
       setWeeklyReview(null);
       setSelectedActivity(null);
+      setSelectedActivityQuality(null);
       setSelectedSessionPrescription(null);
       setWeeks([]);
       setSessions([]);
@@ -1234,6 +1571,7 @@ export default function App() {
       setSubmissionMessage(null);
       setSelectedWeek(week);
       setSelectedActivity(null);
+      setSelectedActivityQuality(null);
       setSelectedSessionPrescription(null);
       const [sessionData, comparisonData, reviewData] = await Promise.all([
         fetchJson<Session[]>(`/api/weeks/${week.week_id}/sessions`),
@@ -1343,13 +1681,53 @@ export default function App() {
   async function loadActivityDetail(activityId: number) {
     try {
       setLoadingActivity(true);
+      setLoadingActivityQuality(true);
       setError(null);
-      const activity = await fetchJson<ActivityDetail>(`/api/activities/${activityId}`);
+      const [activity, quality] = await Promise.all([
+        fetchJson<ActivityDetail>(`/api/activities/${activityId}`),
+        fetchJson<ActivityQualityDetail>(`/api/activities/${activityId}/quality`).catch((requestError) => {
+          if (isNotFoundError(requestError)) {
+            return null;
+          }
+          throw requestError;
+        }),
+      ]);
       setSelectedActivity(activity);
+      setSelectedActivityQuality(quality);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoadingActivity(false);
+      setLoadingActivityQuality(false);
+    }
+  }
+
+  async function replaySelectedActivityQuality() {
+    if (!selectedActivity) {
+      return;
+    }
+
+    try {
+      setReplayingActivityQuality(true);
+      setError(null);
+      setInfoMessage(null);
+      const response = await fetch(`/api/activities/${selectedActivity.activity_id}/quality/replay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_mode: "artifact" }),
+      });
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, `Error ${response.status} reevaluando calidad de actividad`));
+      }
+      const result = (await response.json()) as ActivityQualityReplayResponse;
+      await loadActivityDetail(selectedActivity.activity_id);
+      setSubmissionMessage(
+        `Calidad reevaluada para la actividad ${result.activity_id}: ${formatQualityStatusLabel(result.quality_status)} (${result.result === "reused_existing_run" ? "run reutilizado" : "run nuevo"}).`,
+      );
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setReplayingActivityQuality(false);
     }
   }
 
@@ -1855,6 +2233,11 @@ export default function App() {
                   <span>{toDateTimeLabel(activity.started_at)}</span>
                   {activity.planned_session_id != null ? <span>Sesion {activity.planned_session_id}</span> : null}
                   {activity.external_activity_id ? <span>Ext. {activity.external_activity_id}</span> : null}
+                </div>
+
+                <div className="activity-feed-quality">
+                  <span className={toQualityBadgeClass(activity.quality_status)}>{formatQualityStatusLabel(activity.quality_status)}</span>
+                  <span>{formatActivityQualityCompact(activity)}</span>
                 </div>
 
                 <div className="activity-feed-grid">
@@ -2402,6 +2785,72 @@ export default function App() {
                 {selectedActivity.avg_pace_seconds_per_km != null && isPaceDiscipline(selectedActivity.discipline) ? <article><span>Ritmo medio</span><strong>{toPaceLabel(selectedActivity.avg_pace_seconds_per_km)}</strong></article> : null}
                 <article><span>RPE</span><strong>{toMetricLabel(selectedActivity.perceived_exertion)}</strong></article>
                 <article><span>Sesion planificada</span><strong>{selectedActivity.planned_session_id ?? "-"}</strong></article>
+              </div>
+
+              <div className="activity-quality-card panel-subcard">
+                <div className="activity-quality-head">
+                  <div>
+                    <strong>Calidad de lecturas</strong>
+                    <p className="activity-quality-copy">Resumen trazable del filtrado sobre las series importadas antes de consolidar FC media y maxima.</p>
+                  </div>
+                  <div className="activity-quality-actions">
+                    <span className={toQualityBadgeClass(selectedActivity.quality_status)}>{formatQualityStatusLabel(selectedActivity.quality_status)}</span>
+                    <button className="ghost-button" type="button" onClick={() => void replaySelectedActivityQuality()} disabled={replayingActivityQuality || loadingActivityQuality}>
+                      {replayingActivityQuality ? "Reevaluando..." : "Reevaluar"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="activity-quality-meta">
+                  <span>Revision: {selectedActivity.quality_checked_at ? toDateTimeLabel(selectedActivity.quality_checked_at) : "pendiente"}</span>
+                  <span>Regla: {selectedActivity.quality_rule_version ?? "sin version"}</span>
+                  <span>Decisiones: {selectedActivity.quality_decision_count ?? 0}</span>
+                  <span>Metricas limitadas: {selectedActivity.quality_limited_metric_count ?? 0}</span>
+                  {selectedActivityQuality?.activity.source_reading_fingerprint ? <span>Fingerprint: {selectedActivityQuality.activity.source_reading_fingerprint}</span> : null}
+                </div>
+
+                {loadingActivityQuality ? (
+                  <p className="activity-quality-empty">Recuperando detalle de calidad...</p>
+                ) : selectedActivityQuality && selectedActivityQuality.metrics.length > 0 ? (
+                  <div className="activity-quality-metric-list">
+                    {selectedActivityQuality.metrics.map((metric) => (
+                      <article key={metric.metric_name} className="activity-quality-metric">
+                        <div className="item-head">
+                          <strong>{formatMetricNameLabel(metric.metric_name)}</strong>
+                          <span className={toQualityBadgeClass(metric.metric_status)}>{formatQualityStatusLabel(metric.metric_status)}</span>
+                        </div>
+                        <p className="activity-quality-counts">
+                          {metric.accepted_reading_count} aceptadas de {metric.evaluated_reading_count} lecturas · {metric.excluded_reading_count} excluidas
+                        </p>
+                        <div className="activity-quality-impact-list">
+                          {metric.summary_impacts.map((impact) => (
+                            <div key={`${metric.metric_name}-${impact.summary_kind}`} className="activity-quality-impact-item">
+                              <strong>{formatQualitySummaryKindLabel(impact.summary_kind)}</strong>
+                              <span>
+                                {impact.changed_by_filter
+                                  ? `${formatQualityMetricValue(metric.metric_name, impact.source_value)} -> ${formatQualityMetricValue(metric.metric_name, impact.trusted_value)}`
+                                  : formatQualityMetricValue(metric.metric_name, impact.trusted_value)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {metric.decisions.length > 0 ? (
+                          <div className="activity-quality-decision-list">
+                            {metric.decisions.map((decision) => (
+                              <div key={decision.quality_decision_id} className="activity-quality-decision-item">
+                                <strong>{formatQualityDecisionReason(decision.reason_code)}</strong>
+                                <span>{formatQualitySampleRange(decision.start_sample_index, decision.end_sample_index)}</span>
+                                {decision.threshold_high != null ? <span>Techo: {toMetricLabel(decision.threshold_high, metric.metric_name === "heart_rate" ? " bpm" : "")}</span> : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="activity-quality-empty">No hay detalle persistido para esta actividad. Si es una importacion antigua, usa "Reevaluar" para reconstruirlo desde el artefacto guardado.</p>
+                )}
               </div>
 
               <div className="activity-detail-notes">

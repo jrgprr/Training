@@ -4,7 +4,11 @@
 
 **Created**: 2026-05-27
 
-**Status**: Draft
+**Status**: Closed
+
+**Closed**: 2026-05-27
+
+**Closure Note**: Implemented with canonical raw-reading persistence, deterministic heart-rate quality filtering, replay/backfill from canonical rows or stored TCX artifacts, backend traceability endpoints, thin frontend quality visibility, and end-to-end validation across backend tests, frontend build, repeated import, replay, and SQLite inspection.
 
 **Input**: User description: "Filter raw imported activity data to detect bad readings and avoid distorted metrics, using heart rate bad readings as the motivating example. Cover detection and handling of implausible physiological and device readings in imported raw data so derived metrics like max heart rate, average heart rate, power summaries, cadence summaries, and other downstream analytics are not polluted by obvious sensor errors. Keep the feature scoped to data-quality filtering and traceability, not broad machine learning. Align with SQLite as canonical source of truth, backend-owned logic, thin frontend, and local-first workflow."
 

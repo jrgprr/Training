@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 from .segments import get_segment_history, list_segments
@@ -53,6 +54,10 @@ class GarminConnectImportPayload(BaseModel):
     date_from: str
     date_to: str
     include_daily_metrics: bool = True
+
+
+class ActivityQualityReplayPayload(BaseModel):
+    source_mode: str = "canonical"
 
 
 class SegmentListQuery(BaseModel):
@@ -610,6 +615,8 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
         summary.breakdown.segment_efforts_inserted + summary.breakdown.segment_efforts_updated
     )
     counts["segment_activities_with_data"] = summary.breakdown.segment_activities_with_data
+    counts["quality_runs_created"] = summary.breakdown.quality_runs_created
+    counts["quality_runs_reused"] = summary.breakdown.quality_runs_reused
 
     return {
         "status": "ok",
@@ -622,6 +629,17 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
                     summary.breakdown.segment_activities_checked - summary.breakdown.segment_activities_with_data,
                     0,
                 ),
+            },
+            "quality_summary": {
+                "clean_activities": max(
+                    summary.breakdown.quality_activities_checked
+                    - summary.breakdown.quality_activities_filtered
+                    - summary.breakdown.quality_limited_metrics,
+                    0,
+                ),
+                "filtered_activities": summary.breakdown.quality_activities_filtered,
+                "limited_activities": summary.breakdown.quality_limited_metrics,
+                "rule_version": batch.activities[0].quality_rule_version if batch.activities else None,
             },
         },
         "import_job": summary.to_dict(),
@@ -673,7 +691,9 @@ def get_activity(activity_id: int) -> dict[str, Any]:
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
                ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
-               ea.source_file, ea.raw_payload_path, ea.notes,
+             ea.source_file, ea.raw_payload_path, ea.notes,
+             ea.quality_status, ea.quality_checked_at, ea.quality_rule_version,
+             ea.quality_decision_count, ea.quality_limited_metric_count,
                l.planned_session_id, l.compliance_status, l.rationale,
                rr.actual_summary, rr.general_feeling, rr.next_day_decision
         FROM exec_activities ea
@@ -699,7 +719,9 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
                ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
-               ea.raw_payload_path, ea.notes,
+             ea.raw_payload_path, ea.notes,
+             ea.quality_status, ea.quality_checked_at, ea.quality_rule_version,
+             ea.quality_decision_count, ea.quality_limited_metric_count,
                l.planned_session_id, l.compliance_status, l.rationale,
                rr.actual_summary, rr.general_feeling, rr.next_day_decision
         FROM exec_activities ea
@@ -714,6 +736,28 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
         (season_id,),
     )
     return ensure_entity_exists(rows, f"No se encontraron actividades para la temporada {season_id}.")
+
+
+@app.get("/api/activities/{activity_id}/quality")
+def get_activity_quality_endpoint(activity_id: int) -> dict[str, Any]:
+    quality = get_activity_quality(activity_id)
+    if quality is None:
+        raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
+    return quality
+
+
+@app.post("/api/activities/{activity_id}/quality/replay")
+def replay_activity_quality_endpoint(activity_id: int, payload: ActivityQualityReplayPayload) -> dict[str, Any]:
+    storage = GarminImportStorage()
+    try:
+        result = storage.replay_activity_quality(activity_id, source_mode=payload.source_mode)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
+    return result
 
 
 @app.get("/api/seasons")

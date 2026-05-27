@@ -55,6 +55,13 @@ class NormalizedActivity:
     segment_effort_count: int = 0
     segment_checked_at: str | None = None
     segments: list["NormalizedSegmentEffort"] = field(default_factory=list)
+    metric_readings: list["NormalizedMetricReading"] = field(default_factory=list)
+    quality_status: str = "not_checked"
+    quality_rule_version: str | None = None
+    quality_checked_at: str | None = None
+    quality_decision_count: int = 0
+    quality_limited_metric_count: int = 0
+    source_reading_fingerprint: str | None = None
     source_file: str | None = None
     raw_payload_path: str | None = None
     notes: str | None = None
@@ -76,6 +83,19 @@ class NormalizedDailyMetric:
     subjective_fatigue: int | None = None
     notes: str | None = None
     raw_payload_path: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class NormalizedMetricReading:
+    metric_name: str
+    sample_index: int
+    raw_value: float
+    recorded_at: str | None = None
+    elapsed_seconds: float | None = None
+    source_payload_kind: str = "activity_detail_stream"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,18 +143,32 @@ class GarminImportBatch:
         segment_activities_checked = 0
         segment_activities_with_data = 0
         segment_efforts_detected = 0
+        quality_activities_checked = 0
+        quality_activities_with_exclusions = 0
+        quality_decisions_recorded = 0
+        quality_limited_metrics = 0
         for activity in self.activities:
             if activity.segment_data_status != "not_checked":
                 segment_activities_checked += 1
             if activity.segment_effort_count > 0:
                 segment_activities_with_data += 1
             segment_efforts_detected += activity.segment_effort_count
+            if activity.quality_status != "not_checked":
+                quality_activities_checked += 1
+            if activity.quality_status == "filtered":
+                quality_activities_with_exclusions += 1
+            quality_decisions_recorded += activity.quality_decision_count
+            quality_limited_metrics += activity.quality_limited_metric_count
         return {
             "activities_detected": len(self.activities),
             "daily_metrics_detected": len(self.daily_metrics),
             "segment_activities_checked": segment_activities_checked,
             "segment_activities_with_data": segment_activities_with_data,
             "segment_efforts_detected": segment_efforts_detected,
+            "quality_activities_checked": quality_activities_checked,
+            "quality_activities_with_exclusions": quality_activities_with_exclusions,
+            "quality_decisions_recorded": quality_decisions_recorded,
+            "quality_limited_metrics": quality_limited_metrics,
         }
 
 
@@ -154,6 +188,12 @@ class ImportJobBreakdown:
     segment_efforts_inserted: int = 0
     segment_efforts_updated: int = 0
     segment_efforts_skipped: int = 0
+    quality_activities_checked: int = 0
+    quality_activities_filtered: int = 0
+    quality_runs_created: int = 0
+    quality_runs_reused: int = 0
+    quality_decisions_recorded: int = 0
+    quality_limited_metrics: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return asdict(self)

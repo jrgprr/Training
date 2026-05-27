@@ -17,6 +17,7 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
+from ..activity_quality import normalize_metric_readings_from_activity_detail
 from ..db import initialize_database
 from .contracts import (
     GarminImportBatch,
@@ -921,6 +922,7 @@ class GarminConnectAdapter:
         artifact_paths: list[str] = []
         artifact_failures = 0
         for activity in activities:
+            activity_detail_stream_payload: dict[str, Any] | None = None
             if activity.external_activity_id and activity.discipline in self.CYCLING_DISCIPLINES:
                 try:
                     segment_list_payload = client.connectapi(f"/segment-service/segment/list/{activity.external_activity_id}")
@@ -932,9 +934,23 @@ class GarminConnectAdapter:
                     detail_payload = client.get_activity_details(activity.external_activity_id) or {}
                 except Exception as error:
                     detail_payload = {}
+                try:
+                    activity_detail_stream_payload = client.connectapi(
+                        f"/activity-service/activity/{activity.external_activity_id}/details"
+                    )
+                except Exception:
+                    activity_detail_stream_payload = None
                 self._apply_segment_details(client, activity, detail_payload, segment_list_payload)
             else:
                 self._apply_segment_details(None, activity, None, None)
+                if activity.external_activity_id:
+                    try:
+                        activity_detail_stream_payload = client.connectapi(
+                            f"/activity-service/activity/{activity.external_activity_id}/details"
+                        )
+                    except Exception:
+                        activity_detail_stream_payload = None
+            activity.metric_readings = normalize_metric_readings_from_activity_detail(activity_detail_stream_payload)
             try:
                 artifact_path = self._download_activity_artifact(client, request.season_id, activity)
             except Exception:
