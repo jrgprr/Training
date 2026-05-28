@@ -97,11 +97,11 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Add review-read-model tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering grouped findings, principal evidence summaries, conflicting proposals, decision history, and unchanged-plan behavior for pending proposals.
+- [x] T026 [P] [US3] Add review-read-model tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering grouped findings, principal evidence summaries, conflicting proposals, decision history, and unchanged-plan behavior for pending proposals.
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Extend `GUI/backend/app/main.py` and `GUI/backend/app/ai_assessments.py` so assessment detail, latest cadence summaries, proposal provenance, and decision history are returned in review-friendly payloads with no frontend inference.
+- [x] T027 [US3] Extend `GUI/backend/app/main.py` and `GUI/backend/app/ai_assessments.py` so assessment detail, latest cadence summaries, proposal provenance, and decision history are returned in review-friendly payloads with no frontend inference.
 - [ ] T028 [US3] Update `GUI/frontend/src/App.tsx` and `GUI/frontend/src/main.tsx` to render cadence summary lists, assessment detail panels, bounded dialog/clarification surfaces, pending proposal review, and approve/reject actions using backend-provided fields only.
 - [ ] T029 [P] [US3] Update `GUI/frontend/src/styles.css` to keep assessment cards, evidence groups, proposal status rows, and operator decision controls readable in the existing minimal interface.
 - [ ] T030 [US3] Run the frontend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/frontend && npm run build`.

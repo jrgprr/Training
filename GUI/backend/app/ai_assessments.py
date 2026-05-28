@@ -15,7 +15,11 @@ from .ai_assessment_models import (
     AssessmentRunTriggerRequest,
     AssessmentRunTriggerResponse,
     AssessmentSummaryPayload,
+    ClarificationKind,
     ConfidenceLabel,
+    DialogContextEntryPayload,
+    DialogEntryKind,
+    DialogEntryScope,
     AssessmentTypeResultPayload,
     AssessmentFindingPayload,
     FindingKind,
@@ -672,6 +676,24 @@ def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResp
             """,
             (assessment_run_id,),
         ).fetchall()
+        dialog_rows = connection.execute(
+            """
+            SELECT dialog_context_id,
+                   assessment_run_id,
+                   proposal_id,
+                   entry_kind,
+                   entry_scope,
+                   clarification_kind,
+                   entry_text,
+                   linked_evidence_json,
+                   created_at,
+                   created_by
+            FROM agent_assessment_dialog_context
+            WHERE assessment_run_id = ?
+            ORDER BY created_at, dialog_context_id
+            """,
+            (assessment_run_id,),
+        ).fetchall()
         proposals = list_proposal_references(connection, assessment_run_id)
 
         return AssessmentRunDetailResponse(
@@ -714,7 +736,21 @@ def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResp
                 for finding_row in findings
             ],
             proposals=proposals,
-            dialog_context=[],
+            dialog_context=[
+                DialogContextEntryPayload(
+                    dialog_context_id=dialog_row["dialog_context_id"],
+                    assessment_run_id=dialog_row["assessment_run_id"],
+                    proposal_id=dialog_row["proposal_id"],
+                    entry_kind=DialogEntryKind(dialog_row["entry_kind"]),
+                    entry_scope=DialogEntryScope(dialog_row["entry_scope"]),
+                    clarification_kind=ClarificationKind(dialog_row["clarification_kind"]) if dialog_row["clarification_kind"] else None,
+                    entry_text=dialog_row["entry_text"],
+                    linked_evidence_json=dialog_row["linked_evidence_json"],
+                    created_at=dialog_row["created_at"],
+                    created_by=dialog_row["created_by"],
+                )
+                for dialog_row in dialog_rows
+            ],
         )
 
 

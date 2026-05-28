@@ -585,6 +585,141 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
                 self.assertEqual(mutation_row["target_entity_id"], "plan_meso_blocks.block_id=1")
                 self.assertEqual(mutation_row["applied_by"], "local-operator")
 
+    def test_review_payloads_expose_dialog_conflicts_and_pending_state_without_plan_mutation(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return (
+                    '{'
+                    '"summary_text":"The week is reviewable but has two conflicting block-level options.",'
+                    '"proposals":['
+                    '{'
+                    '"target_planning_level":"block",'
+                    '"proposal_title":"Hold block progression for one extra week",'
+                    '"proposal_summary":"Extend stabilization before the next load increase.",'
+                    '"change_kind":"extend_stabilization",'
+                    '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"duration_weeks_min":4,"duration_weeks_max":5}},'
+                    '"reasoning_summary":"Recovery cost climbed late in the week.",'
+                    '"conflict_group_key":"block:B1:progression"'
+                    '},'
+                    '{'
+                    '"target_planning_level":"block",'
+                    '"proposal_title":"Reduce weekend density before progressing",'
+                    '"proposal_summary":"Keep the block moving but reduce density.",'
+                    '"change_kind":"reduce_density",'
+                    '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"weekend_sessions":1}},'
+                    '"reasoning_summary":"The block can continue if density drops.",'
+                    '"conflict_group_key":"block:B1:progression"'
+                    '}'
+                    ']'
+                    '}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (512, 2026, 1, 11, 'closed', 0.89, 0.96, 84, 90, -6, 'watch', 'Choose the safer next step.', 'Weekly review is available for a review-oriented payload.')
+                        """
+                    )
+
+                weekly_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+
+                with get_connection() as connection:
+                    proposal_ids = [
+                        row["proposal_id"]
+                        for row in connection.execute(
+                            "SELECT proposal_id FROM agent_adaptation_proposals WHERE assessment_run_id = ? ORDER BY proposal_id",
+                            (weekly_run["assessment_run_id"],),
+                        ).fetchall()
+                    ]
+                    connection.execute(
+                        """
+                        INSERT INTO agent_assessment_dialog_context (
+                            assessment_run_id,
+                            entry_kind,
+                            entry_scope,
+                            clarification_kind,
+                            entry_text,
+                            created_by
+                        ) VALUES (?, 'user_clarification', 'assessment_summary', 'schedule_shift', 'The hardest ride was moved one day earlier.', 'athlete')
+                        """,
+                        (weekly_run["assessment_run_id"],),
+                    )
+
+                detail = get_assessment_run(weekly_run["assessment_run_id"])
+                self.assertEqual(len(detail["findings"]), 1)
+                self.assertTrue(detail["principal_evidence"])
+                self.assertEqual(len(detail["dialog_context"]), 1)
+                self.assertEqual(detail["dialog_context"][0]["entry_scope"], "assessment_summary")
+                self.assertEqual(detail["dialog_context"][0]["clarification_kind"], "schedule_shift")
+                self.assertEqual(len(detail["proposals"]), 2)
+
+                pending_list = get_proposals(season_id=2026, status=ProposalStatus.PENDING)
+                self.assertEqual(len(pending_list["items"]), 2)
+                self.assertEqual(pending_list["items"][0]["conflict_group_key"], "block:B1:progression")
+                self.assertEqual(pending_list["items"][1]["conflict_group_key"], "block:B1:progression")
+
+                first_detail = get_proposal(proposal_ids[0])
+                second_detail = get_proposal(proposal_ids[1])
+                self.assertEqual(first_detail["proposal_status"], "pending")
+                self.assertEqual(second_detail["proposal_status"], "pending")
+                self.assertEqual(first_detail["decision_history"], [])
+                self.assertEqual(second_detail["decision_history"], [])
+
+                with get_connection() as connection:
+                    pending_mutations = connection.execute(
+                        "SELECT COUNT(*) AS total FROM agent_accepted_plan_mutations WHERE proposal_id IN (?, ?)",
+                        (proposal_ids[0], proposal_ids[1]),
+                    ).fetchone()["total"]
+
+                self.assertEqual(pending_mutations, 0)
+
+                decide_assessment_proposal(
+                    proposal_ids[0],
+                    ProposalDecisionRequest(
+                        decision_status=ProposalDecisionStatus.ACCEPTED,
+                        decided_by="local-operator",
+                        decision_note="Use the safer stabilization option.",
+                    ),
+                )
+
+                accepted_detail = get_proposal(proposal_ids[0])
+                self.assertEqual(accepted_detail["proposal_status"], "accepted")
+                self.assertEqual(len(accepted_detail["decision_history"]), 1)
+                self.assertEqual(accepted_detail["decision_history"][0]["decision_status"], "accepted")
+
 
 if __name__ == "__main__":
     unittest.main()
