@@ -36,7 +36,7 @@
 - [x] T007 [P] Create `GUI/backend/app/ai_profiles.py` and update `Agentes/README.md` with the v1 specialist profile registry (`daily_execution_v1`, `daily_recovery_readiness_v1`, `weekly_adherence_adequacy_v1`, `block_performance_direction_v1`) plus season-capable cadence metadata.
 - [x] T008 Create `GUI/backend/app/ai_gateway.py` for provider-agnostic LLM invocation, prompt/instruction version provenance, timeout handling, and explicit failed/incomplete run recording.
 - [x] T009 Create `GUI/backend/app/ai_context.py` and `GUI/backend/app/ai_assessments.py` for cadence window resolution, evidence fingerprinting, deduplication, rerun handling, and backend-owned context assembly from plan, activity, recovery, quality, segment, and review data.
-- [ ] T010 Wire the shared assessment services into `GUI/backend/app/main.py` and `GUI/backend/app/db.py` so later story work reuses one API boundary, one persistence boundary, and one error-handling path.
+- [x] T010 Wire the shared assessment services into `GUI/backend/app/main.py` and `GUI/backend/app/db.py` so later story work reuses one API boundary, one persistence boundary, and one error-handling path.
 
 **Checkpoint**: Canonical schema, shared models, LLM gateway, and orchestration foundations are ready for story implementation.
 
@@ -55,10 +55,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement daily context assembly in `GUI/backend/app/ai_context.py` using canonical plan, activity, recovery, activity-quality, and segment surfaces from `GUI/backend/app/activity_quality.py` and `GUI/backend/app/segments.py`.
-- [ ] T014 [US1] Implement the Daily Execution Agent and Daily Recovery And Readiness Agent flows in `GUI/backend/app/ai_profiles.py`, `GUI/backend/app/ai_gateway.py`, and `GUI/backend/app/ai_assessments.py`.
-- [ ] T015 [US1] Persist daily assessment type results, grouped findings, confidence labels, evidence summaries, and bounded next-step guidance in `GUI/backend/app/ai_assessments.py` and `GUI/backend/app/ai_assessment_models.py`.
-- [ ] T016 [US1] Extend `GUI/backend/app/main.py` to support `POST /api/assessments/runs` and `GET /api/assessments/runs/{assessment_run_id}` for the daily specialist-agent slice defined in `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
+- [x] T013 [US1] Implement daily context assembly in `GUI/backend/app/ai_context.py` using canonical plan, activity, recovery, activity-quality, and segment surfaces from `GUI/backend/app/activity_quality.py` and `GUI/backend/app/segments.py`.
+- [x] T014 [US1] Implement the Daily Execution Agent and Daily Recovery And Readiness Agent flows in `GUI/backend/app/ai_profiles.py`, `GUI/backend/app/ai_gateway.py`, and `GUI/backend/app/ai_assessments.py`.
+- [x] T015 [US1] Persist daily assessment type results, grouped findings, confidence labels, evidence summaries, and bounded next-step guidance in `GUI/backend/app/ai_assessments.py` and `GUI/backend/app/ai_assessment_models.py`.
+- [x] T016 [US1] Extend `GUI/backend/app/main.py` to support `POST /api/assessments/runs` and `GET /api/assessments/runs/{assessment_run_id}` for the daily specialist-agent slice defined in `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
 - [ ] T017 [US1] Run the daily backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents`.
 
 **Checkpoint**: Daily assessment runs are traceable, bounded on sparse data, and reviewable through the backend API without mutating the plan.

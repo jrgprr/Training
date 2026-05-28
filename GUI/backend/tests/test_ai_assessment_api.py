@@ -143,6 +143,57 @@ class AssessmentApiTests(unittest.TestCase):
                 self.assertEqual(stored_run["run_status"], "partial_context")
                 self.assertEqual(stored_run["confidence_label"], "limited")
 
+    def test_daily_recovery_readiness_without_activity_uses_recovery_context(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return "Recovery markers are present and support a bounded readiness check for the next session."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute("DELETE FROM link_plan_execution")
+                    connection.execute("DELETE FROM exec_activities")
+
+                created = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_recovery_readiness_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+
+                self.assertEqual(created["run_status"], "completed")
+                self.assertEqual(created["result_summary"]["confidence_label"], "medium")
+                self.assertEqual(created["agent_profile"]["profile_key"], "daily_recovery_readiness_v1")
+
+                detail = get_assessment_run(created["assessment_run_id"])
+                self.assertEqual(detail["run_status"], "completed")
+                self.assertEqual(detail["confidence_label"], "medium")
+                self.assertEqual(detail["assessment_type_results"][0]["assessment_type_key"], "daily_recovery_readiness")
+                self.assertEqual(detail["assessment_type_results"][0]["result_label"], "ready_check")
+                self.assertEqual(detail["findings"][0]["finding_kind"], "recovery_observation")
+                self.assertIn("exec_daily_metrics dates=2026-05-28", detail["principal_evidence"])
+                self.assertIn("review_daily_reviews dates=2026-05-28", detail["principal_evidence"])
+
+                with get_connection() as connection:
+                    stored_run = connection.execute(
+                        "SELECT run_status, confidence_label FROM agent_assessment_runs WHERE assessment_run_id = ?",
+                        (created["assessment_run_id"],),
+                    ).fetchone()
+
+                self.assertEqual(stored_run["run_status"], "completed")
+                self.assertEqual(stored_run["confidence_label"], "medium")
+
 
 if __name__ == "__main__":
     unittest.main()

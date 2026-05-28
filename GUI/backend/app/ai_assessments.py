@@ -289,6 +289,9 @@ def _principal_evidence_from_context(context: dict[str, Any]) -> list[str]:
     if context.get("daily_metrics"):
         metric_dates = [row["metric_date"] for row in context["daily_metrics"]]
         evidence.append(f"exec_daily_metrics dates={','.join(metric_dates)}")
+    if context.get("daily_reviews"):
+        review_dates = [row["review_date"] for row in context["daily_reviews"]]
+        evidence.append(f"review_daily_reviews dates={','.join(review_dates)}")
     if context.get("weekly_review"):
         evidence.append("review_weekly_reviews available")
     return evidence
@@ -309,15 +312,26 @@ def _build_prompt(prepared_run: PreparedAssessmentRun) -> str:
     )
 
 
-def _derive_confidence(snapshot: AssessmentContextSnapshot) -> ConfidenceLabel:
-    context = snapshot.context
+def _has_recovery_readiness_evidence(context: dict[str, Any]) -> bool:
+    return bool(context.get("daily_metrics") or context.get("daily_reviews") or context.get("activities"))
+
+
+def _derive_confidence(prepared_run: PreparedAssessmentRun) -> ConfidenceLabel:
+    context = prepared_run.context_snapshot.context
+    if prepared_run.profile_key == "daily_recovery_readiness_v1":
+        if context.get("daily_metrics") or context.get("daily_reviews"):
+            return ConfidenceLabel.MEDIUM
+        return ConfidenceLabel.LIMITED
     if context.get("activities") and context.get("daily_metrics"):
         return ConfidenceLabel.MEDIUM
     return ConfidenceLabel.LIMITED
 
 
 def _derive_run_status(prepared_run: PreparedAssessmentRun) -> AssessmentRunStatus:
-    if prepared_run.profile_key == "daily_execution_v1" and not prepared_run.context_snapshot.context.get("activities"):
+    context = prepared_run.context_snapshot.context
+    if prepared_run.profile_key == "daily_execution_v1" and not context.get("activities"):
+        return AssessmentRunStatus.PARTIAL_CONTEXT
+    if prepared_run.profile_key == "daily_recovery_readiness_v1" and not _has_recovery_readiness_evidence(context):
         return AssessmentRunStatus.PARTIAL_CONTEXT
     return AssessmentRunStatus.COMPLETED
 
@@ -331,14 +345,22 @@ def _derive_assessment_type_key(profile_key: str) -> str:
 
 
 def _derive_result_label(prepared_run: PreparedAssessmentRun) -> str:
-    has_activities = bool(prepared_run.context_snapshot.context.get("activities"))
+    context = prepared_run.context_snapshot.context
+    has_activities = bool(context.get("activities"))
     if prepared_run.profile_key == "daily_execution_v1":
         return "executed" if has_activities else "no_activity_recorded"
+    if prepared_run.profile_key == "daily_recovery_readiness_v1":
+        return "ready_check" if _has_recovery_readiness_evidence(context) else "limited_readiness"
     return "ready_check" if has_activities else "limited_readiness"
 
 
 def _derive_finding(prepared_run: PreparedAssessmentRun, output_text: str, confidence: ConfidenceLabel) -> tuple[FindingKind, FindingSeverity, str]:
-    if prepared_run.context_snapshot.context.get("activities"):
+    context = prepared_run.context_snapshot.context
+    if prepared_run.profile_key == "daily_recovery_readiness_v1":
+        if _has_recovery_readiness_evidence(context):
+            return FindingKind.RECOVERY_OBSERVATION, FindingSeverity.INFO, output_text
+        return FindingKind.DATA_CONFIDENCE, FindingSeverity.WATCH, output_text
+    if context.get("activities"):
         return FindingKind.NEXT_ACTION, FindingSeverity.INFO, output_text
     return FindingKind.DATA_CONFIDENCE, FindingSeverity.WATCH, output_text
 
@@ -373,7 +395,7 @@ def _persist_gateway_failure(connection, assessment_run_id: int, gateway_result:
 
 def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gateway_result: GatewayResult) -> None:
     principal_evidence = _principal_evidence_from_context(prepared_run.context_snapshot.context)
-    confidence = _derive_confidence(prepared_run.context_snapshot)
+    confidence = _derive_confidence(prepared_run)
     run_status = _derive_run_status(prepared_run)
     result_label = _derive_result_label(prepared_run)
     finding_kind, finding_severity, finding_text = _derive_finding(
