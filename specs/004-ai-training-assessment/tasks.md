@@ -50,8 +50,8 @@
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Add daily-run tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering manual trigger, completed daily execution output, and bounded no-activity daily assessments.
-- [ ] T012 [P] [US1] Add daily deduplication and failure tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering evidence fingerprint changes, `no_new_data`, `partial_context`, and `failed` run persistence.
+- [x] T011 [P] [US1] Add daily-run tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering manual trigger, completed daily execution output, and bounded no-activity daily assessments.
+- [x] T012 [P] [US1] Add daily deduplication and failure tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering evidence fingerprint changes, `no_new_data`, `partial_context`, and `failed` run persistence.
 
 ### Implementation for User Story 1
 
@@ -59,7 +59,7 @@
 - [x] T014 [US1] Implement the Daily Execution Agent and Daily Recovery And Readiness Agent flows in `GUI/backend/app/ai_profiles.py`, `GUI/backend/app/ai_gateway.py`, and `GUI/backend/app/ai_assessments.py`.
 - [x] T015 [US1] Persist daily assessment type results, grouped findings, confidence labels, evidence summaries, and bounded next-step guidance in `GUI/backend/app/ai_assessments.py` and `GUI/backend/app/ai_assessment_models.py`.
 - [x] T016 [US1] Extend `GUI/backend/app/main.py` to support `POST /api/assessments/runs` and `GET /api/assessments/runs/{assessment_run_id}` for the daily specialist-agent slice defined in `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
-- [ ] T017 [US1] Run the daily backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents`.
+- [x] T017 [US1] Run the daily backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents`.
 
 **Checkpoint**: Daily assessment runs are traceable, bounded on sparse data, and reviewable through the backend API without mutating the plan.
 
