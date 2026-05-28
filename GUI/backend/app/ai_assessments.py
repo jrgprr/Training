@@ -316,6 +316,12 @@ def _derive_confidence(snapshot: AssessmentContextSnapshot) -> ConfidenceLabel:
     return ConfidenceLabel.LIMITED
 
 
+def _derive_run_status(prepared_run: PreparedAssessmentRun) -> AssessmentRunStatus:
+    if prepared_run.profile_key == "daily_execution_v1" and not prepared_run.context_snapshot.context.get("activities"):
+        return AssessmentRunStatus.PARTIAL_CONTEXT
+    return AssessmentRunStatus.COMPLETED
+
+
 def _derive_assessment_type_key(profile_key: str) -> str:
     if profile_key == "daily_execution_v1":
         return "daily_execution"
@@ -368,6 +374,7 @@ def _persist_gateway_failure(connection, assessment_run_id: int, gateway_result:
 def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gateway_result: GatewayResult) -> None:
     principal_evidence = _principal_evidence_from_context(prepared_run.context_snapshot.context)
     confidence = _derive_confidence(prepared_run.context_snapshot)
+    run_status = _derive_run_status(prepared_run)
     result_label = _derive_result_label(prepared_run)
     finding_kind, finding_severity, finding_text = _derive_finding(
         prepared_run,
@@ -392,7 +399,7 @@ def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gate
         WHERE assessment_run_id = ?
         """,
         (
-            AssessmentRunStatus.COMPLETED.value,
+            run_status.value,
             gateway_result.provider_key,
             gateway_result.model_name,
             gateway_result.prompt_hash,
@@ -476,10 +483,11 @@ def execute_assessment_run(request: AssessmentRunTriggerRequest) -> PreparedAsse
     with get_connection() as connection:
         if gateway_result.run_status is AssessmentRunStatus.COMPLETED:
             _persist_completed_run(connection, prepared_run, gateway_result)
+            persisted_run_status = _derive_run_status(prepared_run)
             return PreparedAssessmentRun(
                 assessment_run_id=prepared_run.assessment_run_id,
                 assessment_window_id=prepared_run.assessment_window_id,
-                run_status=AssessmentRunStatus.COMPLETED,
+                run_status=persisted_run_status,
                 context_snapshot=prepared_run.context_snapshot,
                 profile_key=prepared_run.profile_key,
                 profile_display_name=prepared_run.profile_display_name,
