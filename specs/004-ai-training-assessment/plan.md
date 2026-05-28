@@ -8,7 +8,7 @@
 
 ## Summary
 
-Add a backend-owned AI assessment orchestration slice that runs specialized LLM agent profiles across daily, weekly, block, and season windows using SQLite-backed plan, execution, recovery, quality, and review context; persists each assessment run, finding, proposal, and operator decision in SQLite; and exposes thin GUI review and approval surfaces without allowing AI output to mutate the canonical plan until an operator approves a proposal. Version 1 starts with four explicit specialist profiles, keeps the frontend as a reader/action layer, and treats markdown planning files as manually maintained human views rather than runtime state.
+Add a backend-owned AI assessment orchestration slice that runs specialized LLM agent profiles across daily, weekly, block, and season windows using SQLite-backed plan, execution, recovery, quality, and review context; persists each assessment run, finding, proposal, operator decision, and bounded assessment-dialog clarification in SQLite; and exposes thin GUI review, dialog, and approval surfaces without allowing AI output to mutate the canonical plan until an operator approves a proposal. Version 1 starts with four explicit specialist profiles, keeps the frontend as a reader/action layer, supports guided follow-up dialog around persisted assessments, and treats markdown planning files as manually maintained human views rather than runtime state.
 
 ## Technical Context
 
@@ -26,7 +26,7 @@ Add a backend-owned AI assessment orchestration slice that runs specialized LLM 
 
 **Performance Goals**: Daily assessment available from the application in under 2 minutes when new data exists; weekly/block review inspectable in under 3 minutes; duplicate runs avoided for unchanged cadence windows; explicit `no_new_data`/`partial_context`/`failed` outcomes persisted instead of silent retries or pseudo-results
 
-**Constraints**: SQLite remains canonical; runtime assessment context is assembled from backend-owned structured data, not markdown; frontend stays thin; multiple specialist LLM agent profiles must coexist per cadence; proposal approval is required before any plan mutation; local-first workflow is preserved even if an external LLM provider is used transiently; LLM failures must persist explicit failed/incomplete outcomes; markdown plan views remain manually maintained in v1 and are not mutated automatically by accepted proposals
+**Constraints**: SQLite remains canonical; runtime assessment context is assembled from backend-owned structured data, not markdown; frontend stays thin; multiple specialist LLM agent profiles must coexist per cadence; proposal approval is required before any plan mutation; bounded follow-up dialog and user clarifications must remain anchored to persisted assessments/proposals rather than becoming free-form generic chat; local-first workflow is preserved even if an external LLM provider is used transiently; LLM failures must persist explicit failed/incomplete outcomes; markdown plan views remain manually maintained in v1 and are not mutated automatically by accepted proposals
 
 **Scale/Scope**: Current single-athlete local dataset; v1 covers Daily Execution, Daily Recovery And Readiness, Weekly Adherence And Adequacy, and Block Performance Direction agent profiles with proposal capability targeting the next planning layer; season cadence support is designed into storage and APIs even if the first shipped roster is smaller than the full catalog
 
@@ -105,6 +105,6 @@ Sistema/
 
 - PASS: The design keeps SQLite canonical by treating assessment runs, findings, proposals, proposal decisions, and accepted-plan traceability as structured local data.
 - PASS: Markdown remains outside runtime decision paths; accepted proposals update SQLite-backed planning surfaces first and any markdown synchronization remains an explicit later workflow.
-- PASS: The frontend stays thin by consuming backend-derived cadence summaries, finding groups, proposal metadata, and approval actions rather than embedding coaching logic or prompt logic.
+- PASS: The frontend stays thin by consuming backend-derived cadence summaries, finding groups, dialog context, proposal metadata, and approval actions rather than embedding coaching logic or prompt logic.
 - PASS: External AI calls remain reviewable because each run stores agent profile identity, analysis window, relevant evidence references, provider/model metadata, and explicit failure states.
 - PASS: Validation remains executable and local to touched slices: backend tests for orchestration/deduplication/approval boundaries, targeted SQLite inspection, and frontend build validation.

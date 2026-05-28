@@ -188,7 +188,31 @@
 
 - Every accepted proposal that mutates the canonical plan should have exactly one mutation linkage record.
 
-## 9. AssessmentReviewView
+## 9. AssessmentDialogContext
+
+- Purpose: Persist bounded follow-up questions and user clarifications tied to a specific assessment run or proposal.
+- Proposed storage: new table `agent_assessment_dialog_context`.
+
+### Core fields
+
+- `dialog_context_id`: integer primary key.
+- `assessment_run_id`: nullable foreign key to `agent_assessment_runs.assessment_run_id`.
+- `proposal_id`: nullable foreign key to `agent_adaptation_proposals.proposal_id`.
+- `entry_kind`: `user_question`, `user_clarification`, `assistant_response`, or `system_note`.
+- `entry_scope`: bounded scope such as `assessment_summary`, `finding`, `proposal`, or `reassessment_request`.
+- `clarification_kind`: nullable stable key such as `schedule_shift`, `session_swap`, `missing_context`, `device_issue`, or `execution_intent`.
+- `entry_text`: persisted dialog text.
+- `linked_evidence_json`: nullable JSON/text references to canonical entities or affected proposal fields.
+- `created_at`: timestamp.
+- `created_by`: text actor identifier such as `local-operator`, `athlete`, or `system`.
+
+### Constraints
+
+- At least one of `assessment_run_id` or `proposal_id` must be present.
+- Dialog context does not mutate canonical plan or execution state directly.
+- Clarifications remain reviewable inputs and may be linked to a later reassessment run or proposal decision.
+
+## 10. AssessmentReviewView
 
 - Purpose: Provide a thin read model for the GUI and API.
 - Storage: derived from the canonical tables above in `Sistema/views.sql` or backend query helpers.
@@ -200,6 +224,7 @@
 - grouped findings
 - confidence and evidence summary
 - linked proposals and current decision state
+- linked bounded dialog context and clarification history
 - source cadence to target planning level mapping
 
 ## State Transitions
@@ -230,3 +255,4 @@
 - `failed` and `partial_context` runs must still persist provider/model/profile provenance.
 - Accepted proposals cannot be applied without a recorded operator decision.
 - Multiple profiles in the same cadence may produce independent runs and proposals for the same window without being collapsed automatically.
+- User clarifications must persist as dialog context first and only influence canonical conclusions through a traceable reassessment or proposal-decision flow.

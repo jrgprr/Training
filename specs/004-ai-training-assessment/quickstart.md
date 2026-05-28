@@ -2,7 +2,7 @@
 
 ## Goal
 
-Validate that the local application can trigger specialist LLM assessment runs from canonical SQLite context, persist runs/findings/proposals/decisions in SQLite, expose thin review surfaces through the backend API and frontend, and enforce proposal approval before any canonical plan mutation.
+Validate that the local application can trigger specialist LLM assessment runs from canonical SQLite context, persist runs/findings/proposals/decisions/dialog context in SQLite, expose thin review and bounded dialog surfaces through the backend API and frontend, and enforce proposal approval before any canonical plan mutation.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ npm run build
 ```
 
 Expected outcome:
-- The thin GUI compiles while rendering cadence summaries, assessment detail, proposal review state, and approval actions entirely from backend payloads.
+- The thin GUI compiles while rendering cadence summaries, assessment detail, bounded dialog context, proposal review state, and approval actions entirely from backend payloads.
 
 ## 4. Trigger a daily assessment run
 
@@ -96,7 +96,27 @@ Expected outcome:
 - An accepted decision creates a canonical plan-mutation trace record linked back to the proposal and source assessment run.
 - No canonical plan mutation occurs before this approval action.
 
-## 7. Inspect canonical SQLite state
+## 7. Add a bounded clarification to an assessment
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/assessments/runs/RUN_ID/dialog \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "entry_kind": "user_clarification",
+    "entry_scope": "assessment_summary",
+    "clarification_kind": "schedule_shift",
+    "entry_text": "The planned Thursday ride was actually completed on Wednesday.",
+    "created_by": "athlete",
+    "request_reassessment": true
+  }' | jq
+```
+
+Expected outcome:
+- The backend persists the clarification as dialog context tied to the assessment run.
+- The clarification does not silently overwrite canonical plan or execution records.
+- If reassessment is requested, the system records a traceable reassessment flow rather than mutating the prior run in place.
+
+## 8. Inspect canonical SQLite state
 
 ```bash
 sqlite3 /home/jparra/Training/Sistema/training.sqlite <<'SQL'
@@ -137,6 +157,15 @@ SELECT proposal_id,
        applied_change_ref
 FROM agent_proposal_decisions
 ORDER BY proposal_decision_id DESC;
+
+SELECT dialog_context_id,
+       assessment_run_id,
+       proposal_id,
+       entry_kind,
+       clarification_kind,
+       created_by
+FROM agent_assessment_dialog_context
+ORDER BY dialog_context_id DESC;
 SQL
 ```
 
@@ -144,8 +173,9 @@ Expected outcome:
 - Profiles, runs, findings, proposals, and decisions are all persisted in SQLite.
 - Failed or incomplete runs remain visible with explicit status rather than disappearing.
 - Accepted proposals link to canonical plan mutation records.
+- Dialog clarifications remain visible as reviewable context without silently changing canonical plan or execution rows.
 
-## 8. Check duplicate-run behavior
+## 9. Check duplicate-run behavior
 
 1. Trigger the same daily or weekly assessment twice without importing new data or editing relevant reviews.
 2. Trigger it again after changing a relevant review, daily metric, or linked activity inside the same cadence window.

@@ -144,9 +144,60 @@ Response:
       "target_planning_level": "block",
       "proposal_title": "Hold block progression for one extra week"
     }
+  ],
+  "dialog_context": [
+    {
+      "dialog_context_id": 3,
+      "entry_kind": "user_clarification",
+      "entry_scope": "assessment_summary",
+      "clarification_kind": "schedule_shift",
+      "entry_text": "The planned Thursday ride was actually completed on Wednesday.",
+      "created_at": "2026-05-28T10:00:00Z",
+      "created_by": "athlete"
+    }
   ]
 }
 ```
+
+### `POST /api/assessments/runs/{assessment_run_id}/dialog`
+
+- Purpose: record a bounded follow-up question or user clarification tied to an assessment run.
+
+Request body:
+
+```json
+{
+  "entry_kind": "user_clarification",
+  "entry_scope": "assessment_summary",
+  "clarification_kind": "schedule_shift",
+  "entry_text": "The planned Thursday ride was actually completed on Wednesday.",
+  "created_by": "athlete",
+  "request_reassessment": true
+}
+```
+
+Response:
+
+```json
+{
+  "dialog_context_id": 3,
+  "assessment_run_id": 24,
+  "entry_kind": "user_clarification",
+  "entry_scope": "assessment_summary",
+  "clarification_kind": "schedule_shift",
+  "entry_text": "The planned Thursday ride was actually completed on Wednesday.",
+  "created_at": "2026-05-28T10:00:00Z",
+  "reassessment": {
+    "requested": true,
+    "status": "queued"
+  }
+}
+```
+
+Behavior notes:
+- This endpoint persists dialog context; it does not mutate canonical plan or execution records directly.
+- `request_reassessment = true` may trigger a bounded reassessment flow tied to the same cadence window.
+- Free-form generic chat outside a persisted assessment or proposal context is out of scope.
 
 ### `GET /api/proposals`
 
@@ -207,6 +258,16 @@ Response:
     "window_start_date": "2026-05-19",
     "window_end_date": "2026-05-25"
   },
+  "dialog_context": [
+    {
+      "dialog_context_id": 4,
+      "entry_kind": "user_question",
+      "entry_scope": "proposal",
+      "entry_text": "Why does this proposal extend stabilization instead of reducing intensity?",
+      "created_at": "2026-05-28T10:05:00Z",
+      "created_by": "local-operator"
+    }
+  ],
   "current_decision": null
 }
 ```
@@ -255,6 +316,7 @@ Behavior notes:
 - All completed assessment outputs must originate from an LLM run tied to an `agent_profile_key`.
 - The backend may compute evidence summaries and validation guards, but the interpretive assessment text must come from the LLM-backed run.
 - Multiple profiles may produce independent runs for the same cadence window.
+- Assessment detail and proposal detail may include bounded dialog context and user clarifications tied to the persisted artifact.
 - Proposal targets must obey cadence boundaries: daily to weekly, weekly to block, block to season, season to macro.
 - The frontend must not infer approval state or coaching conclusions locally; it renders backend-provided status and details only.
 - If the LLM is unavailable or misconfigured, the run must still persist with `failed` or `partial_context` status and operator-readable detail.
