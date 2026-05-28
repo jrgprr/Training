@@ -268,9 +268,13 @@ Response:
       "created_by": "local-operator"
     }
   ],
-  "current_decision": null
+  "decision_history": []
 }
 ```
+
+Behavior notes:
+- `proposed_change` includes the persisted `change_kind` plus the structured target/change payload stored for the proposal.
+- `decision_history` is returned newest first and remains empty until the proposal is finalized.
 
 ### `POST /api/proposals/{proposal_id}/decision`
 
@@ -295,8 +299,10 @@ Response:
   "decision": {
     "proposal_decision_id": 4,
     "decision_status": "accepted",
+    "decision_note": "Reduce the next progression step and keep intensity stable.",
     "decided_by": "local-operator",
-    "decided_at": "2026-05-28T09:31:00Z"
+    "decided_at": "2026-05-28T09:31:00Z",
+    "applied_change_ref": "plan_mutation:3"
   },
   "plan_mutation": {
     "plan_mutation_id": 3,
@@ -310,6 +316,7 @@ Behavior notes:
 - `accepted` applies the canonical SQLite plan mutation through backend validation logic.
 - `rejected` preserves the proposal history without mutating the plan.
 - `superseded` requires either a replacement proposal or an explicit supersession note.
+- Repeating a decision for a non-pending proposal returns `409` instead of rewriting the prior outcome.
 
 ## Behavior Rules
 

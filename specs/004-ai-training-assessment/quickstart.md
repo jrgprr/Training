@@ -77,7 +77,8 @@ curl -s 'http://127.0.0.1:8000/api/proposals?season_id=2026&status=pending' | jq
 Expected outcome:
 - Latest cadence payload identifies the producing agent profile, run status, analysis window, and summary.
 - Run detail includes grouped findings, principal evidence references, and confidence limits.
-- Proposal list shows pending target-planning-level changes without mutating the canonical plan.
+- Proposal list shows target-planning-level changes without mutating the canonical plan.
+- Proposal detail returns linked source assessment metadata, any persisted proposal dialog context, and decision history when present.
 
 ## 6. Accept or reject a proposal
 
@@ -94,6 +95,7 @@ curl -s -X POST http://127.0.0.1:8000/api/proposals/PROPOSAL_ID/decision \
 Expected outcome:
 - The proposal transitions from `pending` to `accepted` or `rejected`.
 - An accepted decision creates a canonical plan-mutation trace record linked back to the proposal and source assessment run.
+- The decision response includes both the persisted decision payload and, for accepted proposals, a `plan_mutation` summary plus an `applied_change_ref` on the decision.
 - No canonical plan mutation occurs before this approval action.
 
 ## 7. Add a bounded clarification to an assessment
