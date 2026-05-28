@@ -35,7 +35,7 @@
 - [x] T006 [P] Create `GUI/backend/app/ai_assessment_models.py` for shared enums, Pydantic request/response models, and serialization helpers covering cadences, run statuses, finding kinds, proposal states, decision payloads, and assessment dialog entries.
 - [x] T007 [P] Create `GUI/backend/app/ai_profiles.py` and update `Agentes/README.md` with the v1 specialist profile registry (`daily_execution_v1`, `daily_recovery_readiness_v1`, `weekly_adherence_adequacy_v1`, `block_performance_direction_v1`) plus season-capable cadence metadata.
 - [x] T008 Create `GUI/backend/app/ai_gateway.py` for provider-agnostic LLM invocation, prompt/instruction version provenance, timeout handling, and explicit failed/incomplete run recording.
-- [ ] T009 Create `GUI/backend/app/ai_context.py` and `GUI/backend/app/ai_assessments.py` for cadence window resolution, evidence fingerprinting, deduplication, rerun handling, and backend-owned context assembly from plan, activity, recovery, quality, segment, and review data.
+- [x] T009 Create `GUI/backend/app/ai_context.py` and `GUI/backend/app/ai_assessments.py` for cadence window resolution, evidence fingerprinting, deduplication, rerun handling, and backend-owned context assembly from plan, activity, recovery, quality, segment, and review data.
 - [ ] T010 Wire the shared assessment services into `GUI/backend/app/main.py` and `GUI/backend/app/db.py` so later story work reuses one API boundary, one persistence boundary, and one error-handling path.
 
 **Checkpoint**: Canonical schema, shared models, LLM gateway, and orchestration foundations are ready for story implementation.
