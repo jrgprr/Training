@@ -80,8 +80,8 @@
 
 - [x] T020 [US2] Extend `GUI/backend/app/ai_profiles.py` and `GUI/backend/app/ai_assessments.py` with the Weekly Adherence And Adequacy Agent and Block Performance Direction Agent plus season-capable cadence/window support aligned to `specs/004-ai-training-assessment/data-model.md`.
 - [x] T021 [US2] Create `GUI/backend/app/ai_proposals.py` and update `GUI/backend/app/ai_assessment_models.py` so specialist agents can emit proposals directly with conflict-group keys, source cadence, target planning level, and preserved concurrent proposal history.
-- [ ] T022 [US2] Implement approval-gated canonical plan mutation tracing in `GUI/backend/app/ai_proposals.py`, `Sistema/schema.sql`, and `Sistema/views.sql` so accepted proposals update SQLite planning state first and never mutate markdown.
-- [ ] T023 [US2] Extend `GUI/backend/app/main.py` to expose `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, and `POST /api/proposals/{proposal_id}/decision` using backend-owned validation and status transitions.
+- [x] T022 [US2] Implement approval-gated canonical plan mutation tracing in `GUI/backend/app/ai_proposals.py`, `Sistema/schema.sql`, and `Sistema/views.sql` so accepted proposals update SQLite planning state first and never mutate markdown.
+- [x] T023 [US2] Extend `GUI/backend/app/main.py` to expose `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, and `POST /api/proposals/{proposal_id}/decision` using backend-owned validation and status transitions.
 - [ ] T024 [US2] Keep payload shape and manual validation aligned by updating `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md` and `specs/004-ai-training-assessment/quickstart.md` if concrete response fields or decision semantics shift during implementation.
 - [ ] T025 [US2] Run the multi-cadence backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents` plus targeted SQLite assertions for proposals and decisions.
 

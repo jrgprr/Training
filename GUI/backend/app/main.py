@@ -6,9 +6,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalStatus, serialize_model
+from .ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalStatus, serialize_model
 from .ai_assessments import build_assessment_run_trigger_response, execute_assessment_run, get_assessment_run_detail, list_latest_assessment_runs
-from .ai_proposals import get_proposal_detail, list_proposals_for_review
+from .ai_proposals import ProposalConflictError, decide_proposal, get_proposal_detail, list_proposals_for_review
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -110,6 +110,20 @@ def get_proposal(proposal_id: int) -> dict[str, Any]:
     if payload is None:
         raise HTTPException(status_code=404, detail=f"No existe la propuesta {proposal_id}.")
     return serialize_model(payload)
+
+
+@app.post("/api/proposals/{proposal_id}/decision")
+def decide_assessment_proposal(proposal_id: int, payload: ProposalDecisionRequest) -> dict[str, Any]:
+    try:
+        response = decide_proposal(proposal_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ProposalConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    return serialize_model(response)
 
 
 def get_week_context(week_id: int) -> dict[str, Any]:

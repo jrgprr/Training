@@ -268,6 +268,19 @@ class ProposalDecisionPayload(BaseModel):
     applied_change_ref: str | None = None
 
 
+class AcceptedPlanMutationPayload(BaseModel):
+    plan_mutation_id: int
+    target_planning_level: TargetPlanningLevel
+    mutation_summary: str
+
+
+class ProposalDecisionResponse(BaseModel):
+    proposal_id: int
+    proposal_status: ProposalStatus
+    decision: ProposalDecisionPayload
+    plan_mutation: AcceptedPlanMutationPayload | None = None
+
+
 class ProposalDetailResponse(BaseModel):
     proposal_id: int
     proposal_status: ProposalStatus
