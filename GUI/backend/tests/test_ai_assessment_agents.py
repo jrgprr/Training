@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest
 from app.ai_assessments import register_gateway_provider
+from app.ai_context import build_assessment_context
 from app.db import get_connection, initialize_database
-from app.main import create_assessment_run
+from app.main import create_assessment_run, get_assessment_run
 from tests.test_ai_assessment_api import AssessmentApiTests
 from tests.test_ai_assessment_context import create_minimal_assessment_source_tables, seed_assessment_context_data
 
@@ -109,6 +110,177 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
 
                 self.assertEqual(totals["run_total"], 2)
                 self.assertEqual(window_totals["window_total"], 2)
+
+    def test_weekly_and_block_profiles_persist_profile_specific_outputs(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                if invocation.profile_key == "weekly_adherence_adequacy_v1":
+                    return "The week broadly followed its intended structure with manageable deviations."
+                return "The block direction remains constructive based on recent execution and benchmark signals."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (501, 2026, 1, 11, 'closed', 0.9, 1.0, 85, 90, -5, 'low', 'Maintain the week intent.', 'Strong weekly traceability.')
+                        """
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_segments (
+                            segment_id,
+                            source_system,
+                            external_segment_id,
+                            segment_name,
+                            discipline
+                        ) VALUES (601, 'garmin', 'segment-601', 'Tempo climb', 'road_biking')
+                        """
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_segment_efforts (
+                            segment_effort_id,
+                            source_system,
+                            external_segment_effort_id,
+                            segment_id,
+                            activity_id,
+                            activity_date,
+                            started_at,
+                            elapsed_time_seconds,
+                            avg_power,
+                            avg_cadence,
+                            avg_heart_rate,
+                            max_heart_rate
+                        ) VALUES (701, 'garmin', 'effort-701', 601, 201, '2026-05-28', '2026-05-28T07:30:00', 420, 255, 82, 152, 165)
+                        """
+                    )
+
+                weekly_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+                block_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.BLOCK,
+                        agent_profile_key="block_performance_direction_v1",
+                        season_id=2026,
+                        block_id=1,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-22",
+                    )
+                )
+
+                self.assertEqual(weekly_run["run_status"], "completed")
+                self.assertEqual(weekly_run["result_summary"]["confidence_label"], "medium")
+                self.assertEqual(block_run["run_status"], "completed")
+                self.assertEqual(block_run["result_summary"]["confidence_label"], "medium")
+
+                weekly_detail = get_assessment_run(weekly_run["assessment_run_id"])
+                block_detail = get_assessment_run(block_run["assessment_run_id"])
+
+                self.assertEqual(weekly_detail["assessment_type_results"][0]["assessment_type_key"], "weekly_adherence_adequacy")
+                self.assertEqual(weekly_detail["assessment_type_results"][0]["result_label"], "weekly_on_plan")
+                self.assertEqual(weekly_detail["findings"][0]["finding_kind"], "adherence_observation")
+                self.assertIn("review_weekly_reviews available", weekly_detail["principal_evidence"])
+                self.assertEqual(block_detail["assessment_type_results"][0]["assessment_type_key"], "block_performance_direction")
+                self.assertEqual(block_detail["assessment_type_results"][0]["result_label"], "direction_established")
+                self.assertEqual(block_detail["findings"][0]["finding_kind"], "performance_signal")
+
+    def test_assessment_context_supports_season_scoped_windows_without_inferring_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ):
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                snapshot = build_assessment_context(
+                    cadence=AssessmentCadence.SEASON,
+                    season_id=2026,
+                    window_start_date="2026-01-01",
+                    window_end_date="2026-12-31",
+                )
+
+                self.assertEqual(snapshot.window.subject_scope_key, "season:2026")
+                self.assertIsNone(snapshot.window.block_id)
+                self.assertIsNone(snapshot.window.week_id)
+
+    def test_runs_for_same_window_are_isolated_by_profile(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return f"Assessment generated for {invocation.profile_key}."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                execution_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_execution_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+                readiness_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_recovery_readiness_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+
+                self.assertEqual(execution_run["run_status"], "completed")
+                self.assertEqual(readiness_run["run_status"], "completed")
+                self.assertNotEqual(execution_run["assessment_run_id"], readiness_run["assessment_run_id"])
+                self.assertEqual(execution_run["assessment_window_id"], readiness_run["assessment_window_id"])
+
+                with get_connection() as connection:
+                    run_count = connection.execute(
+                        "SELECT COUNT(*) AS total FROM agent_assessment_runs"
+                    ).fetchone()["total"]
+
+                self.assertEqual(run_count, 2)
 
 
 if __name__ == "__main__":

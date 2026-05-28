@@ -316,10 +316,26 @@ def _has_recovery_readiness_evidence(context: dict[str, Any]) -> bool:
     return bool(context.get("daily_metrics") or context.get("daily_reviews") or context.get("activities"))
 
 
+def _has_weekly_evidence(context: dict[str, Any]) -> bool:
+    return bool(context.get("planned_sessions") or context.get("activities") or context.get("daily_reviews") or context.get("weekly_review"))
+
+
+def _has_block_evidence(context: dict[str, Any]) -> bool:
+    return bool(context.get("activities") or context.get("segment_summary") or context.get("daily_reviews") or context.get("planned_sessions"))
+
+
 def _derive_confidence(prepared_run: PreparedAssessmentRun) -> ConfidenceLabel:
     context = prepared_run.context_snapshot.context
     if prepared_run.profile_key == "daily_recovery_readiness_v1":
         if context.get("daily_metrics") or context.get("daily_reviews"):
+            return ConfidenceLabel.MEDIUM
+        return ConfidenceLabel.LIMITED
+    if prepared_run.profile_key == "weekly_adherence_adequacy_v1":
+        if context.get("planned_sessions") and (context.get("activities") or context.get("weekly_review")):
+            return ConfidenceLabel.MEDIUM
+        return ConfidenceLabel.LIMITED
+    if prepared_run.profile_key == "block_performance_direction_v1":
+        if context.get("activities") and context.get("segment_summary"):
             return ConfidenceLabel.MEDIUM
         return ConfidenceLabel.LIMITED
     if context.get("activities") and context.get("daily_metrics"):
@@ -332,6 +348,10 @@ def _derive_run_status(prepared_run: PreparedAssessmentRun) -> AssessmentRunStat
     if prepared_run.profile_key == "daily_execution_v1" and not context.get("activities"):
         return AssessmentRunStatus.PARTIAL_CONTEXT
     if prepared_run.profile_key == "daily_recovery_readiness_v1" and not _has_recovery_readiness_evidence(context):
+        return AssessmentRunStatus.PARTIAL_CONTEXT
+    if prepared_run.profile_key == "weekly_adherence_adequacy_v1" and not _has_weekly_evidence(context):
+        return AssessmentRunStatus.PARTIAL_CONTEXT
+    if prepared_run.profile_key == "block_performance_direction_v1" and not _has_block_evidence(context):
         return AssessmentRunStatus.PARTIAL_CONTEXT
     return AssessmentRunStatus.COMPLETED
 
@@ -351,6 +371,10 @@ def _derive_result_label(prepared_run: PreparedAssessmentRun) -> str:
         return "executed" if has_activities else "no_activity_recorded"
     if prepared_run.profile_key == "daily_recovery_readiness_v1":
         return "ready_check" if _has_recovery_readiness_evidence(context) else "limited_readiness"
+    if prepared_run.profile_key == "weekly_adherence_adequacy_v1":
+        return "weekly_on_plan" if _has_weekly_evidence(context) else "limited_week_review"
+    if prepared_run.profile_key == "block_performance_direction_v1":
+        return "direction_established" if _has_block_evidence(context) else "limited_block_review"
     return "ready_check" if has_activities else "limited_readiness"
 
 
@@ -359,6 +383,14 @@ def _derive_finding(prepared_run: PreparedAssessmentRun, output_text: str, confi
     if prepared_run.profile_key == "daily_recovery_readiness_v1":
         if _has_recovery_readiness_evidence(context):
             return FindingKind.RECOVERY_OBSERVATION, FindingSeverity.INFO, output_text
+        return FindingKind.DATA_CONFIDENCE, FindingSeverity.WATCH, output_text
+    if prepared_run.profile_key == "weekly_adherence_adequacy_v1":
+        if _has_weekly_evidence(context):
+            return FindingKind.ADHERENCE_OBSERVATION, FindingSeverity.INFO, output_text
+        return FindingKind.DATA_CONFIDENCE, FindingSeverity.WATCH, output_text
+    if prepared_run.profile_key == "block_performance_direction_v1":
+        if _has_block_evidence(context):
+            return FindingKind.PERFORMANCE_SIGNAL, FindingSeverity.INFO, output_text
         return FindingKind.DATA_CONFIDENCE, FindingSeverity.WATCH, output_text
     if context.get("activities"):
         return FindingKind.NEXT_ACTION, FindingSeverity.INFO, output_text

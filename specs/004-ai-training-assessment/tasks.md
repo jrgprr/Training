@@ -73,12 +73,12 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Add multi-cadence orchestration tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering weekly runs, block runs, season-capable window validation, and concurrent profile runs for the same window.
+- [x] T018 [P] [US2] Add multi-cadence orchestration tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering weekly runs, block runs, season-capable window validation, and concurrent profile runs for the same window.
 - [ ] T019 [P] [US2] Add proposal workflow and contract tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering proposal emission, cadence-to-target boundary validation, `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, `POST /api/proposals/{proposal_id}/decision`, and bounded assessment-dialog persistence.
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Extend `GUI/backend/app/ai_profiles.py` and `GUI/backend/app/ai_assessments.py` with the Weekly Adherence And Adequacy Agent and Block Performance Direction Agent plus season-capable cadence/window support aligned to `specs/004-ai-training-assessment/data-model.md`.
+- [x] T020 [US2] Extend `GUI/backend/app/ai_profiles.py` and `GUI/backend/app/ai_assessments.py` with the Weekly Adherence And Adequacy Agent and Block Performance Direction Agent plus season-capable cadence/window support aligned to `specs/004-ai-training-assessment/data-model.md`.
 - [ ] T021 [US2] Create `GUI/backend/app/ai_proposals.py` and update `GUI/backend/app/ai_assessment_models.py` so specialist agents can emit proposals directly with conflict-group keys, source cadence, target planning level, and preserved concurrent proposal history.
 - [ ] T022 [US2] Implement approval-gated canonical plan mutation tracing in `GUI/backend/app/ai_proposals.py`, `Sistema/schema.sql`, and `Sistema/views.sql` so accepted proposals update SQLite planning state first and never mutate markdown.
 - [ ] T023 [US2] Extend `GUI/backend/app/main.py` to expose `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, and `POST /api/proposals/{proposal_id}/decision` using backend-owned validation and status transitions.

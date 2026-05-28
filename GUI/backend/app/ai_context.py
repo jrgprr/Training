@@ -348,10 +348,15 @@ def _build_context_payload(
     window_end_date: str,
 ) -> AssessmentContextSnapshot:
     season = _get_season_row(connection, season_id)
-    week_row = _resolve_week_row(connection, season_id, week_id, window_start_date, window_end_date)
-    resolved_block_id = block_id or (week_row["block_id"] if week_row is not None else None)
-    block_row = _resolve_block_row(connection, season_id, resolved_block_id, window_start_date, window_end_date)
-    resolved_week_id = week_row["week_id"] if week_row is not None else week_id
+    if cadence is AssessmentCadence.SEASON:
+        week_row = None
+        block_row = _resolve_block_row(connection, season_id, block_id, window_start_date, window_end_date) if block_id is not None else None
+        resolved_week_id = week_id
+    else:
+        week_row = _resolve_week_row(connection, season_id, week_id, window_start_date, window_end_date)
+        resolved_block_id = block_id or (week_row["block_id"] if week_row is not None else None)
+        block_row = _resolve_block_row(connection, season_id, resolved_block_id, window_start_date, window_end_date)
+        resolved_week_id = week_row["week_id"] if week_row is not None else week_id
     subject_scope_key = _build_subject_scope_key(cadence, season, block_row, week_row, window_start_date, window_end_date)
 
     context = {
