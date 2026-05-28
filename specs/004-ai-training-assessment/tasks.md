@@ -31,7 +31,7 @@
 **⚠️ CRITICAL**: No user story work should start until this phase is complete.
 
 - [x] T004 Update `Sistema/schema.sql` and `GUI/backend/app/db.py` to create the canonical assessment tables for profiles, windows, runs, type results, findings, proposals, proposal decisions, accepted plan mutations, and bounded dialog context with cadence and target-level constraints.
-- [ ] T005 [P] Extend `Sistema/views.sql` with thin read models for latest cadence summaries, assessment detail, proposal review queues, decision history, and accepted-mutation traceability.
+- [x] T005 [P] Extend `Sistema/views.sql` with thin read models for latest cadence summaries, assessment detail, proposal review queues, decision history, and accepted-mutation traceability.
 - [x] T006 [P] Create `GUI/backend/app/ai_assessment_models.py` for shared enums, Pydantic request/response models, and serialization helpers covering cadences, run statuses, finding kinds, proposal states, decision payloads, and assessment dialog entries.
 - [x] T007 [P] Create `GUI/backend/app/ai_profiles.py` and update `Agentes/README.md` with the v1 specialist profile registry (`daily_execution_v1`, `daily_recovery_readiness_v1`, `weekly_adherence_adequacy_v1`, `block_performance_direction_v1`) plus season-capable cadence metadata.
 - [x] T008 Create `GUI/backend/app/ai_gateway.py` for provider-agnostic LLM invocation, prompt/instruction version provenance, timeout handling, and explicit failed/incomplete run recording.
