@@ -30,11 +30,11 @@
 
 **⚠️ CRITICAL**: No user story work should start until this phase is complete.
 
-- [ ] T004 Update `Sistema/schema.sql` and `GUI/backend/app/db.py` to create the canonical assessment tables for profiles, windows, runs, type results, findings, proposals, proposal decisions, and accepted plan mutations with cadence and target-level constraints.
+- [x] T004 Update `Sistema/schema.sql` and `GUI/backend/app/db.py` to create the canonical assessment tables for profiles, windows, runs, type results, findings, proposals, proposal decisions, accepted plan mutations, and bounded dialog context with cadence and target-level constraints.
 - [ ] T005 [P] Extend `Sistema/views.sql` with thin read models for latest cadence summaries, assessment detail, proposal review queues, decision history, and accepted-mutation traceability.
-- [ ] T006 [P] Create `GUI/backend/app/ai_assessment_models.py` for shared enums, Pydantic request/response models, and serialization helpers covering cadences, run statuses, finding kinds, proposal states, and decision payloads.
-- [ ] T007 [P] Create `GUI/backend/app/ai_profiles.py` and update `Agentes/README.md` with the v1 specialist profile registry (`daily_execution_v1`, `daily_recovery_readiness_v1`, `weekly_adherence_adequacy_v1`, `block_performance_direction_v1`) plus season-capable cadence metadata.
-- [ ] T008 Create `GUI/backend/app/ai_gateway.py` for provider-agnostic LLM invocation, prompt/instruction version provenance, timeout handling, and explicit failed/incomplete run recording.
+- [x] T006 [P] Create `GUI/backend/app/ai_assessment_models.py` for shared enums, Pydantic request/response models, and serialization helpers covering cadences, run statuses, finding kinds, proposal states, decision payloads, and assessment dialog entries.
+- [x] T007 [P] Create `GUI/backend/app/ai_profiles.py` and update `Agentes/README.md` with the v1 specialist profile registry (`daily_execution_v1`, `daily_recovery_readiness_v1`, `weekly_adherence_adequacy_v1`, `block_performance_direction_v1`) plus season-capable cadence metadata.
+- [x] T008 Create `GUI/backend/app/ai_gateway.py` for provider-agnostic LLM invocation, prompt/instruction version provenance, timeout handling, and explicit failed/incomplete run recording.
 - [ ] T009 Create `GUI/backend/app/ai_context.py` and `GUI/backend/app/ai_assessments.py` for cadence window resolution, evidence fingerprinting, deduplication, rerun handling, and backend-owned context assembly from plan, activity, recovery, quality, segment, and review data.
 - [ ] T010 Wire the shared assessment services into `GUI/backend/app/main.py` and `GUI/backend/app/db.py` so later story work reuses one API boundary, one persistence boundary, and one error-handling path.
 
@@ -74,7 +74,7 @@
 ### Tests for User Story 2
 
 - [ ] T018 [P] [US2] Add multi-cadence orchestration tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering weekly runs, block runs, season-capable window validation, and concurrent profile runs for the same window.
-- [ ] T019 [P] [US2] Add proposal workflow and contract tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering proposal emission, cadence-to-target boundary validation, `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, and `POST /api/proposals/{proposal_id}/decision`.
+- [ ] T019 [P] [US2] Add proposal workflow and contract tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering proposal emission, cadence-to-target boundary validation, `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, `POST /api/proposals/{proposal_id}/decision`, and bounded assessment-dialog persistence.
 
 ### Implementation for User Story 2
 
@@ -102,9 +102,17 @@
 ### Implementation for User Story 3
 
 - [ ] T027 [US3] Extend `GUI/backend/app/main.py` and `GUI/backend/app/ai_assessments.py` so assessment detail, latest cadence summaries, proposal provenance, and decision history are returned in review-friendly payloads with no frontend inference.
-- [ ] T028 [US3] Update `GUI/frontend/src/App.tsx` and `GUI/frontend/src/main.tsx` to render cadence summary lists, assessment detail panels, pending proposal review, and approve/reject actions using backend-provided fields only.
+- [ ] T028 [US3] Update `GUI/frontend/src/App.tsx` and `GUI/frontend/src/main.tsx` to render cadence summary lists, assessment detail panels, bounded dialog/clarification surfaces, pending proposal review, and approve/reject actions using backend-provided fields only.
 - [ ] T029 [P] [US3] Update `GUI/frontend/src/styles.css` to keep assessment cards, evidence groups, proposal status rows, and operator decision controls readable in the existing minimal interface.
 - [ ] T030 [US3] Run the frontend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/frontend && npm run build`.
+
+### Tests for User Story 4
+
+- [ ] T030a [P] [US3] Add bounded-dialog tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering persisted clarifications, reassessment requests, and refusal to mutate canonical records directly from dialog input.
+
+### Implementation for User Story 4
+
+- [ ] T030b [US3] Extend `GUI/backend/app/main.py`, `GUI/backend/app/ai_assessment_models.py`, and supporting assessment services to persist bounded dialog context and optional reassessment requests for an assessment run.
 
 **Checkpoint**: Operators can review and act on AI assessments and proposals through thin application surfaces without hidden plan mutation or frontend-owned domain logic.
 
@@ -116,7 +124,7 @@
 
 - [ ] T031 [P] Reconcile final field names, enum values, and nullability across `GUI/backend/app/ai_assessment_models.py`, `GUI/backend/app/main.py`, `GUI/frontend/src/App.tsx`, and `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
 - [ ] T032 [P] Update `Agentes/README.md`, `GUI/backend/README.md`, and `GUI/frontend/README.md` with the local-first operator workflow, provider configuration expectations, specialist-agent roster, and approval boundary for canonical plan mutations.
-- [ ] T033 Add end-to-end quickstart coverage in `GUI/backend/tests/test_ai_assessment_agents.py` and `specs/004-ai-training-assessment/quickstart.md` for manual trigger, `no_new_data` rerun behavior, proposal approval, and SQLite inspection.
+- [ ] T033 Add end-to-end quickstart coverage in `GUI/backend/tests/test_ai_assessment_agents.py` and `specs/004-ai-training-assessment/quickstart.md` for manual trigger, bounded dialog clarification, `no_new_data` rerun behavior, proposal approval, and SQLite inspection.
 - [ ] T034 Run the full validation path from `specs/004-ai-training-assessment/quickstart.md`, including backend `unittest`, frontend build, trigger/review API commands, and SQLite inspection against `Sistema/training.sqlite`.
 
 ---

@@ -517,6 +517,159 @@ CREATE TABLE IF NOT EXISTS meta_markdown_views (
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
 
+CREATE TABLE IF NOT EXISTS agent_assessment_profiles (
+    agent_profile_id INTEGER PRIMARY KEY,
+    profile_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    cadence TEXT NOT NULL CHECK (cadence IN ('daily', 'weekly', 'block', 'season')),
+    assessment_scope TEXT NOT NULL,
+    target_planning_level TEXT CHECK (target_planning_level IS NULL OR target_planning_level IN ('weekly', 'block', 'season', 'macro')),
+    instruction_version TEXT NOT NULL,
+    provider_key TEXT,
+    model_name TEXT,
+    execution_policy TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'experimental')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS agent_assessment_windows (
+    assessment_window_id INTEGER PRIMARY KEY,
+    cadence TEXT NOT NULL CHECK (cadence IN ('daily', 'weekly', 'block', 'season')),
+    season_id INTEGER NOT NULL,
+    block_id INTEGER,
+    week_id INTEGER,
+    window_start_date TEXT NOT NULL,
+    window_end_date TEXT NOT NULL,
+    subject_scope_key TEXT NOT NULL,
+    evidence_fingerprint TEXT NOT NULL,
+    latest_materialized_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (cadence, subject_scope_key, evidence_fingerprint),
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id),
+    FOREIGN KEY (block_id) REFERENCES plan_meso_blocks (block_id),
+    FOREIGN KEY (week_id) REFERENCES plan_micro_weeks (week_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_assessment_runs (
+    assessment_run_id INTEGER PRIMARY KEY,
+    agent_profile_id INTEGER NOT NULL,
+    assessment_window_id INTEGER NOT NULL,
+    trigger_mode TEXT NOT NULL CHECK (trigger_mode IN ('manual', 'rerun', 'scheduled')),
+    run_status TEXT NOT NULL CHECK (run_status IN ('queued', 'running', 'completed', 'no_new_data', 'partial_context', 'failed', 'cancelled')),
+    provider_key TEXT,
+    model_name TEXT,
+    instruction_version TEXT NOT NULL,
+    prompt_hash TEXT,
+    summary_text TEXT,
+    confidence_label TEXT CHECK (confidence_label IS NULL OR confidence_label IN ('high', 'medium', 'limited')),
+    principal_evidence_json TEXT,
+    failure_code TEXT,
+    failure_detail TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    supersedes_run_id INTEGER,
+    FOREIGN KEY (agent_profile_id) REFERENCES agent_assessment_profiles (agent_profile_id),
+    FOREIGN KEY (assessment_window_id) REFERENCES agent_assessment_windows (assessment_window_id),
+    FOREIGN KEY (supersedes_run_id) REFERENCES agent_assessment_runs (assessment_run_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_assessment_type_results (
+    assessment_type_result_id INTEGER PRIMARY KEY,
+    assessment_run_id INTEGER NOT NULL,
+    assessment_type_key TEXT NOT NULL,
+    result_label TEXT NOT NULL,
+    confidence_label TEXT CHECK (confidence_label IS NULL OR confidence_label IN ('high', 'medium', 'limited')),
+    narrative_text TEXT,
+    evidence_summary_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (assessment_run_id, assessment_type_key),
+    FOREIGN KEY (assessment_run_id) REFERENCES agent_assessment_runs (assessment_run_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_assessment_findings (
+    assessment_finding_id INTEGER PRIMARY KEY,
+    assessment_run_id INTEGER NOT NULL,
+    assessment_type_result_id INTEGER,
+    finding_kind TEXT NOT NULL CHECK (finding_kind IN ('positive_signal', 'risk_signal', 'adherence_observation', 'recovery_observation', 'performance_signal', 'next_action', 'data_confidence')),
+    severity TEXT CHECK (severity IS NULL OR severity IN ('info', 'watch', 'warning', 'critical')),
+    title TEXT NOT NULL,
+    detail_text TEXT,
+    evidence_refs_json TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_run_id) REFERENCES agent_assessment_runs (assessment_run_id),
+    FOREIGN KEY (assessment_type_result_id) REFERENCES agent_assessment_type_results (assessment_type_result_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_adaptation_proposals (
+    proposal_id INTEGER PRIMARY KEY,
+    assessment_run_id INTEGER NOT NULL,
+    agent_profile_id INTEGER NOT NULL,
+    source_cadence TEXT NOT NULL CHECK (source_cadence IN ('daily', 'weekly', 'block', 'season')),
+    target_planning_level TEXT NOT NULL CHECK (target_planning_level IN ('weekly', 'block', 'season', 'macro')),
+    proposal_status TEXT NOT NULL DEFAULT 'pending' CHECK (proposal_status IN ('pending', 'accepted', 'rejected', 'superseded')),
+    proposal_title TEXT NOT NULL,
+    proposal_summary TEXT,
+    change_kind TEXT NOT NULL,
+    proposed_change_json TEXT NOT NULL,
+    reasoning_summary TEXT,
+    conflict_group_key TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (source_cadence = 'daily' AND target_planning_level = 'weekly') OR
+        (source_cadence = 'weekly' AND target_planning_level = 'block') OR
+        (source_cadence = 'block' AND target_planning_level = 'season') OR
+        (source_cadence = 'season' AND target_planning_level = 'macro')
+    ),
+    FOREIGN KEY (assessment_run_id) REFERENCES agent_assessment_runs (assessment_run_id),
+    FOREIGN KEY (agent_profile_id) REFERENCES agent_assessment_profiles (agent_profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_proposal_decisions (
+    proposal_decision_id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL,
+    decision_status TEXT NOT NULL CHECK (decision_status IN ('accepted', 'rejected', 'superseded')),
+    decision_note TEXT,
+    decided_by TEXT NOT NULL,
+    decided_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    superseding_proposal_id INTEGER,
+    applied_change_ref TEXT,
+    FOREIGN KEY (proposal_id) REFERENCES agent_adaptation_proposals (proposal_id),
+    FOREIGN KEY (superseding_proposal_id) REFERENCES agent_adaptation_proposals (proposal_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_accepted_plan_mutations (
+    plan_mutation_id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL UNIQUE,
+    target_planning_level TEXT NOT NULL CHECK (target_planning_level IN ('weekly', 'block', 'season', 'macro')),
+    target_entity_id TEXT NOT NULL,
+    mutation_summary TEXT NOT NULL,
+    before_snapshot_json TEXT,
+    after_snapshot_json TEXT,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    applied_by TEXT NOT NULL,
+    FOREIGN KEY (proposal_id) REFERENCES agent_adaptation_proposals (proposal_id)
+);
+
+CREATE TABLE IF NOT EXISTS agent_assessment_dialog_context (
+    dialog_context_id INTEGER PRIMARY KEY,
+    assessment_run_id INTEGER,
+    proposal_id INTEGER,
+    entry_kind TEXT NOT NULL CHECK (entry_kind IN ('user_question', 'user_clarification', 'assistant_response', 'system_note')),
+    entry_scope TEXT NOT NULL CHECK (entry_scope IN ('assessment_summary', 'finding', 'proposal', 'reassessment_request')),
+    clarification_kind TEXT CHECK (clarification_kind IS NULL OR clarification_kind IN ('schedule_shift', 'session_swap', 'missing_context', 'device_issue', 'execution_intent')),
+    entry_text TEXT NOT NULL,
+    linked_evidence_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT NOT NULL,
+    CHECK (assessment_run_id IS NOT NULL OR proposal_id IS NOT NULL),
+    FOREIGN KEY (assessment_run_id) REFERENCES agent_assessment_runs (assessment_run_id),
+    FOREIGN KEY (proposal_id) REFERENCES agent_adaptation_proposals (proposal_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_plan_blocks_season_order ON plan_meso_blocks (season_id, sequence_order);
 CREATE INDEX IF NOT EXISTS idx_plan_weeks_block_order ON plan_micro_weeks (block_id, sequence_in_block);
 CREATE INDEX IF NOT EXISTS idx_plan_sessions_week_day ON plan_planned_sessions (week_id, session_date);
@@ -530,6 +683,15 @@ CREATE INDEX IF NOT EXISTS idx_weekly_reviews_status ON review_weekly_reviews (s
 CREATE INDEX IF NOT EXISTS idx_import_jobs_season_date ON meta_import_jobs (season_id, imported_at DESC);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_activities_job ON staging_garmin_activities (import_job_id);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_metrics_job ON staging_garmin_daily_metrics (import_job_id);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_profiles_cadence_status ON agent_assessment_profiles (cadence, status);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_windows_scope ON agent_assessment_windows (season_id, cadence, subject_scope_key, window_end_date DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_runs_window_profile ON agent_assessment_runs (assessment_window_id, agent_profile_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_type_results_run ON agent_assessment_type_results (assessment_run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_findings_run_sort ON agent_assessment_findings (assessment_run_id, sort_order, assessment_finding_id);
+CREATE INDEX IF NOT EXISTS idx_agent_adaptation_proposals_status ON agent_adaptation_proposals (proposal_status, target_planning_level, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_proposal_decisions_proposal ON agent_proposal_decisions (proposal_id, decided_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_dialog_context_run ON agent_assessment_dialog_context (assessment_run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_assessment_dialog_context_proposal ON agent_assessment_dialog_context (proposal_id, created_at DESC);
 
 INSERT OR IGNORE INTO meta_schema_version (version, description)
 VALUES (1, 'Initial schema for planning, execution, links, reviews and metadata.');
