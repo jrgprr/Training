@@ -148,6 +148,7 @@ Response:
   "dialog_context": [
     {
       "dialog_context_id": 3,
+      "assessment_run_id": 24,
       "entry_kind": "user_clarification",
       "entry_scope": "assessment_summary",
       "clarification_kind": "schedule_shift",
@@ -186,17 +187,18 @@ Response:
   "entry_scope": "assessment_summary",
   "clarification_kind": "schedule_shift",
   "entry_text": "The planned Thursday ride was actually completed on Wednesday.",
+  "created_by": "athlete",
   "created_at": "2026-05-28T10:00:00Z",
   "reassessment": {
     "requested": true,
-    "status": "queued"
+    "status": "completed"
   }
 }
 ```
 
 Behavior notes:
 - This endpoint persists dialog context; it does not mutate canonical plan or execution records directly.
-- `request_reassessment = true` may trigger a bounded reassessment flow tied to the same cadence window.
+- `request_reassessment = true` may trigger a bounded reassessment flow tied to the same cadence window and returns the persisted rerun status, such as `completed`, `partial_context`, or `failed`.
 - Free-form generic chat outside a persisted assessment or proposal context is out of scope.
 
 ### `GET /api/proposals`
@@ -261,6 +263,8 @@ Response:
   "dialog_context": [
     {
       "dialog_context_id": 4,
+      "assessment_run_id": 24,
+      "proposal_id": 7,
       "entry_kind": "user_question",
       "entry_scope": "proposal",
       "entry_text": "Why does this proposal extend stabilization instead of reducing intensity?",
@@ -275,6 +279,7 @@ Response:
 Behavior notes:
 - `proposed_change` includes the persisted `change_kind` plus the structured target/change payload stored for the proposal.
 - `decision_history` is returned newest first and remains empty until the proposal is finalized.
+- Assessment-linked and proposal-linked dialog entries surface whichever foreign keys are persisted for traceability.
 
 ### `POST /api/proposals/{proposal_id}/decision`
 
