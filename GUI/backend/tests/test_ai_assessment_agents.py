@@ -282,6 +282,105 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
 
                 self.assertEqual(run_count, 2)
 
+    def test_weekly_run_can_persist_linked_proposals_from_structured_output(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return (
+                    '{'
+                    '"summary_text":"The week stayed mostly on plan but the next block step should be held.",'
+                    '"proposals":['
+                    '{'
+                    '"target_planning_level":"block",'
+                    '"proposal_title":"Hold block progression for one extra week",'
+                    '"proposal_summary":"Extend the current stabilization period before the next load increase.",'
+                    '"change_kind":"extend_stabilization",'
+                    '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"duration_weeks_min":4,"duration_weeks_max":5}},'
+                    '"reasoning_summary":"Recovery quality drifted late in the week.",'
+                    '"conflict_group_key":"block:B1:progression"'
+                    '},'
+                    '{'
+                    '"target_planning_level":"block",'
+                    '"proposal_title":"Reduce weekend density before the next load step",'
+                    '"proposal_summary":"Protect recovery going into the next progression.",'
+                    '"change_kind":"reduce_density",'
+                    '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"weekend_sessions":1}},'
+                    '"reasoning_summary":"Session clustering was high for the current week.",'
+                    '"conflict_group_key":"block:B1:progression"'
+                    '}'
+                    ']'
+                    '}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (502, 2026, 1, 11, 'closed', 0.88, 0.95, 82, 90, -8, 'watch', 'Hold the next progression step.', 'Weekly review indicates recovery cost.')
+                        """
+                    )
+
+                created = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+
+                self.assertEqual(created["run_status"], "completed")
+                self.assertEqual(created["result_summary"]["proposal_count"], 2)
+                self.assertEqual(created["result_summary"]["summary_text"], "The week stayed mostly on plan but the next block step should be held.")
+
+                detail = get_assessment_run(created["assessment_run_id"])
+                self.assertEqual(len(detail["proposals"]), 2)
+                self.assertEqual(detail["proposals"][0]["proposal_status"], "pending")
+                self.assertEqual(detail["proposals"][0]["source_cadence"], "weekly")
+                self.assertEqual(detail["proposals"][0]["target_planning_level"], "block")
+
+                with get_connection() as connection:
+                    stored = connection.execute(
+                        """
+                        SELECT proposal_title, proposal_status, source_cadence, target_planning_level, conflict_group_key
+                        FROM agent_adaptation_proposals
+                        WHERE assessment_run_id = ?
+                        ORDER BY proposal_id
+                        """,
+                        (created["assessment_run_id"],),
+                    ).fetchall()
+
+                self.assertEqual(len(stored), 2)
+                self.assertEqual(stored[0]["proposal_title"], "Hold block progression for one extra week")
+                self.assertEqual(stored[0]["proposal_status"], "pending")
+                self.assertEqual(stored[0]["source_cadence"], "weekly")
+                self.assertEqual(stored[0]["target_planning_level"], "block")
+                self.assertEqual(stored[0]["conflict_group_key"], "block:B1:progression")
+
 
 if __name__ == "__main__":
     unittest.main()

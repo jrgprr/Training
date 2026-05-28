@@ -171,6 +171,22 @@ class ProposalReferencePayload(BaseModel):
     proposal_title: str
 
 
+class GeneratedProposalPayload(BaseModel):
+    source_cadence: AssessmentCadence | None = None
+    target_planning_level: TargetPlanningLevel | None = None
+    proposal_title: str
+    proposal_summary: str | None = None
+    change_kind: str
+    proposed_change: dict[str, Any] = Field(default_factory=dict)
+    reasoning_summary: str | None = None
+    conflict_group_key: str | None = None
+
+
+class GeneratedAssessmentOutput(BaseModel):
+    summary_text: str
+    proposals: list[GeneratedProposalPayload] = Field(default_factory=list)
+
+
 class DialogContextEntryPayload(BaseModel):
     dialog_context_id: int | None = None
     assessment_run_id: int | None = None

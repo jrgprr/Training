@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
+
 from .ai_assessment_models import (
     AgentProfileSummary,
     AssessmentRunDetailResponse,
@@ -16,12 +18,14 @@ from .ai_assessment_models import (
     AssessmentFindingPayload,
     FindingKind,
     FindingSeverity,
+    GeneratedAssessmentOutput,
     AssessmentWindowSummary,
     RunTriggerMode,
 )
 from .ai_context import AssessmentContextSnapshot, build_assessment_context_with_connection
 from .ai_gateway import AssessmentLLMGateway, GatewayProvider, GatewayResult, GatewayInvocation
 from .ai_profiles import get_profile_definition, list_profile_definitions
+from .ai_proposals import count_proposals_for_run, list_proposal_references, parse_generated_assessment_output, persist_generated_proposals
 from .db import get_connection
 
 
@@ -254,6 +258,7 @@ def build_assessment_run_trigger_response(prepared_run: PreparedAssessmentRun) -
             """,
             (prepared_run.assessment_run_id,),
         )
+        proposal_count = count_proposals_for_run(connection, prepared_run.assessment_run_id)
 
     return AssessmentRunTriggerResponse(
         assessment_run_id=prepared_run.assessment_run_id,
@@ -274,7 +279,7 @@ def build_assessment_run_trigger_response(prepared_run: PreparedAssessmentRun) -
         result_summary=AssessmentSummaryPayload(
             summary_text=run_row["summary_text"] if run_row else None,
             confidence_label=ConfidenceLabel(run_row["confidence_label"]) if run_row and run_row["confidence_label"] else None,
-            proposal_count=0,
+            proposal_count=proposal_count,
         ),
     )
 
@@ -430,9 +435,10 @@ def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gate
     confidence = _derive_confidence(prepared_run)
     run_status = _derive_run_status(prepared_run)
     result_label = _derive_result_label(prepared_run)
+    generated_output = parse_generated_assessment_output(gateway_result.output_text)
     finding_kind, finding_severity, finding_text = _derive_finding(
         prepared_run,
-        gateway_result.output_text or "",
+        generated_output.summary_text,
         confidence,
     )
 
@@ -457,7 +463,7 @@ def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gate
             gateway_result.provider_key,
             gateway_result.model_name,
             gateway_result.prompt_hash,
-            gateway_result.output_text,
+            generated_output.summary_text,
             confidence.value,
             json.dumps(principal_evidence, ensure_ascii=True),
             gateway_result.started_at,
@@ -488,7 +494,7 @@ def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gate
             _derive_assessment_type_key(prepared_run.profile_key),
             result_label,
             confidence.value,
-            gateway_result.output_text,
+            generated_output.summary_text,
             json.dumps(principal_evidence, ensure_ascii=True),
         ),
     )
@@ -518,6 +524,13 @@ def _persist_completed_run(connection, prepared_run: PreparedAssessmentRun, gate
         ),
     )
 
+    persist_generated_proposals(
+        connection,
+        assessment_run_id=prepared_run.assessment_run_id,
+        profile_key=prepared_run.profile_key,
+        proposals=generated_output.proposals,
+    )
+
 
 def execute_assessment_run(request: AssessmentRunTriggerRequest) -> PreparedAssessmentRun:
     prepared_run = prepare_assessment_run(request)
@@ -536,7 +549,31 @@ def execute_assessment_run(request: AssessmentRunTriggerRequest) -> PreparedAsse
 
     with get_connection() as connection:
         if gateway_result.run_status is AssessmentRunStatus.COMPLETED:
-            _persist_completed_run(connection, prepared_run, gateway_result)
+            try:
+                _persist_completed_run(connection, prepared_run, gateway_result)
+            except (LookupError, ValidationError, ValueError) as exc:
+                failure_result = GatewayResult(
+                    run_status=AssessmentRunStatus.FAILED,
+                    provider_key=gateway_result.provider_key,
+                    model_name=gateway_result.model_name,
+                    instruction_version=gateway_result.instruction_version,
+                    prompt_hash=gateway_result.prompt_hash,
+                    failure_code="invalid_output",
+                    failure_detail=str(exc),
+                    started_at=gateway_result.started_at,
+                    completed_at=gateway_result.completed_at,
+                )
+                _persist_gateway_failure(connection, prepared_run.assessment_run_id, failure_result)
+                return PreparedAssessmentRun(
+                    assessment_run_id=prepared_run.assessment_run_id,
+                    assessment_window_id=prepared_run.assessment_window_id,
+                    run_status=AssessmentRunStatus.FAILED,
+                    context_snapshot=prepared_run.context_snapshot,
+                    profile_key=prepared_run.profile_key,
+                    profile_display_name=prepared_run.profile_display_name,
+                    profile_instruction_version=prepared_run.profile_instruction_version,
+                    reused_run_id=prepared_run.reused_run_id,
+                )
             persisted_run_status = _derive_run_status(prepared_run)
             return PreparedAssessmentRun(
                 assessment_run_id=prepared_run.assessment_run_id,
@@ -632,6 +669,7 @@ def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResp
             """,
             (assessment_run_id,),
         ).fetchall()
+        proposals = list_proposal_references(connection, assessment_run_id)
 
         return AssessmentRunDetailResponse(
             assessment_run_id=row["assessment_run_id"],
@@ -672,6 +710,6 @@ def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResp
                 )
                 for finding_row in findings
             ],
-            proposals=[],
+            proposals=proposals,
             dialog_context=[],
         )
