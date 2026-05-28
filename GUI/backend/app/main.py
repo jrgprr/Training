@@ -6,8 +6,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .ai_assessment_models import AssessmentRunTriggerRequest, serialize_model
-from .ai_assessments import build_assessment_run_trigger_response, execute_assessment_run, get_assessment_run_detail
+from .ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalStatus, serialize_model
+from .ai_assessments import build_assessment_run_trigger_response, execute_assessment_run, get_assessment_run_detail, list_latest_assessment_runs
+from .ai_proposals import get_proposal_detail, list_proposals_for_review
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -85,6 +86,29 @@ def get_assessment_run(assessment_run_id: int) -> dict[str, Any]:
     payload = get_assessment_run_detail(assessment_run_id)
     if payload is None:
         raise HTTPException(status_code=404, detail=f"No existe la evaluacion {assessment_run_id}.")
+    return serialize_model(payload)
+
+
+@app.get("/api/assessments/latest")
+def get_latest_assessments(
+    season_id: int,
+    cadence: AssessmentCadence | None = None,
+    block_id: int | None = None,
+    week_id: int | None = None,
+) -> dict[str, Any]:
+    return serialize_model(list_latest_assessment_runs(season_id, cadence=cadence, block_id=block_id, week_id=week_id))
+
+
+@app.get("/api/proposals")
+def get_proposals(season_id: int, status: ProposalStatus | None = None) -> dict[str, Any]:
+    return serialize_model(list_proposals_for_review(season_id, status=status))
+
+
+@app.get("/api/proposals/{proposal_id}")
+def get_proposal(proposal_id: int) -> dict[str, Any]:
+    payload = get_proposal_detail(proposal_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe la propuesta {proposal_id}.")
     return serialize_model(payload)
 
 

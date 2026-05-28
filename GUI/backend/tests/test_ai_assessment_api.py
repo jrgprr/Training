@@ -5,10 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, RunTriggerMode
+from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalStatus, RunTriggerMode
 from app.ai_assessments import register_gateway_provider
 from app.db import get_connection, initialize_database
-from app.main import create_assessment_run, get_assessment_run
+from app.main import create_assessment_run, get_assessment_run, get_latest_assessments, get_proposal, get_proposals
 from tests.test_ai_assessment_context import create_minimal_assessment_source_tables, seed_assessment_context_data
 
 
@@ -193,6 +193,110 @@ class AssessmentApiTests(unittest.TestCase):
 
                 self.assertEqual(stored_run["run_status"], "completed")
                 self.assertEqual(stored_run["confidence_label"], "medium")
+
+    def test_latest_assessments_and_proposal_reads_use_persisted_review_data(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                if invocation.profile_key == "weekly_adherence_adequacy_v1":
+                    return (
+                        '{'
+                        '"summary_text":"The week stayed mostly on plan but the next block step should be held.",'
+                        '"proposals":['
+                        '{'
+                        '"target_planning_level":"block",'
+                        '"proposal_title":"Hold block progression for one extra week",'
+                        '"proposal_summary":"Extend the current stabilization period before the next load increase.",'
+                        '"change_kind":"extend_stabilization",'
+                        '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"duration_weeks_min":4,"duration_weeks_max":5}},'
+                        '"reasoning_summary":"The athlete kept frequency but showed rising recovery cost.",'
+                        '"conflict_group_key":"block:B1:progression"'
+                        '}'
+                        ']'
+                        '}'
+                    )
+                return "The day matched the planned endurance intent with stable load and acceptable recovery context."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (503, 2026, 1, 11, 'closed', 0.88, 0.95, 82, 90, -8, 'watch', 'Hold the next progression step.', 'Weekly review indicates recovery cost.')
+                        """
+                    )
+
+                weekly_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+
+                with get_connection() as connection:
+                    proposal_id = connection.execute(
+                        "SELECT proposal_id FROM agent_adaptation_proposals WHERE assessment_run_id = ?",
+                        (weekly_run["assessment_run_id"],),
+                    ).fetchone()["proposal_id"]
+                    connection.execute(
+                        """
+                        INSERT INTO agent_assessment_dialog_context (
+                            proposal_id,
+                            entry_kind,
+                            entry_scope,
+                            entry_text,
+                            created_by
+                        ) VALUES (?, 'user_question', 'proposal', 'Why hold progression instead of reducing intensity?', 'local-operator')
+                        """,
+                        (proposal_id,),
+                    )
+
+                latest = get_latest_assessments(season_id=2026, cadence=AssessmentCadence.WEEKLY)
+                self.assertEqual(len(latest["items"]), 1)
+                self.assertEqual(latest["items"][0]["assessment_run_id"], weekly_run["assessment_run_id"])
+                self.assertEqual(latest["items"][0]["proposal_count"], 1)
+                self.assertEqual(latest["items"][0]["pending_proposal_count"], 1)
+
+                proposals = get_proposals(season_id=2026, status=ProposalStatus.PENDING)
+                self.assertEqual(len(proposals["items"]), 1)
+                self.assertEqual(proposals["items"][0]["proposal_id"], proposal_id)
+                self.assertEqual(proposals["items"][0]["agent_profile_key"], "weekly_adherence_adequacy_v1")
+                self.assertEqual(proposals["items"][0]["conflict_group_key"], "block:B1:progression")
+
+                proposal_detail = get_proposal(proposal_id)
+                self.assertEqual(proposal_detail["proposal_id"], proposal_id)
+                self.assertEqual(proposal_detail["proposal_status"], "pending")
+                self.assertEqual(proposal_detail["source_assessment"]["assessment_run_id"], weekly_run["assessment_run_id"])
+                self.assertEqual(proposal_detail["source_assessment"]["agent_profile_key"], "weekly_adherence_adequacy_v1")
+                self.assertEqual(proposal_detail["proposed_change"]["change_kind"], "extend_stabilization")
+                self.assertEqual(len(proposal_detail["dialog_context"]), 1)
+                self.assertEqual(proposal_detail["dialog_context"][0]["entry_scope"], "proposal")
+                self.assertEqual(proposal_detail["decision_history"], [])
 
 
 if __name__ == "__main__":

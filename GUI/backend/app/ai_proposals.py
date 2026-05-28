@@ -5,9 +5,15 @@ from typing import Any
 
 from .ai_assessment_models import (
     AssessmentCadence,
+    DialogContextEntryPayload,
     GeneratedAssessmentOutput,
     GeneratedProposalPayload,
+    ProposalDecisionPayload,
+    ProposalDetailResponse,
+    ProposalListItem,
+    ProposalListResponse,
     ProposalReferencePayload,
+    ProposalDecisionStatus,
     ProposalStatus,
     TargetPlanningLevel,
 )
@@ -127,3 +133,164 @@ def list_proposal_references(connection, assessment_run_id: int) -> list[Proposa
         )
         for row in rows
     ]
+
+
+def list_proposals_for_review(season_id: int, status: ProposalStatus | None = None) -> ProposalListResponse:
+    filters = ["w.season_id = ?"]
+    parameters: list[Any] = [season_id]
+    if status is not None:
+        filters.append("ap.proposal_status = ?")
+        parameters.append(status.value)
+
+    query = f"""
+        SELECT ap.proposal_id,
+               ap.proposal_status,
+               ap.source_cadence,
+               ap.target_planning_level,
+               p.profile_key,
+               ap.proposal_title,
+               ap.proposal_summary,
+               ap.conflict_group_key,
+               ap.created_at
+        FROM agent_adaptation_proposals ap
+        JOIN agent_assessment_profiles p ON p.agent_profile_id = ap.agent_profile_id
+        JOIN agent_assessment_runs r ON r.assessment_run_id = ap.assessment_run_id
+        JOIN agent_assessment_windows w ON w.assessment_window_id = r.assessment_window_id
+        WHERE {' AND '.join(filters)}
+        ORDER BY ap.created_at DESC, ap.proposal_id DESC
+    """
+
+    from .db import get_connection
+
+    with get_connection() as connection:
+        rows = connection.execute(query, tuple(parameters)).fetchall()
+
+    return ProposalListResponse(
+        items=[
+            ProposalListItem(
+                proposal_id=row["proposal_id"],
+                proposal_status=ProposalStatus(row["proposal_status"]),
+                source_cadence=AssessmentCadence(row["source_cadence"]),
+                target_planning_level=TargetPlanningLevel(row["target_planning_level"]),
+                agent_profile_key=row["profile_key"],
+                proposal_title=row["proposal_title"],
+                proposal_summary=row["proposal_summary"],
+                conflict_group_key=row["conflict_group_key"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+    )
+
+
+def get_proposal_detail(proposal_id: int) -> ProposalDetailResponse | None:
+    from .db import get_connection
+
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT ap.proposal_id,
+                   ap.proposal_status,
+                   ap.source_cadence,
+                   ap.target_planning_level,
+                   ap.proposal_title,
+                   ap.proposal_summary,
+                   ap.change_kind,
+                   ap.proposed_change_json,
+                   ap.reasoning_summary,
+                   r.assessment_run_id,
+                   p.profile_key,
+                   w.window_start_date,
+                   w.window_end_date
+            FROM agent_adaptation_proposals ap
+            JOIN agent_assessment_runs r ON r.assessment_run_id = ap.assessment_run_id
+            JOIN agent_assessment_profiles p ON p.agent_profile_id = ap.agent_profile_id
+            JOIN agent_assessment_windows w ON w.assessment_window_id = r.assessment_window_id
+            WHERE ap.proposal_id = ?
+            """,
+            (proposal_id,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        dialog_rows = connection.execute(
+            """
+            SELECT dialog_context_id,
+                   assessment_run_id,
+                   proposal_id,
+                   entry_kind,
+                   entry_scope,
+                   clarification_kind,
+                   entry_text,
+                   linked_evidence_json,
+                   created_at,
+                   created_by
+            FROM agent_assessment_dialog_context
+            WHERE proposal_id = ?
+            ORDER BY created_at, dialog_context_id
+            """,
+            (proposal_id,),
+        ).fetchall()
+        decision_rows = connection.execute(
+            """
+            SELECT proposal_decision_id,
+                   decision_status,
+                   decision_note,
+                   decided_by,
+                   decided_at,
+                   superseding_proposal_id,
+                   applied_change_ref
+            FROM agent_proposal_decisions
+            WHERE proposal_id = ?
+            ORDER BY decided_at DESC, proposal_decision_id DESC
+            """,
+            (proposal_id,),
+        ).fetchall()
+
+    proposed_change = json.loads(row["proposed_change_json"]) if row["proposed_change_json"] else {}
+    if isinstance(proposed_change, dict) and "change_kind" not in proposed_change:
+        proposed_change = {"change_kind": row["change_kind"], **proposed_change}
+
+    return ProposalDetailResponse(
+        proposal_id=row["proposal_id"],
+        proposal_status=ProposalStatus(row["proposal_status"]),
+        source_cadence=AssessmentCadence(row["source_cadence"]),
+        target_planning_level=TargetPlanningLevel(row["target_planning_level"]),
+        proposal_title=row["proposal_title"],
+        proposal_summary=row["proposal_summary"],
+        reasoning_summary=row["reasoning_summary"],
+        proposed_change=proposed_change if isinstance(proposed_change, dict) else {},
+        source_assessment={
+            "assessment_run_id": row["assessment_run_id"],
+            "agent_profile_key": row["profile_key"],
+            "window_start_date": row["window_start_date"],
+            "window_end_date": row["window_end_date"],
+        },
+        dialog_context=[
+            DialogContextEntryPayload(
+                dialog_context_id=dialog_row["dialog_context_id"],
+                assessment_run_id=dialog_row["assessment_run_id"],
+                proposal_id=dialog_row["proposal_id"],
+                entry_kind=dialog_row["entry_kind"],
+                entry_scope=dialog_row["entry_scope"],
+                clarification_kind=dialog_row["clarification_kind"],
+                entry_text=dialog_row["entry_text"],
+                linked_evidence_json=dialog_row["linked_evidence_json"],
+                created_at=dialog_row["created_at"],
+                created_by=dialog_row["created_by"],
+            )
+            for dialog_row in dialog_rows
+        ],
+        decision_history=[
+            ProposalDecisionPayload(
+                proposal_decision_id=decision_row["proposal_decision_id"],
+                decision_status=ProposalDecisionStatus(decision_row["decision_status"]),
+                decision_note=decision_row["decision_note"],
+                decided_by=decision_row["decided_by"],
+                decided_at=decision_row["decided_at"],
+                superseding_proposal_id=decision_row["superseding_proposal_id"],
+                applied_change_ref=decision_row["applied_change_ref"],
+            )
+            for decision_row in decision_rows
+        ],
+    )

@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from .ai_assessment_models import (
     AgentProfileSummary,
+    AssessmentCadence,
     AssessmentRunDetailResponse,
+    AssessmentRunLatestItem,
     AssessmentRunStatus,
     AssessmentRunTriggerRequest,
     AssessmentRunTriggerResponse,
@@ -19,6 +21,7 @@ from .ai_assessment_models import (
     FindingKind,
     FindingSeverity,
     GeneratedAssessmentOutput,
+    LatestAssessmentsResponse,
     AssessmentWindowSummary,
     RunTriggerMode,
 )
@@ -713,3 +716,93 @@ def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResp
             proposals=proposals,
             dialog_context=[],
         )
+
+
+def list_latest_assessment_runs(
+    season_id: int,
+    cadence: AssessmentCadence | None = None,
+    block_id: int | None = None,
+    week_id: int | None = None,
+) -> LatestAssessmentsResponse:
+    filters = ["w.season_id = ?"]
+    parameters: list[Any] = [season_id]
+
+    if cadence is not None:
+        filters.append("p.cadence = ?")
+        parameters.append(cadence.value)
+    if block_id is not None:
+        filters.append("w.block_id = ?")
+        parameters.append(block_id)
+    if week_id is not None:
+        filters.append("w.week_id = ?")
+        parameters.append(week_id)
+
+    query = f"""
+        WITH ranked_runs AS (
+            SELECT
+                r.assessment_run_id,
+                p.cadence,
+                p.profile_key,
+                p.display_name AS agent_profile_name,
+                w.window_start_date,
+                w.window_end_date,
+                r.run_status,
+                r.confidence_label,
+                r.summary_text,
+                (
+                    SELECT COUNT(*)
+                    FROM agent_adaptation_proposals ap
+                    WHERE ap.assessment_run_id = r.assessment_run_id
+                ) AS proposal_count,
+                (
+                    SELECT COUNT(*)
+                    FROM agent_adaptation_proposals ap
+                    WHERE ap.assessment_run_id = r.assessment_run_id
+                      AND ap.proposal_status = 'pending'
+                ) AS pending_proposal_count,
+                ROW_NUMBER() OVER (
+                    PARTITION BY p.cadence, p.profile_key, w.subject_scope_key
+                    ORDER BY COALESCE(r.completed_at, r.started_at, r.created_at) DESC, r.assessment_run_id DESC
+                ) AS run_rank
+            FROM agent_assessment_runs r
+            JOIN agent_assessment_profiles p ON p.agent_profile_id = r.agent_profile_id
+            JOIN agent_assessment_windows w ON w.assessment_window_id = r.assessment_window_id
+            WHERE {' AND '.join(filters)}
+        )
+        SELECT assessment_run_id,
+               cadence,
+               profile_key,
+               agent_profile_name,
+               window_start_date,
+               window_end_date,
+               run_status,
+               confidence_label,
+               summary_text,
+               proposal_count,
+               pending_proposal_count
+        FROM ranked_runs
+        WHERE run_rank = 1
+        ORDER BY window_start_date DESC, assessment_run_id DESC
+    """
+
+    with get_connection() as connection:
+        rows = connection.execute(query, tuple(parameters)).fetchall()
+
+    return LatestAssessmentsResponse(
+        items=[
+            AssessmentRunLatestItem(
+                assessment_run_id=row["assessment_run_id"],
+                cadence=AssessmentCadence(row["cadence"]),
+                agent_profile_key=row["profile_key"],
+                agent_profile_name=row["agent_profile_name"],
+                window_start_date=row["window_start_date"],
+                window_end_date=row["window_end_date"],
+                run_status=AssessmentRunStatus(row["run_status"]),
+                confidence_label=ConfidenceLabel(row["confidence_label"]) if row["confidence_label"] else None,
+                summary_text=row["summary_text"],
+                proposal_count=row["proposal_count"],
+                pending_proposal_count=row["pending_proposal_count"],
+            )
+            for row in rows
+        ]
+    )
