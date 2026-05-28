@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .ai_assessment_models import AssessmentRunTriggerRequest, serialize_model
-from .ai_assessments import build_assessment_run_trigger_response, get_assessment_run_detail, prepare_assessment_run
+from .ai_assessments import build_assessment_run_trigger_response, execute_assessment_run, get_assessment_run_detail
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -71,7 +71,7 @@ class SegmentListQuery(BaseModel):
 @app.post("/api/assessments/runs")
 def create_assessment_run(payload: AssessmentRunTriggerRequest) -> dict[str, Any]:
     try:
-        prepared_run = prepare_assessment_run(payload)
+        prepared_run = execute_assessment_run(payload)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except LookupError as error:
