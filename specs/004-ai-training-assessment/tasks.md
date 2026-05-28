@@ -124,8 +124,8 @@
 
 - [x] T031 [P] Reconcile final field names, enum values, and nullability across `GUI/backend/app/ai_assessment_models.py`, `GUI/backend/app/main.py`, `GUI/frontend/src/App.tsx`, and `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
 - [x] T032 [P] Update `Agentes/README.md`, `GUI/backend/README.md`, and `GUI/frontend/README.md` with the local-first operator workflow, provider configuration expectations, specialist-agent roster, and approval boundary for canonical plan mutations.
-- [ ] T033 Add end-to-end quickstart coverage in `GUI/backend/tests/test_ai_assessment_agents.py` and `specs/004-ai-training-assessment/quickstart.md` for manual trigger, bounded dialog clarification, `no_new_data` rerun behavior, proposal approval, and SQLite inspection.
-- [ ] T034 Run the full validation path from `specs/004-ai-training-assessment/quickstart.md`, including backend `unittest`, frontend build, trigger/review API commands, and SQLite inspection against `Sistema/training.sqlite`.
+- [x] T033 Add end-to-end quickstart coverage in `GUI/backend/tests/test_ai_assessment_agents.py` and `specs/004-ai-training-assessment/quickstart.md` for manual trigger, bounded dialog clarification, `no_new_data` rerun behavior, proposal approval, and SQLite inspection.
+- [x] T034 Run the full validation path from `specs/004-ai-training-assessment/quickstart.md`, including backend `unittest`, frontend build, trigger/review API commands, and SQLite inspection against `Sistema/training.sqlite`.
 
 ---
 

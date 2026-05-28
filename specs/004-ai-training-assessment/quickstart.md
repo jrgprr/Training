@@ -72,6 +72,7 @@ Expected outcome:
 curl -s 'http://127.0.0.1:8000/api/assessments/latest?season_id=2026&cadence=daily' | jq
 curl -s http://127.0.0.1:8000/api/assessments/runs/RUN_ID | jq
 curl -s 'http://127.0.0.1:8000/api/proposals?season_id=2026&status=pending' | jq
+curl -s http://127.0.0.1:8000/api/proposals/PROPOSAL_ID | jq
 ```
 
 Expected outcome:
@@ -116,7 +117,7 @@ curl -s -X POST http://127.0.0.1:8000/api/assessments/runs/RUN_ID/dialog \
 Expected outcome:
 - The backend persists the clarification as dialog context tied to the assessment run.
 - The clarification does not silently overwrite canonical plan or execution records.
-- If reassessment is requested, the system records a traceable reassessment flow rather than mutating the prior run in place.
+- If reassessment is requested, the system records a traceable reassessment flow rather than mutating the prior run in place, and the original assessment keeps a `reassessment_request` system note in its dialog trail.
 
 ## 8. Inspect canonical SQLite state
 
@@ -129,6 +130,8 @@ ORDER BY cadence, profile_key;
 SELECT assessment_run_id,
        agent_profile_id,
        assessment_window_id,
+  supersedes_run_id,
+  trigger_mode,
        run_status,
        provider_key,
        model_name,
@@ -151,6 +154,14 @@ SELECT proposal_id,
        proposal_title
 FROM agent_adaptation_proposals
 ORDER BY proposal_id DESC;
+
+SELECT plan_mutation_id,
+       proposal_id,
+       mutation_summary,
+       applied_by,
+       applied_at
+FROM agent_accepted_plan_mutations
+ORDER BY plan_mutation_id DESC;
 
 SELECT proposal_id,
        decision_status,
@@ -185,3 +196,4 @@ Expected outcome:
 Expected outcome:
 - Unchanged evidence produces `no_new_data`, a reused latest assessment marker, or an equivalent deduplicated outcome rather than a second substantive assessment.
 - Changed evidence produces a new assessment window fingerprint and a new traceable run.
+- A reassessment requested from dialog produces a rerun with `trigger_mode = rerun` and a `supersedes_run_id` back-reference to the prior run.

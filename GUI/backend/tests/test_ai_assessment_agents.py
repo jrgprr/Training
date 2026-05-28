@@ -806,6 +806,114 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
                 self.assertEqual(block_objective, "Base aerobica")
                 self.assertEqual(plan_mutation_total, 0)
 
+    def test_end_to_end_quickstart_flow_stays_traceable(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                if invocation.profile_key == "daily_execution_v1":
+                    return (
+                        '{'
+                        '"summary_text":"The day executed cleanly but the next weekly load should be softened.",'
+                        '"proposals":['
+                        '{'
+                        '"target_planning_level":"weekly",'
+                        '"proposal_title":"Reduce the next three days of weekly load",'
+                        '"proposal_summary":"Protect recovery after the clarified schedule shift.",'
+                        '"change_kind":"reduce_load",'
+                        '"proposed_change":{"target_entity":"plan_micro_weeks.week_id=11","changes":{"volume_adjustment":"-10%"}},'
+                        '"reasoning_summary":"The week stays viable if the next load step is trimmed.",'
+                        '"conflict_group_key":"weekly:11:load"'
+                        '}'
+                        ']'
+                        '}'
+                    )
+                return "Fallback assessment output."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                manual_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_execution_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+                no_new_data = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_execution_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+                dialog = create_assessment_dialog(
+                    manual_run["assessment_run_id"],
+                    AssessmentDialogRequest(
+                        entry_kind=DialogEntryKind.USER_CLARIFICATION,
+                        entry_scope=DialogEntryScope.ASSESSMENT_SUMMARY,
+                        clarification_kind=ClarificationKind.SCHEDULE_SHIFT,
+                        entry_text="The ride happened one day earlier than planned.",
+                        created_by="athlete",
+                        request_reassessment=True,
+                    ),
+                )
+
+                proposals = get_proposals(season_id=2026, status=ProposalStatus.PENDING)
+                proposal_detail = get_proposal(proposals["items"][0]["proposal_id"])
+                decision = decide_assessment_proposal(
+                    proposals["items"][0]["proposal_id"],
+                    ProposalDecisionRequest(
+                        decision_status=ProposalDecisionStatus.ACCEPTED,
+                        decided_by="local-operator",
+                        decision_note="Trim the next weekly load step.",
+                    ),
+                )
+
+                self.assertEqual(manual_run["run_status"], "completed")
+                self.assertEqual(no_new_data["run_status"], "no_new_data")
+                self.assertEqual(no_new_data["assessment_run_id"], manual_run["assessment_run_id"])
+                self.assertEqual(dialog["reassessment"]["status"], "completed")
+                self.assertEqual(len(proposals["items"]), 2)
+                self.assertEqual(proposal_detail["proposal_status"], "pending")
+                self.assertEqual(decision["proposal_status"], "accepted")
+                self.assertEqual(decision["decision"]["applied_change_ref"], "plan_mutation:1")
+
+                with get_connection() as connection:
+                    run_rows = connection.execute(
+                        "SELECT assessment_run_id, trigger_mode, supersedes_run_id, run_status FROM agent_assessment_runs ORDER BY assessment_run_id"
+                    ).fetchall()
+                    proposal_rows = connection.execute(
+                        "SELECT proposal_id, proposal_status, proposal_title FROM agent_adaptation_proposals ORDER BY proposal_id"
+                    ).fetchall()
+                    mutation_rows = connection.execute(
+                        "SELECT proposal_id, mutation_summary, applied_by FROM agent_accepted_plan_mutations ORDER BY plan_mutation_id"
+                    ).fetchall()
+                    dialog_rows = connection.execute(
+                        "SELECT entry_kind, entry_scope, created_by FROM agent_assessment_dialog_context ORDER BY dialog_context_id"
+                    ).fetchall()
+
+                self.assertEqual(len(run_rows), 2)
+                self.assertEqual(run_rows[0]["trigger_mode"], "manual")
+                self.assertEqual(run_rows[1]["trigger_mode"], "rerun")
+                self.assertEqual(run_rows[1]["supersedes_run_id"], manual_run["assessment_run_id"])
+                self.assertEqual(len(proposal_rows), 2)
+                self.assertEqual(sorted(row["proposal_status"] for row in proposal_rows), ["accepted", "pending"])
+                self.assertEqual(len(mutation_rows), 1)
+                self.assertEqual(mutation_rows[0]["applied_by"], "local-operator")
+                self.assertEqual(len(dialog_rows), 2)
+                self.assertEqual(dialog_rows[0]["entry_kind"], "user_clarification")
+                self.assertEqual(dialog_rows[1]["entry_scope"], "reassessment_request")
+
 
 if __name__ == "__main__":
     unittest.main()
