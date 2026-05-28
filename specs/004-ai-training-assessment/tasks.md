@@ -108,11 +108,11 @@
 
 ### Tests for User Story 4
 
-- [ ] T030a [P] [US3] Add bounded-dialog tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering persisted clarifications, reassessment requests, and refusal to mutate canonical records directly from dialog input.
+- [x] T030a [P] [US3] Add bounded-dialog tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering persisted clarifications, reassessment requests, and refusal to mutate canonical records directly from dialog input.
 
 ### Implementation for User Story 4
 
-- [ ] T030b [US3] Extend `GUI/backend/app/main.py`, `GUI/backend/app/ai_assessment_models.py`, and supporting assessment services to persist bounded dialog context and optional reassessment requests for an assessment run.
+- [x] T030b [US3] Extend `GUI/backend/app/main.py`, `GUI/backend/app/ai_assessment_models.py`, and supporting assessment services to persist bounded dialog context and optional reassessment requests for an assessment run.
 
 **Checkpoint**: Operators can review and act on AI assessments and proposals through thin application surfaces without hidden plan mutation or frontend-owned domain logic.
 

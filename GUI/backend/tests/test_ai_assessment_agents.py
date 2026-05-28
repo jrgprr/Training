@@ -5,11 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalDecisionStatus, ProposalStatus
+from app.ai_assessment_models import AssessmentCadence, AssessmentDialogRequest, AssessmentRunTriggerRequest, ClarificationKind, DialogEntryKind, DialogEntryScope, ProposalDecisionRequest, ProposalDecisionStatus, ProposalStatus
 from app.ai_assessments import register_gateway_provider
 from app.ai_context import build_assessment_context
 from app.db import get_connection, initialize_database
-from app.main import create_assessment_run, decide_assessment_proposal, get_assessment_run, get_latest_assessments, get_proposal, get_proposals
+from app.main import create_assessment_dialog, create_assessment_run, decide_assessment_proposal, get_assessment_run, get_latest_assessments, get_proposal, get_proposals
 from tests.test_ai_assessment_api import AssessmentApiTests
 from tests.test_ai_assessment_context import create_minimal_assessment_source_tables, seed_assessment_context_data
 
@@ -719,6 +719,92 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
                 self.assertEqual(accepted_detail["proposal_status"], "accepted")
                 self.assertEqual(len(accepted_detail["decision_history"]), 1)
                 self.assertEqual(accepted_detail["decision_history"][0]["decision_status"], "accepted")
+
+    def test_bounded_dialog_persists_clarification_and_requests_traceable_reassessment(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return "The day remains reviewable after the bounded clarification is recorded."
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                created = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.DAILY,
+                        agent_profile_key="daily_execution_v1",
+                        season_id=2026,
+                        window_start_date="2026-05-28",
+                        window_end_date="2026-05-28",
+                    )
+                )
+
+                response = create_assessment_dialog(
+                    created["assessment_run_id"],
+                    AssessmentDialogRequest(
+                        entry_kind=DialogEntryKind.USER_CLARIFICATION,
+                        entry_scope=DialogEntryScope.ASSESSMENT_SUMMARY,
+                        clarification_kind=ClarificationKind.SCHEDULE_SHIFT,
+                        entry_text="The planned Thursday ride was actually completed on Wednesday.",
+                        created_by="athlete",
+                        linked_evidence_json='["manual note: moved one day earlier"]',
+                        request_reassessment=True,
+                    ),
+                )
+
+                self.assertEqual(response["assessment_run_id"], created["assessment_run_id"])
+                self.assertEqual(response["entry_kind"], "user_clarification")
+                self.assertEqual(response["entry_scope"], "assessment_summary")
+                self.assertEqual(response["clarification_kind"], "schedule_shift")
+                self.assertEqual(response["created_by"], "athlete")
+                self.assertEqual(response["reassessment"]["requested"], True)
+                self.assertEqual(response["reassessment"]["status"], "completed")
+
+                detail = get_assessment_run(created["assessment_run_id"])
+                self.assertEqual(len(detail["dialog_context"]), 2)
+                self.assertEqual(detail["dialog_context"][0]["entry_kind"], "user_clarification")
+                self.assertEqual(detail["dialog_context"][1]["entry_scope"], "reassessment_request")
+
+                with get_connection() as connection:
+                    dialog_rows = connection.execute(
+                        """
+                        SELECT entry_kind, entry_scope, entry_text, created_by
+                        FROM agent_assessment_dialog_context
+                        WHERE assessment_run_id = ?
+                        ORDER BY dialog_context_id
+                        """,
+                        (created["assessment_run_id"],),
+                    ).fetchall()
+                    latest_run = connection.execute(
+                        """
+                        SELECT assessment_run_id, supersedes_run_id, trigger_mode
+                        FROM agent_assessment_runs
+                        ORDER BY assessment_run_id DESC
+                        LIMIT 1
+                        """
+                    ).fetchone()
+                    block_objective = connection.execute(
+                        "SELECT objective_primary FROM plan_meso_blocks WHERE block_id = 1"
+                    ).fetchone()["objective_primary"]
+                    plan_mutation_total = connection.execute(
+                        "SELECT COUNT(*) AS total FROM agent_accepted_plan_mutations"
+                    ).fetchone()["total"]
+
+                self.assertEqual(len(dialog_rows), 2)
+                self.assertEqual(dialog_rows[0]["entry_kind"], "user_clarification")
+                self.assertEqual(dialog_rows[0]["created_by"], "athlete")
+                self.assertEqual(dialog_rows[1]["entry_kind"], "system_note")
+                self.assertEqual(dialog_rows[1]["entry_scope"], "reassessment_request")
+                self.assertEqual(latest_run["supersedes_run_id"], created["assessment_run_id"])
+                self.assertEqual(latest_run["trigger_mode"], "rerun")
+                self.assertEqual(block_objective, "Base aerobica")
+                self.assertEqual(plan_mutation_total, 0)
 
 
 if __name__ == "__main__":

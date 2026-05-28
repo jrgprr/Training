@@ -6,8 +6,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalStatus, serialize_model
-from .ai_assessments import build_assessment_run_trigger_response, execute_assessment_run, get_assessment_run_detail, list_latest_assessment_runs
+from .ai_assessment_models import AssessmentCadence, AssessmentDialogRequest, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalStatus, serialize_model
+from .ai_assessments import build_assessment_run_trigger_response, create_assessment_dialog_entry, execute_assessment_run, get_assessment_run_detail, list_latest_assessment_runs
 from .ai_proposals import ProposalConflictError, decide_proposal, get_proposal_detail, list_proposals_for_review
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
@@ -87,6 +87,18 @@ def get_assessment_run(assessment_run_id: int) -> dict[str, Any]:
     if payload is None:
         raise HTTPException(status_code=404, detail=f"No existe la evaluacion {assessment_run_id}.")
     return serialize_model(payload)
+
+
+@app.post("/api/assessments/runs/{assessment_run_id}/dialog")
+def create_assessment_dialog(assessment_run_id: int, payload: AssessmentDialogRequest) -> dict[str, Any]:
+    try:
+        response = create_assessment_dialog_entry(assessment_run_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return serialize_model(response)
 
 
 @app.get("/api/assessments/latest")

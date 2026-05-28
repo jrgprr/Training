@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from .ai_assessment_models import (
     AgentProfileSummary,
+    AssessmentDialogRequest,
+    AssessmentDialogResponse,
     AssessmentCadence,
     AssessmentRunDetailResponse,
     AssessmentRunLatestItem,
@@ -27,6 +29,7 @@ from .ai_assessment_models import (
     GeneratedAssessmentOutput,
     LatestAssessmentsResponse,
     AssessmentWindowSummary,
+    ReassessmentStatusPayload,
     RunTriggerMode,
 )
 from .ai_context import AssessmentContextSnapshot, build_assessment_context_with_connection
@@ -604,6 +607,106 @@ def execute_assessment_run(request: AssessmentRunTriggerRequest) -> PreparedAsse
             profile_instruction_version=prepared_run.profile_instruction_version,
             reused_run_id=prepared_run.reused_run_id,
         )
+
+
+def create_assessment_dialog_entry(assessment_run_id: int, request: AssessmentDialogRequest) -> AssessmentDialogResponse:
+    with get_connection() as connection:
+        run_row = _fetch_one(
+            connection,
+            """
+            SELECT r.assessment_run_id,
+                   p.profile_key,
+                   p.cadence,
+                   w.season_id,
+                   w.block_id,
+                   w.week_id,
+                   w.window_start_date,
+                   w.window_end_date
+            FROM agent_assessment_runs r
+            JOIN agent_assessment_profiles p ON p.agent_profile_id = r.agent_profile_id
+            JOIN agent_assessment_windows w ON w.assessment_window_id = r.assessment_window_id
+            WHERE r.assessment_run_id = ?
+            """,
+            (assessment_run_id,),
+        )
+        if run_row is None:
+            raise LookupError(f"No existe la evaluacion {assessment_run_id}.")
+
+        dialog_row = connection.execute(
+            """
+            INSERT INTO agent_assessment_dialog_context (
+                assessment_run_id,
+                entry_kind,
+                entry_scope,
+                clarification_kind,
+                entry_text,
+                linked_evidence_json,
+                created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING dialog_context_id, created_at
+            """,
+            (
+                assessment_run_id,
+                request.entry_kind.value,
+                request.entry_scope.value,
+                request.clarification_kind.value if request.clarification_kind else None,
+                request.entry_text,
+                request.linked_evidence_json,
+                request.created_by,
+            ),
+        ).fetchone()
+
+    reassessment: ReassessmentStatusPayload | None = None
+    if request.request_reassessment:
+        rerun = execute_assessment_run(
+            AssessmentRunTriggerRequest(
+                cadence=AssessmentCadence(run_row["cadence"]),
+                agent_profile_key=run_row["profile_key"],
+                season_id=run_row["season_id"],
+                block_id=run_row["block_id"],
+                week_id=run_row["week_id"],
+                window_start_date=run_row["window_start_date"],
+                window_end_date=run_row["window_end_date"],
+                trigger_mode=RunTriggerMode.RERUN,
+            )
+        )
+        reassessment = ReassessmentStatusPayload(requested=True, status=rerun.run_status.value)
+
+        with get_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO agent_assessment_dialog_context (
+                    assessment_run_id,
+                    entry_kind,
+                    entry_scope,
+                    entry_text,
+                    linked_evidence_json,
+                    created_by
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    assessment_run_id,
+                    DialogEntryKind.SYSTEM_NOTE.value,
+                    DialogEntryScope.REASSESSMENT_REQUEST.value,
+                    f"Reassessment requested from assessment run {assessment_run_id}; created assessment run {rerun.assessment_run_id} with status {rerun.run_status.value}.",
+                    json.dumps([f"reassessment_run_id={rerun.assessment_run_id}"], ensure_ascii=True),
+                    "system",
+                ),
+            )
+
+    return AssessmentDialogResponse(
+        dialog_context_id=dialog_row["dialog_context_id"],
+        assessment_run_id=assessment_run_id,
+        proposal_id=None,
+        entry_kind=request.entry_kind,
+        entry_scope=request.entry_scope,
+        clarification_kind=request.clarification_kind,
+        entry_text=request.entry_text,
+        linked_evidence_json=request.linked_evidence_json,
+        created_at=dialog_row["created_at"],
+        created_by=request.created_by,
+        reassessment=reassessment,
+    )
 
 
 def get_assessment_run_detail(assessment_run_id: int) -> AssessmentRunDetailResponse | None:
