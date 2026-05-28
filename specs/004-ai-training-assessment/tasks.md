@@ -74,7 +74,7 @@
 ### Tests for User Story 2
 
 - [x] T018 [P] [US2] Add multi-cadence orchestration tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering weekly runs, block runs, season-capable window validation, and concurrent profile runs for the same window.
-- [ ] T019 [P] [US2] Add proposal workflow and contract tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering proposal emission, cadence-to-target boundary validation, `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, `POST /api/proposals/{proposal_id}/decision`, and bounded assessment-dialog persistence.
+- [x] T019 [P] [US2] Add proposal workflow and contract tests in `GUI/backend/tests/test_ai_assessment_agents.py` covering proposal emission, cadence-to-target boundary validation, `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, `POST /api/proposals/{proposal_id}/decision`, and bounded assessment-dialog persistence.
 
 ### Implementation for User Story 2
 
@@ -83,7 +83,7 @@
 - [x] T022 [US2] Implement approval-gated canonical plan mutation tracing in `GUI/backend/app/ai_proposals.py`, `Sistema/schema.sql`, and `Sistema/views.sql` so accepted proposals update SQLite planning state first and never mutate markdown.
 - [x] T023 [US2] Extend `GUI/backend/app/main.py` to expose `GET /api/assessments/latest`, `GET /api/proposals`, `GET /api/proposals/{proposal_id}`, and `POST /api/proposals/{proposal_id}/decision` using backend-owned validation and status transitions.
 - [ ] T024 [US2] Keep payload shape and manual validation aligned by updating `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md` and `specs/004-ai-training-assessment/quickstart.md` if concrete response fields or decision semantics shift during implementation.
-- [ ] T025 [US2] Run the multi-cadence backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents` plus targeted SQLite assertions for proposals and decisions.
+- [x] T025 [US2] Run the multi-cadence backend validation from `specs/004-ai-training-assessment/quickstart.md` with `cd /home/jparra/Training/GUI/backend && source /home/jparra/Training/.venv/bin/activate && PYTHONPATH=. python -m unittest tests.test_ai_assessment_agents` plus targeted SQLite assertions for proposals and decisions.
 
 **Checkpoint**: Daily, weekly, and block specialist runs can emit reviewable proposals, season support exists in the canonical model, and only approved decisions can record plan mutations.
 

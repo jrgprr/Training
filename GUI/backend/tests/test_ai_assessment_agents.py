@@ -5,11 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest
+from app.ai_assessment_models import AssessmentCadence, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalDecisionStatus, ProposalStatus
 from app.ai_assessments import register_gateway_provider
 from app.ai_context import build_assessment_context
 from app.db import get_connection, initialize_database
-from app.main import create_assessment_run, get_assessment_run
+from app.main import create_assessment_run, decide_assessment_proposal, get_assessment_run, get_latest_assessments, get_proposal, get_proposals
 from tests.test_ai_assessment_api import AssessmentApiTests
 from tests.test_ai_assessment_context import create_minimal_assessment_source_tables, seed_assessment_context_data
 
@@ -380,6 +380,210 @@ class AssessmentAgentLifecycleTests(unittest.TestCase):
                 self.assertEqual(stored[0]["source_cadence"], "weekly")
                 self.assertEqual(stored[0]["target_planning_level"], "block")
                 self.assertEqual(stored[0]["conflict_group_key"], "block:B1:progression")
+
+    def test_weekly_proposal_target_boundary_validation_marks_run_failed(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return (
+                    '{'
+                    '"summary_text":"This output proposes an invalid target planning level.",'
+                    '"proposals":['
+                    '{'
+                    '"target_planning_level":"season",'
+                    '"proposal_title":"Skip block review and jump to season adjustment",'
+                    '"change_kind":"revise_block_emphasis",'
+                    '"proposed_change":{"target_entity":"plan_seasons.season_id=2026"}'
+                    '}'
+                    ']'
+                    '}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (510, 2026, 1, 11, 'closed', 0.87, 0.94, 80, 90, -10, 'watch', 'Check progression control.', 'Weekly review available.')
+                        """
+                    )
+
+                created = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+
+                self.assertEqual(created["run_status"], "failed")
+
+                with get_connection() as connection:
+                    run_row = connection.execute(
+                        "SELECT run_status, failure_code, failure_detail FROM agent_assessment_runs WHERE assessment_run_id = ?",
+                        (created["assessment_run_id"],),
+                    ).fetchone()
+                    proposal_total = connection.execute(
+                        "SELECT COUNT(*) AS total FROM agent_adaptation_proposals WHERE assessment_run_id = ?",
+                        (created["assessment_run_id"],),
+                    ).fetchone()["total"]
+
+                self.assertEqual(run_row["run_status"], "failed")
+                self.assertEqual(run_row["failure_code"], "invalid_output")
+                self.assertIn("does not match profile target block", run_row["failure_detail"])
+                self.assertEqual(proposal_total, 0)
+
+    def test_proposal_workflow_reads_and_decision_path_are_traceable(self) -> None:
+        class FakeProvider:
+            def invoke(self, invocation) -> str:
+                return (
+                    '{'
+                    '"summary_text":"The week stayed mostly on plan but the next block step should be held.",'
+                    '"proposals":['
+                    '{'
+                    '"target_planning_level":"block",'
+                    '"proposal_title":"Hold block progression for one extra week",'
+                    '"proposal_summary":"Extend the current stabilization period before the next load increase.",'
+                    '"change_kind":"extend_stabilization",'
+                    '"proposed_change":{"target_entity":"plan_meso_blocks.block_id=1","changes":{"duration_weeks_min":4,"duration_weeks_max":5}},'
+                    '"reasoning_summary":"The athlete kept frequency but showed rising recovery cost.",'
+                    '"conflict_group_key":"block:B1:progression"'
+                    '}'
+                    ']'
+                    '}'
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.dict("os.environ", {"AI_ASSESSMENT_PROVIDER": "fake", "AI_ASSESSMENT_MODEL": "fake-model"}):
+                register_gateway_provider("fake", FakeProvider())
+                initialize_database()
+                create_minimal_assessment_source_tables()
+                seed_assessment_context_data()
+
+                with get_connection() as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO review_weekly_reviews (
+                            weekly_review_id,
+                            season_id,
+                            block_id,
+                            week_id,
+                            review_status,
+                            adherence_rate,
+                            traceability_rate,
+                            actual_minutes,
+                            planned_reference_minutes,
+                            volume_delta_minutes,
+                            risk_level,
+                            recommendation_text,
+                            summary_text
+                        ) VALUES (511, 2026, 1, 11, 'closed', 0.88, 0.95, 82, 90, -8, 'watch', 'Hold the next progression step.', 'Weekly review indicates recovery cost.')
+                        """
+                    )
+
+                weekly_run = create_assessment_run(
+                    AssessmentRunTriggerRequest(
+                        cadence=AssessmentCadence.WEEKLY,
+                        agent_profile_key="weekly_adherence_adequacy_v1",
+                        season_id=2026,
+                        week_id=11,
+                        window_start_date="2026-05-26",
+                        window_end_date="2026-06-01",
+                    )
+                )
+
+                with get_connection() as connection:
+                    proposal_id = connection.execute(
+                        "SELECT proposal_id FROM agent_adaptation_proposals WHERE assessment_run_id = ?",
+                        (weekly_run["assessment_run_id"],),
+                    ).fetchone()["proposal_id"]
+                    connection.execute(
+                        """
+                        INSERT INTO agent_assessment_dialog_context (
+                            proposal_id,
+                            entry_kind,
+                            entry_scope,
+                            entry_text,
+                            created_by
+                        ) VALUES (?, 'user_question', 'proposal', 'Why hold progression instead of reducing intensity?', 'local-operator')
+                        """,
+                        (proposal_id,),
+                    )
+
+                latest = get_latest_assessments(season_id=2026, cadence=AssessmentCadence.WEEKLY)
+                self.assertEqual(len(latest["items"]), 1)
+                self.assertEqual(latest["items"][0]["assessment_run_id"], weekly_run["assessment_run_id"])
+                self.assertEqual(latest["items"][0]["proposal_count"], 1)
+                self.assertEqual(latest["items"][0]["pending_proposal_count"], 1)
+
+                proposals = get_proposals(season_id=2026, status=ProposalStatus.PENDING)
+                self.assertEqual(len(proposals["items"]), 1)
+                self.assertEqual(proposals["items"][0]["proposal_id"], proposal_id)
+                self.assertEqual(proposals["items"][0]["conflict_group_key"], "block:B1:progression")
+
+                proposal_detail = get_proposal(proposal_id)
+                self.assertEqual(proposal_detail["proposal_status"], "pending")
+                self.assertEqual(proposal_detail["source_assessment"]["assessment_run_id"], weekly_run["assessment_run_id"])
+                self.assertEqual(len(proposal_detail["dialog_context"]), 1)
+                self.assertEqual(proposal_detail["dialog_context"][0]["entry_scope"], "proposal")
+
+                decision_response = decide_assessment_proposal(
+                    proposal_id,
+                    ProposalDecisionRequest(
+                        decision_status=ProposalDecisionStatus.ACCEPTED,
+                        decided_by="local-operator",
+                        decision_note="Reduce the next progression step and keep intensity stable.",
+                    ),
+                )
+
+                self.assertEqual(decision_response["proposal_status"], "accepted")
+                self.assertEqual(decision_response["decision"]["decision_status"], "accepted")
+                self.assertEqual(decision_response["plan_mutation"]["target_planning_level"], "block")
+
+                accepted_only = get_proposals(season_id=2026, status=ProposalStatus.ACCEPTED)
+                self.assertEqual(len(accepted_only["items"]), 1)
+                self.assertEqual(accepted_only["items"][0]["proposal_id"], proposal_id)
+
+                updated_detail = get_proposal(proposal_id)
+                self.assertEqual(updated_detail["proposal_status"], "accepted")
+                self.assertEqual(len(updated_detail["decision_history"]), 1)
+                self.assertEqual(updated_detail["decision_history"][0]["decision_status"], "accepted")
+
+                with get_connection() as connection:
+                    mutation_row = connection.execute(
+                        "SELECT target_entity_id, applied_by FROM agent_accepted_plan_mutations WHERE proposal_id = ?",
+                        (proposal_id,),
+                    ).fetchone()
+
+                self.assertEqual(mutation_row["target_entity_id"], "plan_meso_blocks.block_id=1")
+                self.assertEqual(mutation_row["applied_by"], "local-operator")
 
 
 if __name__ == "__main__":
