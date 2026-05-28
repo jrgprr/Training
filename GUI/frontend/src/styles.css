@@ -107,6 +107,196 @@ textarea {
   margin-bottom: 16px;
 }
 
+.assessment-review-panel {
+  margin-bottom: 16px;
+}
+
+.assessment-review-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.3fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+
+.assessment-review-column {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.assessment-column-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.assessment-column-head h3,
+.assessment-evidence-group h4 {
+  margin: 0;
+}
+
+.assessment-column-caption,
+.assessment-muted-copy {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.assessment-operator-field {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.assessment-operator-field span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.assessment-operator-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+}
+
+.assessment-list,
+.proposal-queue-list,
+.assessment-type-list,
+.assessment-finding-list,
+.dialog-entry-list,
+.decision-history-list,
+.proposal-reference-list {
+  display: grid;
+  gap: 10px;
+}
+
+.assessment-list-item,
+.proposal-queue-item,
+.proposal-reference-item,
+.assessment-type-card,
+.assessment-finding-card,
+.dialog-entry-card,
+.decision-history-card,
+.assessment-detail-card,
+.proposal-detail-card,
+.proposal-source-card {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.assessment-list-item,
+.proposal-queue-item,
+.proposal-reference-item {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.assessment-list-item:hover,
+.proposal-queue-item:hover,
+.proposal-reference-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+.assessment-list-item.selected,
+.proposal-queue-item.selected,
+.proposal-reference-item.selected {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: var(--accent-soft);
+}
+
+.assessment-list-head,
+.assessment-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.assessment-list-head p,
+.assessment-detail-head p,
+.assessment-list-summary,
+.assessment-detail-summary,
+.proposal-source-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.assessment-list-meta,
+.assessment-detail-badges {
+  display: flex;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.assessment-detail-card,
+.proposal-detail-card {
+  display: grid;
+  gap: 14px;
+}
+
+.assessment-summary-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.assessment-evidence-group {
+  display: grid;
+  gap: 10px;
+}
+
+.review-bullet-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.review-bullet-list.compact {
+  gap: 4px;
+}
+
+.proposal-reference-item strong,
+.assessment-list-item strong,
+.proposal-queue-item strong {
+  color: var(--ink);
+}
+
+.proposal-reference-item span,
+.proposal-queue-item small {
+  color: var(--muted);
+}
+
+.proposal-json-block {
+  margin: 0;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(28, 36, 48, 0.94);
+  color: #f8fafc;
+  overflow: auto;
+  font-size: 0.84rem;
+}
+
+.compact-list {
+  gap: 8px;
+}
+
+.compact-card {
+  padding: 12px;
+}
+
 .segment-panel {
   margin-bottom: 16px;
 }
@@ -1140,6 +1330,10 @@ textarea {
     grid-template-columns: 1fr 1fr;
   }
 
+  .assessment-review-layout {
+    grid-template-columns: 1fr;
+  }
+
   .activity-feed-list {
     grid-template-columns: 1fr 1fr;
   }
@@ -1169,6 +1363,13 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .assessment-column-head,
+  .assessment-list-head,
+  .assessment-detail-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .activity-feed-list {
     grid-template-columns: 1fr;
   }
@@ -1182,6 +1383,10 @@ textarea {
 
   .summary-strip {
     width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assessment-summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
