@@ -18,9 +18,9 @@
 
 **Purpose**: Lock the implementation to the approved local-first, backend-owned scope before changing schema, orchestration, or review surfaces.
 
-- [ ] T001 Confirm the feature boundary, v1 specialist-agent roster, SQLite source-of-truth rule, thin-frontend rule, and approval-gated mutation rule in `specs/004-ai-training-assessment/spec.md`, `specs/004-ai-training-assessment/plan.md`, `specs/004-ai-training-assessment/research.md`, and `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
-- [ ] T002 Identify the concrete implementation surface in `Sistema/schema.sql`, `Sistema/views.sql`, `GUI/backend/app/db.py`, `GUI/backend/app/main.py`, `GUI/backend/app/activity_quality.py`, `GUI/backend/app/segments.py`, `GUI/backend/tests/`, `GUI/frontend/src/App.tsx`, `GUI/frontend/src/styles.css`, and `Agentes/README.md`.
-- [ ] T003 [P] Document the planned backend-owned module split and local provider configuration boundary in `Agentes/README.md` and `GUI/backend/README.md` so implementation stays local-first and keeps prompt logic out of the frontend.
+- [x] T001 Confirm the feature boundary, v1 specialist-agent roster, SQLite source-of-truth rule, thin-frontend rule, and approval-gated mutation rule in `specs/004-ai-training-assessment/spec.md`, `specs/004-ai-training-assessment/plan.md`, `specs/004-ai-training-assessment/research.md`, and `specs/004-ai-training-assessment/contracts/ai-training-assessment-api.md`.
+- [x] T002 Identify the concrete implementation surface in `Sistema/schema.sql`, `Sistema/views.sql`, `GUI/backend/app/db.py`, `GUI/backend/app/main.py`, `GUI/backend/app/activity_quality.py`, `GUI/backend/app/segments.py`, `GUI/backend/tests/`, `GUI/frontend/src/App.tsx`, `GUI/frontend/src/styles.css`, and `Agentes/README.md`.
+- [x] T003 [P] Document the planned backend-owned module split and local provider configuration boundary in `Agentes/README.md` and `GUI/backend/README.md` so implementation stays local-first and keeps prompt logic out of the frontend.
 
 ---
 

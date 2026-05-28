@@ -28,6 +28,26 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 La API lee desde `Sistema/training.sqlite`.
 
+## Slice AI Assessment
+
+El feature `004-ai-training-assessment` mantiene la logica de agentes y de orquestacion completamente en backend.
+
+Division prevista de modulos:
+- `app/ai_assessment_models.py`: enums y payloads compartidos para runs, findings, propuestas y dialogo acotado.
+- `app/ai_profiles.py`: registro backend del roster v1 y metadatos de cadencia.
+- `app/ai_gateway.py`: frontera agnostica de proveedor para invocacion LLM, hashes de prompt, timeouts y fallos explicitos.
+- `app/ai_context.py`: resolucion de ventanas, ensamblado de contexto canonico y huella de evidencia.
+- `app/ai_assessments.py`: preparacion de runs, deduplicacion, reruns y persistencia base del flujo de evaluacion.
+- `app/main.py`: frontera HTTP fina; expone endpoints y valida entradas, pero no contiene logica de coaching ni de prompts.
+- `app/db.py`: inicializacion y evolucion de esquema SQLite, incluida la persistencia canonica de runs, findings, propuestas y dialog context.
+
+Boundary de proveedor local-first:
+- El frontend no llama al LLM ni construye prompts.
+- La seleccion de proveedor y modelo queda encapsulada en `app/ai_gateway.py`.
+- La configuracion se resuelve en backend mediante variables de entorno como `AI_ASSESSMENT_PROVIDER` y `AI_ASSESSMENT_MODEL`.
+- Si no existe proveedor configurado, el backend persiste un fallo explicito; no hay fallback silencioso a reglas locales que simulen una evaluacion LLM.
+- SQLite sigue siendo la unica fuente canonica de estado runtime; cualquier proveedor externo solo participa de forma transitoria en la generacion del texto de evaluacion.
+
 ## V0.3 - Garmin Connect directo
 
 El backend ya tiene el esqueleto de `V0.3` para un adaptador Garmin Connect desacoplado.
