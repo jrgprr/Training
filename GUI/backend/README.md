@@ -5,6 +5,13 @@ Backend minimo de lectura para la GUI de `V0.2`.
 ## Endpoints
 
 - `GET /api/health`
+- `POST /api/assessments/runs`
+- `GET /api/assessments/latest`
+- `GET /api/assessments/runs/{assessment_run_id}`
+- `POST /api/assessments/runs/{assessment_run_id}/dialog`
+- `GET /api/proposals`
+- `GET /api/proposals/{proposal_id}`
+- `POST /api/proposals/{proposal_id}/decision`
 - `GET /api/seasons`
 - `GET /api/seasons/{season_id}/blocks`
 - `GET /api/blocks/{block_id}/weeks`
@@ -23,6 +30,15 @@ Backend minimo de lectura para la GUI de `V0.2`.
 ```bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Variables esperadas para el proveedor de evaluacion:
+
+```bash
+export AI_ASSESSMENT_PROVIDER=<provider_key>
+export AI_ASSESSMENT_MODEL=<model_name>
+```
+
+Si no existe proveedor configurado, el backend persiste la evaluacion como `failed` con detalle explicito en SQLite.
 
 ## Fuente de datos
 
@@ -47,6 +63,12 @@ Boundary de proveedor local-first:
 - La configuracion se resuelve en backend mediante variables de entorno como `AI_ASSESSMENT_PROVIDER` y `AI_ASSESSMENT_MODEL`.
 - Si no existe proveedor configurado, el backend persiste un fallo explicito; no hay fallback silencioso a reglas locales que simulen una evaluacion LLM.
 - SQLite sigue siendo la unica fuente canonica de estado runtime; cualquier proveedor externo solo participa de forma transitoria en la generacion del texto de evaluacion.
+
+Flujo operador aprobado en V1:
+- una evaluacion persistida puede incluir findings, evidencia principal, propuestas y dialogo acotado,
+- `POST /api/assessments/runs/{assessment_run_id}/dialog` guarda aclaraciones acotadas y puede solicitar un rerun trazable,
+- `GET /api/proposals` y `GET /api/proposals/{proposal_id}` exponen la cola de revision y la trazabilidad,
+- y `POST /api/proposals/{proposal_id}/decision` es el unico camino que puede desembocar en una mutacion del plan canonico.
 
 ## V0.3 - Garmin Connect directo
 

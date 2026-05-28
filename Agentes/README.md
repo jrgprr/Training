@@ -23,6 +23,19 @@ Metadatos de cadencia previstos en backend:
 - `block` -> revisa `block:*` y puede proponer a `season`.
 - `season` -> revisa `season:*`, queda preparada como cadencia soportada y puede proponer a `macro` aunque no forme parte del roster minimo v1.
 
+## Flujo local-first de evaluacion
+
+La implementacion actual de `004-ai-training-assessment` aplica un flujo deliberadamente acotado:
+- SQLite sigue siendo la unica fuente canonica para plan, ejecucion, revisiones, evaluaciones, propuestas, decisiones y dialogo acotado.
+- El proveedor LLM solo participa de forma transitoria para generar texto interpretativo; no conserva estado runtime del sistema.
+- La GUI consume listas de evaluaciones, detalle, propuestas pendientes y acciones de aprobacion desde el backend, sin construir logica de coaching ni prompts.
+- Las aclaraciones del atleta o del operador se guardan como `dialog_context`; no reescriben registros canonicos por si mismas.
+
+Boundary de aprobacion:
+- una evaluacion puede generar propuestas,
+- una propuesta puede ser aceptada, rechazada o supersedida,
+- y solo una propuesta aceptada puede crear un `agent_accepted_plan_mutations` trazable sobre el plan canonico.
+
 ## 1. Principio de diseno
 
 Los agentes se separan por responsabilidad, no por herramienta.
