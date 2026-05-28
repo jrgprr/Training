@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .ai_assessment_models import AssessmentRunTriggerRequest, serialize_model
+from .ai_assessments import build_assessment_run_trigger_response, get_assessment_run_detail, prepare_assessment_run
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -64,6 +66,26 @@ class SegmentListQuery(BaseModel):
     season_id: int
     query: str | None = None
     limit: int = 50
+
+
+@app.post("/api/assessments/runs")
+def create_assessment_run(payload: AssessmentRunTriggerRequest) -> dict[str, Any]:
+    try:
+        prepared_run = prepare_assessment_run(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return serialize_model(build_assessment_run_trigger_response(prepared_run))
+
+
+@app.get("/api/assessments/runs/{assessment_run_id}")
+def get_assessment_run(assessment_run_id: int) -> dict[str, Any]:
+    payload = get_assessment_run_detail(assessment_run_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe la evaluacion {assessment_run_id}.")
+    return serialize_model(payload)
 
 
 def get_week_context(week_id: int) -> dict[str, Any]:
