@@ -1348,6 +1348,71 @@ function formatActivityQualityCompact(activity: Pick<ActivityListItem, "quality_
   return parts.join(" · ") || "Sin detalle adicional";
 }
 
+function toHumanLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Sin dato";
+  }
+  return value
+    .split(/[_-]+/)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ");
+}
+
+function toCadenceLabel(value: string) {
+  if (value === "daily") {
+    return "Diaria";
+  }
+  if (value === "weekly") {
+    return "Semanal";
+  }
+  if (value === "block") {
+    return "Bloque";
+  }
+  if (value === "season") {
+    return "Temporada";
+  }
+  return toHumanLabel(value);
+}
+
+function toReviewStatusLabel(value: string) {
+  if (value === "no_new_data") {
+    return "sin datos nuevos";
+  }
+  if (value === "partial_context") {
+    return "contexto parcial";
+  }
+  return value.replace(/_/g, " ");
+}
+
+function toReviewBadgeClass(value: string) {
+  if (["completed", "accepted"].includes(value)) {
+    return "badge badge-completed";
+  }
+  if (["partial_context", "superseded"].includes(value)) {
+    return "badge badge-partial";
+  }
+  if (["failed", "rejected", "critical"].includes(value)) {
+    return "badge badge-failed";
+  }
+  if (["warning", "watch"].includes(value)) {
+    return "badge badge-partial";
+  }
+  return "badge badge-pending";
+}
+
+function toConfidenceLabel(value: string | null | undefined) {
+  if (value === "high") {
+    return "Confianza alta";
+  }
+  if (value === "medium") {
+    return "Confianza media";
+  }
+  if (value === "limited") {
+    return "Confianza limitada";
+  }
+  return "Sin confianza";
+}
+
 export default function App() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -2212,39 +2277,28 @@ export default function App() {
               <button
                 key={activity.activity_id}
                 type="button"
-                className={`activity-feed-card${selectedActivity?.activity_id === activity.activity_id ? ' selected' : ''}`}
+                className={activity.activity_id === selectedActivity?.activity_id ? "activity-feed-item selected" : "activity-feed-item"}
                 onClick={() => void loadActivityDetail(activity.activity_id)}
               >
                 <div className="activity-feed-head">
                   <div>
                     <strong>{toActivityTypeLabel(activity.activity_type, activity.source_system)}</strong>
-                    <div className="activity-origin-row">
-                      <span className={toSourceChipClass(activity.source_system)}>{toSourceLabel(activity.source_system)}</span>
-                      <p>{toDisciplineLabel(activity.discipline)}</p>
-                    </div>
+                    <p>
+                      {[
+                        activity.started_at ? toDateTimeLabel(activity.started_at) : activity.activity_date,
+                        toSourceLabel(activity.source_system),
+                        activity.discipline ? toDisciplineLabel(activity.discipline) : null,
+                      ].filter(Boolean).join(" · ")}
+                    </p>
                   </div>
-                  <span className={activity.compliance_status ? toBadgeClass(activity.compliance_status) : "badge badge-pending"}>
-                    {activity.compliance_status ?? "sin enlace"}
-                  </span>
+                  <span className={toBadgeClass(activity.quality_status ?? "pending")}>{formatQualityStatusLabel(activity.quality_status)}</span>
                 </div>
 
                 <div className="activity-feed-meta">
-                  <span>{activity.activity_date}</span>
-                  <span>{toDateTimeLabel(activity.started_at)}</span>
-                  {activity.planned_session_id != null ? <span>Sesion {activity.planned_session_id}</span> : null}
-                  {activity.external_activity_id ? <span>Ext. {activity.external_activity_id}</span> : null}
-                </div>
-
-                <div className="activity-feed-quality">
-                  <span className={toQualityBadgeClass(activity.quality_status)}>{formatQualityStatusLabel(activity.quality_status)}</span>
-                  <span>{formatActivityQualityCompact(activity)}</span>
-                </div>
-
-                <div className="activity-feed-grid">
-                  <span>Duracion: {activity.duration_seconds != null ? toHoursLabel(Math.round(activity.duration_seconds / 60)) : "-"}</span>
-                  {isDistanceRelevantInList(activity) ? <span>Distancia: {toMetricLabel(activity.distance_meters != null ? activity.distance_meters / 1000 : null, " km")}</span> : null}
-                  {isHeartRateRelevantInList(activity) ? <span>FC: {`${toMetricLabel(activity.avg_hr, " bpm")} / ${toMetricLabel(activity.max_hr, " bpm")}`}</span> : null}
-                  {isPowerRelevantInList(activity) ? <span>Potencia: {activity.avg_power != null ? `${toMetricLabel(activity.avg_power, " W")} media` : `${toMetricLabel(activity.normalized_power, " W")} NP`}</span> : null}
+                  {activity.duration_seconds != null ? <span>{toDurationLabel(activity.duration_seconds / 60, activity.duration_seconds / 60)}</span> : null}
+                  {activity.distance_meters != null ? <span>{toMetricLabel(activity.distance_meters / 1000, " km")}</span> : null}
+                  {activity.avg_hr != null ? <span>FC: {toMetricLabel(activity.avg_hr, " ppm")}</span> : null}
+                  {activity.avg_power != null ? <span>Potencia: {toMetricLabel(activity.avg_power, " W")}</span> : null}
                   {activity.training_load != null ? <span>{toTrainingLoadHeading(activity as ActivityDetail)}: {toMetricLabel(activity.training_load)}</span> : null}
                   <span>Actividad #{activity.activity_id}</span>
                 </div>
