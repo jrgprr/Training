@@ -6,9 +6,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .ai_assessment_models import AssessmentCadence, AssessmentDialogRequest, AssessmentRunTriggerRequest, ProposalDecisionRequest, ProposalStatus, serialize_model
-from .ai_assessments import build_assessment_run_trigger_response, create_assessment_dialog_entry, execute_assessment_run, get_assessment_run_detail, list_latest_assessment_runs
-from .ai_proposals import ProposalConflictError, decide_proposal, get_proposal_detail, list_proposals_for_review
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -67,75 +64,6 @@ class SegmentListQuery(BaseModel):
     season_id: int
     query: str | None = None
     limit: int = 50
-
-
-@app.post("/api/assessments/runs")
-def create_assessment_run(payload: AssessmentRunTriggerRequest) -> dict[str, Any]:
-    try:
-        prepared_run = execute_assessment_run(payload)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-    return serialize_model(build_assessment_run_trigger_response(prepared_run))
-
-
-@app.get("/api/assessments/runs/{assessment_run_id}")
-def get_assessment_run(assessment_run_id: int) -> dict[str, Any]:
-    payload = get_assessment_run_detail(assessment_run_id)
-    if payload is None:
-        raise HTTPException(status_code=404, detail=f"No existe la evaluacion {assessment_run_id}.")
-    return serialize_model(payload)
-
-
-@app.post("/api/assessments/runs/{assessment_run_id}/dialog")
-def create_assessment_dialog(assessment_run_id: int, payload: AssessmentDialogRequest) -> dict[str, Any]:
-    try:
-        response = create_assessment_dialog_entry(assessment_run_id, payload)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-
-    return serialize_model(response)
-
-
-@app.get("/api/assessments/latest")
-def get_latest_assessments(
-    season_id: int,
-    cadence: AssessmentCadence | None = None,
-    block_id: int | None = None,
-    week_id: int | None = None,
-) -> dict[str, Any]:
-    return serialize_model(list_latest_assessment_runs(season_id, cadence=cadence, block_id=block_id, week_id=week_id))
-
-
-@app.get("/api/proposals")
-def get_proposals(season_id: int, status: ProposalStatus | None = None) -> dict[str, Any]:
-    return serialize_model(list_proposals_for_review(season_id, status=status))
-
-
-@app.get("/api/proposals/{proposal_id}")
-def get_proposal(proposal_id: int) -> dict[str, Any]:
-    payload = get_proposal_detail(proposal_id)
-    if payload is None:
-        raise HTTPException(status_code=404, detail=f"No existe la propuesta {proposal_id}.")
-    return serialize_model(payload)
-
-
-@app.post("/api/proposals/{proposal_id}/decision")
-def decide_assessment_proposal(proposal_id: int, payload: ProposalDecisionRequest) -> dict[str, Any]:
-    try:
-        response = decide_proposal(proposal_id, payload)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except LookupError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-    except ProposalConflictError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-
-    return serialize_model(response)
 
 
 def get_week_context(week_id: int) -> dict[str, Any]:

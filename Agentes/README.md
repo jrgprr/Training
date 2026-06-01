@@ -8,34 +8,6 @@ El objetivo no es tener un unico agente generalista, sino varios agentes especia
 - `Datos/Importaciones/` como entrada de fuentes externas como Garmin,
 - y una GUI como interfaz principal para el usuario.
 
-## Registro V1 de agentes de evaluacion
-
-La primera version de `004-ai-training-assessment` fija un registro pequeno y explicito en backend para evitar logica implicita en prompts o en frontend.
-
-- `daily_execution_v1`: agente diario de ejecucion, con propuestas hacia nivel semanal.
-- `daily_recovery_readiness_v1`: agente diario de recuperacion y readiness, con propuestas hacia nivel semanal.
-- `weekly_adherence_adequacy_v1`: agente semanal de adherencia y adecuacion, con propuestas hacia nivel bloque.
-- `block_performance_direction_v1`: agente de direccion del bloque, con propuestas hacia nivel temporada.
-
-Metadatos de cadencia previstos en backend:
-- `daily` -> revisa `day:*` y puede proponer a `weekly`.
-- `weekly` -> revisa `week:*` y puede proponer a `block`.
-- `block` -> revisa `block:*` y puede proponer a `season`.
-- `season` -> revisa `season:*`, queda preparada como cadencia soportada y puede proponer a `macro` aunque no forme parte del roster minimo v1.
-
-## Flujo local-first de evaluacion
-
-La implementacion actual de `004-ai-training-assessment` aplica un flujo deliberadamente acotado:
-- SQLite sigue siendo la unica fuente canonica para plan, ejecucion, revisiones, evaluaciones, propuestas, decisiones y dialogo acotado.
-- El proveedor LLM solo participa de forma transitoria para generar texto interpretativo; no conserva estado runtime del sistema.
-- La GUI consume listas de evaluaciones, detalle, propuestas pendientes y acciones de aprobacion desde el backend, sin construir logica de coaching ni prompts.
-- Las aclaraciones del atleta o del operador se guardan como `dialog_context`; no reescriben registros canonicos por si mismas.
-
-Boundary de aprobacion:
-- una evaluacion puede generar propuestas,
-- una propuesta puede ser aceptada, rechazada o supersedida,
-- y solo una propuesta aceptada puede crear un `agent_accepted_plan_mutations` trazable sobre el plan canonico.
-
 ## 1. Principio de diseno
 
 Los agentes se separan por responsabilidad, no por herramienta.

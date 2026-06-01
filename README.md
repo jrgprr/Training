@@ -104,3 +104,44 @@ Los markdown no desaparecen: pasan a ser vistas humanas del sistema, utiles para
 Garmin pasa a ser una fuente externa principal de datos de ejecucion y fisiologia.
 
 Esos datos pueden entrar en la carpeta `Datos/Importaciones/` y transformarse despues a las tablas relacionales del sistema, con opcion de exportar CSV si hace falta para intercambio o revision.
+
+## 8. Estado actual de desarrollo
+
+Situacion actual del workspace a mayo de 2026:
+
+- La fuente canonica runtime sigue siendo `Sistema/training.sqlite`.
+- La GUI local ya permite navegar temporadas, bloques, semanas, sesiones, actividades Garmin y comparativas `plan vs realidad`.
+- El sistema funciona en modo Garmin-only: las nuevas actividades reales deben entrar por Garmin Connect y no por captura manual en la GUI.
+
+Estado funcional por areas:
+
+- `GUI/backend/`: FastAPI local con endpoints de lectura e importacion Garmin.
+- `GUI/frontend/`: Vite + React para operar el sistema y revisar ejecucion real.
+- `Sistema/`: esquema SQL, vistas y base SQLite plurianual como unica fuente de verdad.
+
+## 9. Arranque local de la aplicacion
+
+Arranque rapido del stack local con Garmin:
+
+```bash
+source /home/jparra/Training/.venv/bin/activate
+bash /home/jparra/Training/GUI/dev-with-garmin.sh
+```
+
+Resultado esperado:
+
+- backend FastAPI en `http://127.0.0.1:8000`
+- frontend Vite en `http://127.0.0.1:5173`
+
+Requisitos practicos:
+
+- existe el entorno Python en `/home/jparra/Training/.venv`
+- existen dependencias frontend instaladas en `GUI/frontend`
+- Garmin Connect esta configurado mediante `GUI/.env.garmin.local`, `GARMIN_CONNECT_SESSION_PATH` o credenciales exportadas en shell
+
+## 10. Documentos recomendados segun la tarea
+
+- Para entender la estructura general del entrenamiento: `README.md`, `2026/Macro.md`, `2026/Bloques/README.md`.
+- Para entender la fuente de verdad runtime: `Sistema/README.md`, `Sistema/schema.sql`, `Sistema/views.sql`.
+- Para operar la GUI y el backend: `GUI/frontend/README.md` y `GUI/backend/README.md`.
+- Para la arquitectura de agentes del sistema: `Agentes/README.md`.

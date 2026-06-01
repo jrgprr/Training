@@ -5,13 +5,6 @@ Backend minimo de lectura para la GUI de `V0.2`.
 ## Endpoints
 
 - `GET /api/health`
-- `POST /api/assessments/runs`
-- `GET /api/assessments/latest`
-- `GET /api/assessments/runs/{assessment_run_id}`
-- `POST /api/assessments/runs/{assessment_run_id}/dialog`
-- `GET /api/proposals`
-- `GET /api/proposals/{proposal_id}`
-- `POST /api/proposals/{proposal_id}/decision`
 - `GET /api/seasons`
 - `GET /api/seasons/{season_id}/blocks`
 - `GET /api/blocks/{block_id}/weeks`
@@ -31,44 +24,9 @@ Backend minimo de lectura para la GUI de `V0.2`.
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Variables esperadas para el proveedor de evaluacion:
-
-```bash
-export AI_ASSESSMENT_PROVIDER=<provider_key>
-export AI_ASSESSMENT_MODEL=<model_name>
-```
-
-Si no existe proveedor configurado, el backend persiste la evaluacion como `failed` con detalle explicito en SQLite.
-
 ## Fuente de datos
 
 La API lee desde `Sistema/training.sqlite`.
-
-## Slice AI Assessment
-
-El feature `004-ai-training-assessment` mantiene la logica de agentes y de orquestacion completamente en backend.
-
-Division prevista de modulos:
-- `app/ai_assessment_models.py`: enums y payloads compartidos para runs, findings, propuestas y dialogo acotado.
-- `app/ai_profiles.py`: registro backend del roster v1 y metadatos de cadencia.
-- `app/ai_gateway.py`: frontera agnostica de proveedor para invocacion LLM, hashes de prompt, timeouts y fallos explicitos.
-- `app/ai_context.py`: resolucion de ventanas, ensamblado de contexto canonico y huella de evidencia.
-- `app/ai_assessments.py`: preparacion de runs, deduplicacion, reruns y persistencia base del flujo de evaluacion.
-- `app/main.py`: frontera HTTP fina; expone endpoints y valida entradas, pero no contiene logica de coaching ni de prompts.
-- `app/db.py`: inicializacion y evolucion de esquema SQLite, incluida la persistencia canonica de runs, findings, propuestas y dialog context.
-
-Boundary de proveedor local-first:
-- El frontend no llama al LLM ni construye prompts.
-- La seleccion de proveedor y modelo queda encapsulada en `app/ai_gateway.py`.
-- La configuracion se resuelve en backend mediante variables de entorno como `AI_ASSESSMENT_PROVIDER` y `AI_ASSESSMENT_MODEL`.
-- Si no existe proveedor configurado, el backend persiste un fallo explicito; no hay fallback silencioso a reglas locales que simulen una evaluacion LLM.
-- SQLite sigue siendo la unica fuente canonica de estado runtime; cualquier proveedor externo solo participa de forma transitoria en la generacion del texto de evaluacion.
-
-Flujo operador aprobado en V1:
-- una evaluacion persistida puede incluir findings, evidencia principal, propuestas y dialogo acotado,
-- `POST /api/assessments/runs/{assessment_run_id}/dialog` guarda aclaraciones acotadas y puede solicitar un rerun trazable,
-- `GET /api/proposals` y `GET /api/proposals/{proposal_id}` exponen la cola de revision y la trazabilidad,
-- y `POST /api/proposals/{proposal_id}/decision` es el unico camino que puede desembocar en una mutacion del plan canonico.
 
 ## V0.3 - Garmin Connect directo
 
