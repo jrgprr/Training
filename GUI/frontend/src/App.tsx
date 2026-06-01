@@ -179,6 +179,29 @@ type WeeklyReview = {
   summary_text: string | null;
 };
 
+type DailyMetricDetail = {
+  daily_metric_id: number;
+  season_id: number;
+  metric_date: string;
+  source_system: string;
+  weight_kg: number | null;
+  sleep_hours: number | null;
+  sleep_quality: string | null;
+  resting_hr: number | null;
+  hrv: number | null;
+  body_battery: number | null;
+  stress_avg: number | null;
+  stress_max: number | null;
+  spo2_avg: number | null;
+  spo2_sleep_avg: number | null;
+  spo2_7d_avg: number | null;
+  spo2_lowest: number | null;
+  subjective_energy: number | null;
+  subjective_fatigue: number | null;
+  soreness: string | null;
+  notes: string | null;
+};
+
 type ActivityDetail = {
   activity_id: number;
   season_id: number;
@@ -200,6 +223,12 @@ type ActivityDetail = {
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
   subjective_feeling: string | null;
+  stress_avg: number | null;
+  stress_max: number | null;
+  spo2_sleep_avg: number | null;
+  spo2_avg: number | null;
+  spo2_7d_avg: number | null;
+  spo2_lowest: number | null;
   source_file: string | null;
   raw_payload_path: string | null;
   notes: string | null;
@@ -1428,6 +1457,8 @@ export default function App() {
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
   const [selectedSessionPrescription, setSelectedSessionPrescription] = useState<SessionPrescription | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
+  const [selectedDailyMetric, setSelectedDailyMetric] = useState<DailyMetricDetail | null>(null);
+  const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1446,6 +1477,7 @@ export default function App() {
   const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
   const [loadingSessionPrescription, setLoadingSessionPrescription] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
+  const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
@@ -1455,6 +1487,14 @@ export default function App() {
     void loadImportJobs();
     void loadGarminStatus();
   }, []);
+
+  useEffect(() => {
+    if (!selectedSeason || !selectedDailyMetricDate) {
+      setSelectedDailyMetric(null);
+      return;
+    }
+    void loadDailyMetric(selectedSeason.season_id, selectedDailyMetricDate);
+  }, [selectedSeason, selectedDailyMetricDate]);
 
   async function loadGarminStatus() {
     try {
@@ -1488,6 +1528,22 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadDailyMetric(seasonId: number, metricDate: string) {
+    try {
+      setLoadingDailyMetric(true);
+      const data = await fetchJson<DailyMetricDetail>(`/api/seasons/${seasonId}/daily-metrics/${metricDate}`);
+      setSelectedDailyMetric(data);
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setSelectedDailyMetric(null);
+        return;
+      }
+      throw requestError;
+    } finally {
+      setLoadingDailyMetric(false);
     }
   }
 
@@ -1571,6 +1627,10 @@ export default function App() {
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
       setSelectedSessionPrescription(null);
+        setSelectedDailyMetric(null);
+        setSelectedDailyMetricDate(null);
+        setSelectedDailyMetric(null);
+        setSelectedDailyMetricDate(null);
       setSegments([]);
       setSelectedSegmentId(null);
       setSelectedSegmentHistory(null);
@@ -1646,6 +1706,9 @@ export default function App() {
       setSessions(sessionData);
       setPlanVsRealRows(comparisonData);
       setWeeklyReview(reviewData);
+      const availableDates = Array.from(new Set([...sessionData.map((session) => session.session_date), ...comparisonData.map((row) => row.session_date)])).sort();
+      const defaultMetricDate = availableDates.find((date) => date === getTodayIsoDate()) ?? availableDates[0] ?? week.start_date;
+      setSelectedDailyMetricDate(defaultMetricDate);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
@@ -1759,9 +1822,12 @@ export default function App() {
       ]);
       setSelectedActivity(activity);
       setSelectedActivityQuality(quality);
+      setSelectedDailyMetricDate(activity.activity_date);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
+
+        const dailyMetricDates = Array.from(new Set([...sessions.map((session) => session.session_date), ...planVsRealRows.map((row) => row.session_date)])).sort();
       setLoadingActivity(false);
       setLoadingActivityQuality(false);
     }
@@ -1824,6 +1890,7 @@ export default function App() {
   const optionalDailyMinutes = Math.round(optionalDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const otherDailyActivities = planVsRealRows.flatMap((row) => row.other_daily_activities ?? []);
   const otherDailyMinutes = Math.round(otherDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+  const dailyMetricDates = Array.from(new Set([...sessions.map((session) => session.session_date), ...planVsRealRows.map((row) => row.session_date)])).sort();
   const totalLoadMinutes = weeklySummary.actualMinutes + optionalDailyMinutes + otherDailyMinutes;
   const skippedCount = planVsRealRows.filter((row) => row.compliance_status === "skipped").length;
   const replacedCount = planVsRealRows.filter((row) => row.compliance_status === "replaced").length;
@@ -2790,6 +2857,81 @@ export default function App() {
             <div className="empty-state-card empty-state-card-wide">
               <strong>Sin sesion estructurada seleccionada</strong>
               <p>Usa "Ver fuerza" en una sesion planificada para abrir su prescripcion estructurada.</p>
+            </div>
+          )}
+
+          <div className="section-heading">
+            <div>
+              <h2>Metricas del dia</h2>
+              <p className="section-subtitle">Lectura diaria independiente de las actividades, ligada al dia seleccionado dentro de la semana.</p>
+            </div>
+          </div>
+
+          {selectedWeek ? (
+            <>
+              <div className="day-chip-row">
+                {dailyMetricDates.map((metricDate) => (
+                  <button
+                    key={metricDate}
+                    type="button"
+                    className={metricDate === selectedDailyMetricDate ? "day-chip selected" : "day-chip"}
+                    onClick={() => setSelectedDailyMetricDate(metricDate)}
+                  >
+                    {metricDate}
+                  </button>
+                ))}
+              </div>
+
+              {loadingDailyMetric ? (
+                <div className="empty-state-card empty-state-card-wide">
+                  <strong>Cargando metricas del dia</strong>
+                  <p>Recuperando fisiologia y contexto diario para {selectedDailyMetricDate ?? "la fecha activa"}.</p>
+                </div>
+              ) : selectedDailyMetric ? (
+                <div className="activity-quality-card panel-subcard">
+                  <div className="activity-quality-head">
+                    <div>
+                      <strong>{selectedDailyMetric.metric_date}</strong>
+                      <p className="activity-quality-copy">Senales diarias de recuperacion y contexto, separadas de la actividad realizada.</p>
+                    </div>
+                    <span className={toSourceChipClass(selectedDailyMetric.source_system)}>{toSourceLabel(selectedDailyMetric.source_system)}</span>
+                  </div>
+
+                  <div className="activity-detail-grid">
+                    {selectedDailyMetric.weight_kg != null ? <article><span>Peso</span><strong>{toMetricLabel(selectedDailyMetric.weight_kg, " kg")}</strong></article> : null}
+                    {selectedDailyMetric.sleep_hours != null ? <article><span>Sueno</span><strong>{toMetricLabel(selectedDailyMetric.sleep_hours, " h")}</strong></article> : null}
+                    {selectedDailyMetric.sleep_quality != null ? <article><span>Calidad sueno</span><strong>{selectedDailyMetric.sleep_quality}</strong></article> : null}
+                    {selectedDailyMetric.resting_hr != null ? <article><span>FC reposo</span><strong>{toMetricLabel(selectedDailyMetric.resting_hr, " bpm")}</strong></article> : null}
+                    {selectedDailyMetric.hrv != null ? <article><span>HRV</span><strong>{toMetricLabel(selectedDailyMetric.hrv)}</strong></article> : null}
+                    {selectedDailyMetric.body_battery != null ? <article><span>Body Battery</span><strong>{toMetricLabel(selectedDailyMetric.body_battery)}</strong></article> : null}
+                    {selectedDailyMetric.stress_avg != null ? <article><span>Estres medio</span><strong>{toMetricLabel(selectedDailyMetric.stress_avg)}</strong></article> : null}
+                    {selectedDailyMetric.stress_max != null ? <article><span>Estres pico</span><strong>{toMetricLabel(selectedDailyMetric.stress_max)}</strong></article> : null}
+                    {selectedDailyMetric.spo2_sleep_avg != null ? <article><span>SpO2 sueno</span><strong>{toMetricLabel(selectedDailyMetric.spo2_sleep_avg, "%")}</strong></article> : null}
+                    {selectedDailyMetric.spo2_avg != null ? <article><span>SpO2 media</span><strong>{toMetricLabel(selectedDailyMetric.spo2_avg, "%")}</strong></article> : null}
+                    {selectedDailyMetric.spo2_7d_avg != null ? <article><span>SpO2 7 dias</span><strong>{toMetricLabel(selectedDailyMetric.spo2_7d_avg, "%")}</strong></article> : null}
+                    {selectedDailyMetric.spo2_lowest != null ? <article><span>SpO2 minima</span><strong>{toMetricLabel(selectedDailyMetric.spo2_lowest, "%")}</strong></article> : null}
+                    {selectedDailyMetric.subjective_energy != null ? <article><span>Energia subjetiva</span><strong>{toMetricLabel(selectedDailyMetric.subjective_energy)}</strong></article> : null}
+                    {selectedDailyMetric.subjective_fatigue != null ? <article><span>Fatiga subjetiva</span><strong>{toMetricLabel(selectedDailyMetric.subjective_fatigue)}</strong></article> : null}
+                    {selectedDailyMetric.soreness != null ? <article><span>Molestias</span><strong>{selectedDailyMetric.soreness}</strong></article> : null}
+                  </div>
+
+                  {selectedDailyMetric.notes ? (
+                    <div className="activity-detail-notes">
+                      <p><strong>Notas:</strong> {selectedDailyMetric.notes}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="empty-state-card empty-state-card-wide">
+                  <strong>Sin metricas diarias</strong>
+                  <p>No hay registro diario disponible para {selectedDailyMetricDate ?? "la fecha activa"}.</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="empty-state-card empty-state-card-wide">
+              <strong>Sin semana seleccionada</strong>
+              <p>Selecciona una semana para ver y cambiar las metricas del dia.</p>
             </div>
           )}
 

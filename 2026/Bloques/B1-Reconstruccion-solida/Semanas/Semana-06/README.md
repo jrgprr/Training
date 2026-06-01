@@ -63,19 +63,19 @@
 - Observaciones: dia muy facil sin excepciones.
 
 ### Sabado
-- Objetivo: repetir salida larga controlada con buena sensacion final.
-- Sesion principal: bicicleta 2 horas 45 minutos a 3 horas en Z2.
-- Complementario: nutricion e hidratacion ordenadas.
-- Observaciones: el mejor cierre es acabar con ganas de volver a hacerlo.
+- Objetivo: cerrar la semana con actividad suave sin comprometer el ultimo dia clave.
+- Sesion principal: paseo largo, monte suave o bicicleta facil 60-75 minutos.
+- Complementario: revision parcial de sensaciones antes del cierre del bloque.
+- Observaciones: debe dejar ganas de entrenar al dia siguiente, no fatiga residual.
 
 ### Domingo
-- Objetivo: cerrar B1 leyendo si la semana se puede repetir.
-- Sesion principal: paseo largo, monte suave o bicicleta facil 60-75 minutos.
-- Complementario: revision completa del bloque y decision sobre paso a B2.
-- Observaciones: si hay cansancio no previsto, simplificar y anotar que B1 necesita una semana extra.
+- Objetivo: cerrar B1 con salida larga y leer si la semana tipo ya es repetible.
+- Sesion principal: bicicleta 2 horas 45 minutos a 3 horas en Z2.
+- Complementario: nutricion e hidratacion ordenadas y revision completa del bloque.
+- Observaciones: si el sabado pesa o aparece cansancio no previsto, simplificarlo para proteger este cierre y reevaluar el paso a B2.
 
 ## 6. Seguimiento y cierre
 
-- Senales de que la semana ha ido bien: la estructura completa se siente asumible, la referencia aerobica sale estable y el sabado no deja deuda clara.
+- Senales de que la semana ha ido bien: la estructura completa se siente asumible, la referencia aerobica sale estable y el domingo largo no deja deuda clara.
 - Senales de prudencia: fatiga arrastrada, fuerza que sigue interfiriendo o percepcion de semana demasiado cara para repetirla.
 - Ajuste permitido para la siguiente fase: pasar a B2 solo si la sensacion general es de base util y repetible; si no, prolongar B1 con otra semana de consolidacion.

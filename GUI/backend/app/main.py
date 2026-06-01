@@ -66,6 +66,26 @@ class SegmentListQuery(BaseModel):
     limit: int = 50
 
 
+def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
+    metric = fetch_one(
+        """
+        SELECT daily_metric_id, season_id, metric_date, source_system,
+               weight_kg, sleep_hours, sleep_quality, resting_hr, hrv, body_battery,
+               stress_avg, stress_max,
+               spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
+               subjective_energy, subjective_fatigue, soreness, notes
+        FROM exec_daily_metrics
+        WHERE season_id = ? AND metric_date = ?
+        ORDER BY CASE WHEN source_system = 'garmin' THEN 0 ELSE 1 END, daily_metric_id DESC
+        LIMIT 1
+        """,
+        (season_id, metric_date),
+    )
+    if metric is None:
+        raise HTTPException(status_code=404, detail=f"No existen metricas diarias para {metric_date} en la temporada {season_id}.")
+    return metric
+
+
 def get_week_context(week_id: int) -> dict[str, Any]:
     row = fetch_one(
         """
@@ -691,12 +711,18 @@ def get_activity(activity_id: int) -> dict[str, Any]:
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
                ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+             dm.stress_avg, dm.stress_max,
+             dm.spo2_sleep_avg, dm.spo2_avg, dm.spo2_7d_avg, dm.spo2_lowest,
              ea.source_file, ea.raw_payload_path, ea.notes,
              ea.quality_status, ea.quality_checked_at, ea.quality_rule_version,
              ea.quality_decision_count, ea.quality_limited_metric_count,
                l.planned_session_id, l.compliance_status, l.rationale,
                rr.actual_summary, rr.general_feeling, rr.next_day_decision
         FROM exec_activities ea
+         LEFT JOIN exec_daily_metrics dm
+             ON dm.season_id = ea.season_id
+            AND dm.metric_date = ea.activity_date
+            AND dm.source_system = ea.source_system
         LEFT JOIN link_plan_execution l ON l.activity_id = ea.activity_id
         LEFT JOIN review_daily_reviews rr
                ON rr.planned_session_id = l.planned_session_id
@@ -736,6 +762,10 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
         (season_id,),
     )
     return ensure_entity_exists(rows, f"No se encontraron actividades para la temporada {season_id}.")
+
+@app.get("/api/seasons/{season_id}/daily-metrics/{metric_date}")
+def get_season_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
+    return get_daily_metric(season_id, metric_date)
 
 
 @app.get("/api/activities/{activity_id}/quality")

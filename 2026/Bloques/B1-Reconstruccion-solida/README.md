@@ -43,6 +43,12 @@ Cada semana debe dejar claro:
 - donde estan los dias de soporte y los dias clave,
 - y que ajustes se permiten si aparecen signos de fatiga.
 
+Patron semanal de referencia al final del bloque:
+- martes y jueves como dias aerobicos utiles en Z2,
+- viernes como dia protector muy facil,
+- sabado como actividad complementaria suave,
+- y domingo como salida larga principal cuando la semana ya esta suficientemente asentada.
+
 ## 7. Estructura del bloque
 
 - `Semanas/Semana-01`: arranque y reactivacion de la rutina.
@@ -67,8 +73,8 @@ Secuencia de carga orientativa:
 - Semana 02: repeticion con ligera ampliacion.
 - Semana 03: primera semana realmente constructiva.
 - Semana 04: absorcion y consolidacion.
-- Semana 05: segundo empuje controlado.
-- Semana 06: validacion final antes de pasar a B2.
+- Semana 05: segundo empuje controlado con sabado suave y salida larga el domingo.
+- Semana 06: validacion final antes de pasar a B2 consolidando ese mismo patron de fin de semana.
 
 Regla de uso de la rutina matinal:
 - objetivo: mejorar sensacion corporal, movilidad y disposicion para entrenar.

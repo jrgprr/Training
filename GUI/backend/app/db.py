@@ -107,6 +107,12 @@ CREATE TABLE IF NOT EXISTS staging_garmin_daily_metrics (
     resting_hr REAL,
     hrv REAL,
     body_battery REAL,
+    stress_avg REAL,
+    stress_max REAL,
+    spo2_avg REAL,
+    spo2_sleep_avg REAL,
+    spo2_7d_avg REAL,
+    spo2_lowest REAL,
     subjective_energy INTEGER,
     subjective_fatigue INTEGER,
     notes TEXT,
@@ -374,8 +380,38 @@ def initialize_database() -> None:
         connection.executescript(IMPORT_SCHEMA)
         connection.executescript(PRESCRIPTION_SCHEMA)
         _ensure_import_job_columns(connection)
+        _ensure_daily_metric_columns(connection)
         _ensure_exec_activity_quality_schema(connection)
         normalize_existing_manual_activity_disciplines(connection)
+
+
+def _ensure_daily_metric_columns(connection: sqlite3.Connection) -> None:
+    expected_columns_by_table = {
+        "staging_garmin_daily_metrics": {
+            "stress_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN stress_avg REAL",
+            "stress_max": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN stress_max REAL",
+            "spo2_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_avg REAL",
+            "spo2_sleep_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_sleep_avg REAL",
+            "spo2_7d_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_7d_avg REAL",
+            "spo2_lowest": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_lowest REAL",
+        },
+        "exec_daily_metrics": {
+            "stress_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN stress_avg REAL",
+            "stress_max": "ALTER TABLE exec_daily_metrics ADD COLUMN stress_max REAL",
+            "spo2_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_avg REAL",
+            "spo2_sleep_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_sleep_avg REAL",
+            "spo2_7d_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_7d_avg REAL",
+            "spo2_lowest": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_lowest REAL",
+        },
+    }
+    for table_name, expected_columns in expected_columns_by_table.items():
+        existing_columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for column_name, statement in expected_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(statement)
 
 
 def _ensure_import_job_columns(connection: sqlite3.Connection) -> None:

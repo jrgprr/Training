@@ -855,6 +855,58 @@ class GarminConnectAdapter:
         return None
 
     @classmethod
+    def _extract_stress_avg(cls, stress_payload: dict[str, Any] | None) -> float | None:
+        if not stress_payload:
+            return None
+        direct_value = cls._pick_first(stress_payload, "avgStressLevel")
+        if direct_value is not None:
+            return direct_value
+        values = stress_payload.get("stressValuesArray") if isinstance(stress_payload, dict) else None
+        if isinstance(values, list):
+            normalized_values = [entry[1] for entry in values if isinstance(entry, list) and len(entry) > 1 and isinstance(entry[1], (int, float)) and entry[1] >= 0]
+            if normalized_values:
+                return round(sum(normalized_values) / len(normalized_values), 2)
+        return None
+
+    @classmethod
+    def _extract_stress_max(cls, stress_payload: dict[str, Any] | None) -> float | None:
+        if not stress_payload:
+            return None
+        direct_value = cls._pick_first(stress_payload, "maxStressLevel")
+        if direct_value is not None:
+            return direct_value
+        values = stress_payload.get("stressValuesArray") if isinstance(stress_payload, dict) else None
+        if isinstance(values, list):
+            normalized_values = [entry[1] for entry in values if isinstance(entry, list) and len(entry) > 1 and isinstance(entry[1], (int, float)) and entry[1] >= 0]
+            if normalized_values:
+                return max(normalized_values)
+        return None
+
+    @classmethod
+    def _extract_spo2_avg(cls, spo2_payload: dict[str, Any] | None) -> float | None:
+        if not spo2_payload:
+            return None
+        return cls._pick_first(spo2_payload, "averageSpO2")
+
+    @classmethod
+    def _extract_spo2_sleep_avg(cls, spo2_payload: dict[str, Any] | None) -> float | None:
+        if not spo2_payload:
+            return None
+        return cls._pick_first(spo2_payload, "avgSleepSpO2")
+
+    @classmethod
+    def _extract_spo2_7d_avg(cls, spo2_payload: dict[str, Any] | None) -> float | None:
+        if not spo2_payload:
+            return None
+        return cls._pick_first(spo2_payload, "lastSevenDaysAvgSpO2")
+
+    @classmethod
+    def _extract_spo2_lowest(cls, spo2_payload: dict[str, Any] | None) -> float | None:
+        if not spo2_payload:
+            return None
+        return cls._pick_first(spo2_payload, "lowestSpO2")
+
+    @classmethod
     def _extract_weight(cls, body_payload: dict[str, Any] | None) -> float | None:
         def normalize_weight(value: Any) -> float | None:
             if value is None:
@@ -884,6 +936,8 @@ class GarminConnectAdapter:
         heart_rates_payload: dict[str, Any],
         hrv_payload: dict[str, Any] | None,
         body_battery_payload: list[dict[str, Any]] | dict[str, Any] | None,
+        stress_payload: dict[str, Any] | None,
+        spo2_payload: dict[str, Any] | None,
         body_payload: dict[str, Any] | None,
     ) -> NormalizedDailyMetric:
         return NormalizedDailyMetric(
@@ -894,6 +948,12 @@ class GarminConnectAdapter:
             resting_hr=cls._extract_resting_hr(heart_rates_payload),
             hrv=cls._extract_hrv(hrv_payload),
             body_battery=cls._extract_body_battery(body_battery_payload, metric_date),
+            stress_avg=cls._extract_stress_avg(stress_payload),
+            stress_max=cls._extract_stress_max(stress_payload),
+            spo2_avg=cls._extract_spo2_avg(spo2_payload),
+            spo2_sleep_avg=cls._extract_spo2_sleep_avg(spo2_payload),
+            spo2_7d_avg=cls._extract_spo2_7d_avg(spo2_payload),
+            spo2_lowest=cls._extract_spo2_lowest(spo2_payload),
             subjective_energy=None,
             subjective_fatigue=None,
             notes=str(cls._pick_first(stats_payload, "wellnessDescription", "calendarDate") or "") or None,
@@ -969,6 +1029,8 @@ class GarminConnectAdapter:
             heart_rates_payload = client.get_heart_rates(metric_date) or {}
             hrv_payload = client.get_hrv_data(metric_date)
             body_battery_payload = client.get_body_battery(metric_date, metric_date)
+            stress_payload = client.get_all_day_stress(metric_date)
+            spo2_payload = client.get_spo2_data(metric_date)
             body_payload = client.get_body_composition(metric_date, metric_date)
             metrics.append(
                 self._normalize_daily_metric(
@@ -978,6 +1040,8 @@ class GarminConnectAdapter:
                     heart_rates_payload=heart_rates_payload,
                     hrv_payload=hrv_payload,
                     body_battery_payload=body_battery_payload,
+                    stress_payload=stress_payload,
+                    spo2_payload=spo2_payload,
                     body_payload=body_payload,
                 )
             )

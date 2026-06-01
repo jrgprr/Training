@@ -1237,9 +1237,10 @@ class GarminImportStorage:
                         """
                         INSERT INTO staging_garmin_daily_metrics (
                             import_job_id, season_id, source_system, metric_date, weight_kg, sleep_hours,
-                            sleep_quality, resting_hr, hrv, body_battery, subjective_energy,
-                            subjective_fatigue, notes, raw_payload_path
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            sleep_quality, resting_hr, hrv, body_battery, stress_avg, stress_max,
+                            spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
+                            subjective_energy, subjective_fatigue, notes, raw_payload_path
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             import_job_id,
@@ -1252,6 +1253,12 @@ class GarminImportStorage:
                             metric.resting_hr,
                             metric.hrv,
                             metric.body_battery,
+                            metric.stress_avg,
+                            metric.stress_max,
+                            metric.spo2_avg,
+                            metric.spo2_sleep_avg,
+                            metric.spo2_7d_avg,
+                            metric.spo2_lowest,
                             metric.subjective_energy,
                             metric.subjective_fatigue,
                             metric.notes,
@@ -1262,8 +1269,10 @@ class GarminImportStorage:
                         """
                         INSERT INTO exec_daily_metrics (
                             season_id, metric_date, source_system, weight_kg, sleep_hours, sleep_quality,
-                            resting_hr, hrv, body_battery, subjective_energy, subjective_fatigue, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            resting_hr, hrv, body_battery, stress_avg, stress_max,
+                            spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
+                            subjective_energy, subjective_fatigue, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
                             weight_kg = excluded.weight_kg,
                             sleep_hours = excluded.sleep_hours,
@@ -1271,6 +1280,12 @@ class GarminImportStorage:
                             resting_hr = excluded.resting_hr,
                             hrv = excluded.hrv,
                             body_battery = excluded.body_battery,
+                            stress_avg = excluded.stress_avg,
+                            stress_max = excluded.stress_max,
+                            spo2_avg = excluded.spo2_avg,
+                            spo2_sleep_avg = excluded.spo2_sleep_avg,
+                            spo2_7d_avg = excluded.spo2_7d_avg,
+                            spo2_lowest = excluded.spo2_lowest,
                             subjective_energy = excluded.subjective_energy,
                             subjective_fatigue = excluded.subjective_fatigue,
                             notes = excluded.notes
@@ -1285,6 +1300,12 @@ class GarminImportStorage:
                             metric.resting_hr,
                             metric.hrv,
                             metric.body_battery,
+                            metric.stress_avg,
+                            metric.stress_max,
+                            metric.spo2_avg,
+                            metric.spo2_sleep_avg,
+                            metric.spo2_7d_avg,
+                            metric.spo2_lowest,
                             metric.subjective_energy,
                             metric.subjective_fatigue,
                             metric.notes,

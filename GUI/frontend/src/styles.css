@@ -107,6 +107,34 @@ textarea {
   margin-bottom: 16px;
 }
 
+.day-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.day-chip {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.day-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+.day-chip.selected {
+  border-color: rgba(15, 118, 110, 0.55);
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent-strong);
+}
+
 .segment-panel {
   margin-bottom: 16px;
 }

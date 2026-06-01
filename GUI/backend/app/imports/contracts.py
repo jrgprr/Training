@@ -79,6 +79,12 @@ class NormalizedDailyMetric:
     resting_hr: float | None = None
     hrv: float | None = None
     body_battery: float | None = None
+    stress_avg: float | None = None
+    stress_max: float | None = None
+    spo2_avg: float | None = None
+    spo2_sleep_avg: float | None = None
+    spo2_7d_avg: float | None = None
+    spo2_lowest: float | None = None
     subjective_energy: int | None = None
     subjective_fatigue: int | None = None
     notes: str | None = None

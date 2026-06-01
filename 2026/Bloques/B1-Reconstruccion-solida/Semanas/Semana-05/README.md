@@ -63,19 +63,19 @@
 - Observaciones: nada que suba la fatiga sistemica.
 
 ### Sabado
+- Objetivo: mantener actividad sin perder recuperacion y llegar activado al domingo.
+- Sesion principal: monte suave, paseo largo o bicicleta facil 60-90 minutos.
+- Complementario: revision de peso, sensacion y carga.
+- Observaciones: debe sumar continuidad sin dejar deuda para la salida larga.
+
+### Domingo
 - Objetivo: normalizar la salida larga de 3 horas.
 - Sesion principal: bicicleta 3 horas en Z2 estable.
 - Complementario: alimentacion, bebida y ritmo bien ordenados.
-- Observaciones: la salida debe parecer ya parte natural de la semana.
-
-### Domingo
-- Objetivo: mantener actividad sin perder recuperacion.
-- Sesion principal: monte suave, paseo largo o bicicleta facil 60-90 minutos.
-- Complementario: revision de peso, sensacion y carga.
-- Observaciones: si el sabado fue mas exigente de lo previsto, hacer solo paseo.
+- Observaciones: si el sabado carga demasiado, simplificarlo para proteger este dia clave.
 
 ## 6. Seguimiento y cierre
 
-- Senales de que la semana ha ido bien: la salida de 3 horas se integra, el lunes no asusta y la fuerza sigue sin interferir.
+- Senales de que la semana ha ido bien: la salida de 3 horas del domingo se integra, el lunes no asusta y la fuerza sigue sin interferir.
 - Senales de prudencia: domingo vaciado, mal descanso o necesidad de cancelar el martes siguiente.
 - Ajuste permitido para la semana siguiente: no subir mas; usar la semana 06 para validar, no para forzar.
