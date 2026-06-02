@@ -60,6 +60,50 @@ class ActivityQualityEvaluation:
     checked_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+def _build_passthrough_metric_summaries(readings: list[NormalizedMetricReading]) -> tuple[list[ActivityMetricSummary], list[str]]:
+    summaries: list[ActivityMetricSummary] = []
+    metric_names: list[str] = []
+    readings_by_metric: dict[str, list[NormalizedMetricReading]] = {}
+    for reading in readings:
+        if reading.metric_name == "heart_rate":
+            continue
+        readings_by_metric.setdefault(reading.metric_name, []).append(reading)
+
+    for metric_name in sorted(readings_by_metric):
+        metric_readings = readings_by_metric[metric_name]
+        values = [reading.raw_value for reading in metric_readings]
+        if not values:
+            continue
+        metric_names.append(metric_name)
+        summaries.extend(
+            [
+                ActivityMetricSummary(
+                    metric_name=metric_name,
+                    summary_kind="average",
+                    source_value=round(sum(values) / len(values), 2),
+                    trusted_value=round(sum(values) / len(values), 2),
+                    summary_status="clean",
+                    evaluated_reading_count=len(metric_readings),
+                    accepted_reading_count=len(metric_readings),
+                    excluded_reading_count=0,
+                    changed_by_filter=False,
+                ),
+                ActivityMetricSummary(
+                    metric_name=metric_name,
+                    summary_kind="maximum",
+                    source_value=max(values),
+                    trusted_value=max(values),
+                    summary_status="clean",
+                    evaluated_reading_count=len(metric_readings),
+                    accepted_reading_count=len(metric_readings),
+                    excluded_reading_count=0,
+                    changed_by_filter=False,
+                ),
+            ]
+        )
+    return summaries, metric_names
+
+
 def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | None) -> list[NormalizedMetricReading]:
     if not isinstance(payload, dict):
         return []
@@ -83,6 +127,7 @@ def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | Non
         "directHeartRate": "heart_rate",
         "directPower": "power",
         "directBikeCadence": "bike_cadence",
+        "directRespirationRate": "respiration_rate",
     }
     sample_index_by_metric: dict[str, int] = {metric_name: 0 for metric_name in metric_keys.values()}
     readings: list[NormalizedMetricReading] = []
@@ -146,6 +191,7 @@ def build_source_reading_fingerprint(readings: list[NormalizedMetricReading]) ->
 def evaluate_activity_quality(activity: NormalizedActivity) -> ActivityQualityEvaluation:
     source_reading_fingerprint = build_source_reading_fingerprint(activity.metric_readings)
     heart_rate_readings = [reading for reading in activity.metric_readings if reading.metric_name == "heart_rate"]
+    passthrough_summaries, passthrough_metric_names = _build_passthrough_metric_summaries(activity.metric_readings)
     checked_at = datetime.now(timezone.utc).isoformat()
 
     if not heart_rate_readings:
@@ -160,11 +206,12 @@ def evaluate_activity_quality(activity: NormalizedActivity) -> ActivityQualityEv
             rule_set_version=RULE_SET_VERSION,
             source_reading_fingerprint=source_reading_fingerprint,
             status="not_checked",
-            evaluated_metric_names=[],
+            evaluated_metric_names=passthrough_metric_names,
             skipped_metric_names=["heart_rate:missing_stream"],
             evaluated_reading_count=0,
             excluded_reading_count=0,
             limited_metric_count=0,
+            summaries=passthrough_summaries,
             checked_at=checked_at,
         )
 
@@ -251,7 +298,7 @@ def evaluate_activity_quality(activity: NormalizedActivity) -> ActivityQualityEv
             excluded_reading_count=len(heart_rate_readings) - len(accepted_readings),
             changed_by_filter=source_maximum != trusted_maximum,
         ),
-    ]
+    ] + passthrough_summaries
 
     activity.avg_hr = trusted_average
     activity.max_hr = trusted_maximum
@@ -266,7 +313,7 @@ def evaluate_activity_quality(activity: NormalizedActivity) -> ActivityQualityEv
         rule_set_version=RULE_SET_VERSION,
         source_reading_fingerprint=source_reading_fingerprint,
         status=activity.quality_status,
-        evaluated_metric_names=["heart_rate"],
+        evaluated_metric_names=["heart_rate", *passthrough_metric_names],
         skipped_metric_names=[],
         evaluated_reading_count=len(heart_rate_readings),
         excluded_reading_count=len(heart_rate_readings) - len(accepted_readings),

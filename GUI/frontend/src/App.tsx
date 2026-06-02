@@ -297,6 +297,8 @@ type ActivityDetail = {
   calories: number | null;
   avg_hr: number | null;
   max_hr: number | null;
+  avg_respiration_rate: number | null;
+  max_respiration_rate: number | null;
   avg_power: number | null;
   normalized_power: number | null;
   training_load: number | null;
@@ -559,6 +561,7 @@ type SegmentHistoryEffort = {
   avg_cadence: number | null;
   avg_heart_rate: number | null;
   max_heart_rate: number | null;
+  avg_respiration_rate: number | null;
   missing_metrics: string[];
   is_best_effort: boolean;
   is_latest_effort: boolean;
@@ -590,7 +593,7 @@ type SegmentHistoryResponse = {
   efforts: SegmentHistoryEffort[];
 };
 
-type SegmentChartMetricKey = "elapsed_time_seconds" | "avg_power" | "avg_cadence" | "avg_heart_rate" | "max_heart_rate";
+type SegmentChartMetricKey = "elapsed_time_seconds" | "avg_power" | "avg_cadence" | "avg_heart_rate" | "max_heart_rate" | "avg_respiration_rate";
 
 type GarminImportRunResponse = {
   status: string;
@@ -979,6 +982,9 @@ function formatMetricValueLabel(metric: SegmentChartMetricKey, value: number) {
   if (metric === "avg_cadence") {
     return `${Math.round(value)} rpm`;
   }
+  if (metric === "avg_respiration_rate") {
+    return `${Math.round(value)} rpm resp`;
+  }
   return `${Math.round(value)} ppm`;
 }
 
@@ -991,6 +997,9 @@ function formatMetricAxisLabel(metric: SegmentChartMetricKey) {
   }
   if (metric === "avg_cadence") {
     return "Cadencia";
+  }
+  if (metric === "avg_respiration_rate") {
+    return "Resp media";
   }
   if (metric === "avg_heart_rate") {
     return "FC media";
@@ -1027,6 +1036,7 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
     "avg_cadence",
     "avg_heart_rate",
     "max_heart_rate",
+    "avg_respiration_rate",
   ] as const satisfies readonly SegmentChartMetricKey[];
   const chartMetrics = metricCandidates.filter((metric) => history.efforts.some((effort) => effort[metric] != null));
 
@@ -1538,6 +1548,9 @@ function formatMetricNameLabel(metricName: string) {
   if (metricName === "heart_rate") {
     return "Frecuencia cardiaca";
   }
+  if (metricName === "respiration_rate") {
+    return "Respiracion";
+  }
   if (metricName === "power") {
     return "Potencia";
   }
@@ -1695,6 +1708,9 @@ function formatActivityZoneSummaryLabel(zoneSummary: ActivityZoneSummary | null 
 function formatQualityMetricValue(metricName: string, value: number | null) {
   if (metricName === "heart_rate") {
     return toMetricLabel(value, " bpm");
+  }
+  if (metricName === "respiration_rate") {
+    return toMetricLabel(value, " rpm resp");
   }
   if (metricName === "power") {
     return toMetricLabel(value, " W");
@@ -2771,6 +2787,7 @@ export default function App() {
                         <span>Potencia: {effort.avg_power != null ? `${effort.avg_power.toFixed(0)} W` : "Sin dato"}</span>
                         <span>Cadencia: {effort.avg_cadence != null ? `${effort.avg_cadence.toFixed(0)} rpm` : "Sin dato"}</span>
                         <span>FC: {effort.avg_heart_rate != null ? `${effort.avg_heart_rate.toFixed(0)} ppm` : "Sin dato"}</span>
+                        <span>Resp: {effort.avg_respiration_rate != null ? `${effort.avg_respiration_rate.toFixed(1)} rpm resp` : "Sin dato"}</span>
                       </div>
                       {effort.missing_metrics.length > 0 ? (
                         <p className="segment-missing-copy">Faltan: {effort.missing_metrics.join(", ")}</p>
@@ -3532,6 +3549,7 @@ export default function App() {
                 {isDistanceRelevant(selectedActivity) ? <article><span>Distancia</span><strong>{toMetricLabel(selectedActivity.distance_meters != null ? selectedActivity.distance_meters / 1000 : null, " km")}</strong></article> : null}
                 {isAscentRelevant(selectedActivity) ? <article><span>Desnivel</span><strong>{toMetricLabel(selectedActivity.ascent_meters, " m")}</strong></article> : null}
                 {isHeartRateRelevant(selectedActivity) ? <article><span>FC media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_hr, " bpm")} / ${toMetricLabel(selectedActivity.max_hr, " bpm")}`}</strong></article> : null}
+                {selectedActivity.avg_respiration_rate != null || selectedActivity.max_respiration_rate != null ? <article><span>Resp media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_respiration_rate, " rpm resp")} / ${toMetricLabel(selectedActivity.max_respiration_rate, " rpm resp")}`}</strong></article> : null}
                 {isPowerRelevant(selectedActivity) ? <article><span>Potencia</span><strong>{toPowerSummary(selectedActivity)}</strong></article> : null}
                 {selectedActivity.training_load != null ? <article><span>{toTrainingLoadHeading(selectedActivity)}</span><strong>{toMetricLabel(selectedActivity.training_load)}</strong></article> : null}
                 {selectedActivity.avg_pace_seconds_per_km != null && isPaceDiscipline(selectedActivity.discipline) ? <article><span>Ritmo medio</span><strong>{toPaceLabel(selectedActivity.avg_pace_seconds_per_km)}</strong></article> : null}

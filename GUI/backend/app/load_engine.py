@@ -111,6 +111,21 @@ def _compute_hr_trimp(*, duration_seconds: float | int | None, average_hr: float
     return round(duration_minutes * relative_intensity * 0.64 * exp(1.92 * relative_intensity), 2)
 
 
+def _compute_respiration_rate_load(*, duration_seconds: float | int | None, average_respiration_rate: float | int | None) -> float | None:
+    if duration_seconds in (None, 0) or average_respiration_rate in (None, 0):
+        return None
+    baseline_breaths_per_minute = 12.0
+    high_breaths_per_minute = 45.0
+    relative_intensity = (float(average_respiration_rate) - baseline_breaths_per_minute) / (
+        high_breaths_per_minute - baseline_breaths_per_minute
+    )
+    relative_intensity = min(max(relative_intensity, 0.0), 1.0)
+    if relative_intensity == 0.0:
+        return None
+    duration_minutes = float(duration_seconds) / 60.0
+    return round(duration_minutes * relative_intensity, 2)
+
+
 def _compute_session_rpe_load(*, duration_seconds: float | int | None, perceived_exertion: float | int | None) -> float | None:
     if duration_seconds in (None, 0) or perceived_exertion in (None, 0):
         return None
@@ -150,6 +165,7 @@ def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> di
     average_hr = activity_row.get("avg_hr")
     normalized_power = activity_row.get("normalized_power")
     average_power = activity_row.get("avg_power")
+    average_respiration_rate = activity_row.get("avg_respiration_rate")
     perceived_exertion = activity_row.get("perceived_exertion")
     vendor_load = activity_row.get("training_load")
 
@@ -172,6 +188,12 @@ def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> di
         )
         if hr_trimp is not None:
             return {"load_value": hr_trimp, "load_source": "hr_trimp", "discipline": discipline}
+        respiration_load = _compute_respiration_rate_load(
+            duration_seconds=duration_seconds,
+            average_respiration_rate=average_respiration_rate,
+        )
+        if respiration_load is not None:
+            return {"load_value": respiration_load, "load_source": "respiration_rate_heuristic", "discipline": discipline}
 
     if discipline in STRENGTH_DISCIPLINES:
         hr_trimp = _compute_hr_trimp(
@@ -182,6 +204,12 @@ def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> di
         )
         if hr_trimp is not None:
             return {"load_value": hr_trimp, "load_source": "hr_trimp", "discipline": discipline}
+        respiration_load = _compute_respiration_rate_load(
+            duration_seconds=duration_seconds,
+            average_respiration_rate=average_respiration_rate,
+        )
+        if respiration_load is not None:
+            return {"load_value": respiration_load, "load_source": "respiration_rate_heuristic", "discipline": discipline}
         if vendor_load not in (None, 0):
             return {"load_value": round(float(vendor_load), 2), "load_source": "garmin_training_load", "discipline": discipline}
         heuristic = _compute_duration_heuristic_load(duration_seconds=duration_seconds, factor_per_minute=0.45)
@@ -197,6 +225,12 @@ def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> di
         )
         if hr_trimp is not None:
             return {"load_value": hr_trimp, "load_source": "hr_trimp", "discipline": discipline}
+        respiration_load = _compute_respiration_rate_load(
+            duration_seconds=duration_seconds,
+            average_respiration_rate=average_respiration_rate,
+        )
+        if respiration_load is not None:
+            return {"load_value": respiration_load, "load_source": "respiration_rate_heuristic", "discipline": discipline}
         if vendor_load not in (None, 0):
             return {"load_value": round(float(vendor_load), 2), "load_source": "garmin_training_load", "discipline": discipline}
         heuristic = _compute_duration_heuristic_load(duration_seconds=duration_seconds, factor_per_minute=0.2)
@@ -211,10 +245,28 @@ def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> di
 
 def build_daily_loads(*, season_id: int, through_date: str) -> tuple[dict[str, float], list[dict[str, Any]]]:
     with get_connection() as connection:
-        rows = connection.execute(
+        metric_summaries_available = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activity_metric_summaries'"
+        ).fetchone() is not None
+        avg_respiration_rate_select = (
             """
+                   (
+                       SELECT trusted_value
+                       FROM exec_activity_metric_summaries summary
+                       WHERE summary.activity_id = exec_activities.activity_id
+                         AND summary.metric_name = 'respiration_rate'
+                         AND summary.summary_kind = 'average'
+                       LIMIT 1
+                   ) AS avg_respiration_rate
+            """
+            if metric_summaries_available
+            else "NULL AS avg_respiration_rate"
+        )
+        rows = connection.execute(
+            f"""
             SELECT activity_id, activity_date, started_at, discipline, duration_seconds,
-                   avg_hr, avg_power, normalized_power, training_load, perceived_exertion
+                   avg_hr, avg_power, normalized_power, training_load, perceived_exertion,
+                   {avg_respiration_rate_select}
             FROM exec_activities
             WHERE season_id = ?
               AND activity_date <= ?

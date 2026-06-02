@@ -304,6 +304,31 @@ class LoadEngineTests(unittest.TestCase):
         self.assertEqual(result["load_source"], "hr_trimp")
         self.assertGreater(result["load_value"], 0)
 
+    def test_compute_activity_load_uses_respiration_rate_heuristic_when_hr_is_unavailable(self) -> None:
+        original_fetch = load_engine._fetch_anchor_profile
+        try:
+            load_engine._fetch_anchor_profile = lambda **_: None
+            result = load_engine.compute_activity_load(
+                {
+                    "activity_date": "2026-06-02",
+                    "started_at": None,
+                    "discipline": "road_biking",
+                    "duration_seconds": 3600,
+                    "avg_hr": None,
+                    "avg_respiration_rate": 30.0,
+                    "avg_power": None,
+                    "normalized_power": None,
+                    "training_load": 0,
+                    "perceived_exertion": None,
+                },
+                season_id=2026,
+            )
+        finally:
+            load_engine._fetch_anchor_profile = original_fetch
+
+        self.assertEqual(result["load_source"], "respiration_rate_heuristic")
+        self.assertGreater(result["load_value"], 0)
+
     def test_get_load_model_snapshot_combines_multiple_sport_rules(self) -> None:
         database = sqlite3.connect(":memory:")
         database.row_factory = sqlite3.Row

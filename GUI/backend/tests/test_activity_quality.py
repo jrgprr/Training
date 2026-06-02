@@ -47,11 +47,12 @@ class ActivityQualityAdapterTests(unittest.TestCase):
                             {"metricsIndex": 1, "key": "sumElapsedDuration"},
                             {"metricsIndex": 2, "key": "directHeartRate"},
                             {"metricsIndex": 3, "key": "directPower"},
+                            {"metricsIndex": 4, "key": "directRespirationRate"},
                         ],
                         "activityDetailMetrics": [
-                            {"metrics": [0, 0, 150, 210]},
-                            {"metrics": [1_000, 1, 242, 220]},
-                            {"metrics": [2_000, 2, 152, 215]},
+                            {"metrics": [0, 0, 150, 210, 28.5]},
+                            {"metrics": [1_000, 1, 242, 220, 31.0]},
+                            {"metrics": [2_000, 2, 152, 215, 29.5]},
                         ],
                     }
                 raise AssertionError(f"unexpected path: {path}")
@@ -72,8 +73,10 @@ class ActivityQualityAdapterTests(unittest.TestCase):
 
         heart_rate_readings = [reading for reading in activities[0].metric_readings if reading.metric_name == "heart_rate"]
         power_readings = [reading for reading in activities[0].metric_readings if reading.metric_name == "power"]
+        respiration_readings = [reading for reading in activities[0].metric_readings if reading.metric_name == "respiration_rate"]
         self.assertEqual([reading.raw_value for reading in heart_rate_readings], [150.0, 242.0, 152.0])
         self.assertEqual([reading.sample_index for reading in power_readings], [0, 1, 2])
+        self.assertEqual([reading.raw_value for reading in respiration_readings], [28.5, 31.0, 29.5])
 
 
 class ActivityQualityStorageTests(unittest.TestCase):
@@ -189,6 +192,36 @@ class ActivityQualityStorageTests(unittest.TestCase):
                         "SELECT COUNT(*) AS total FROM exec_activity_quality_runs WHERE activity_id = 1"
                     ).fetchone()["total"]
                 self.assertEqual(run_count, 1)
+
+    def test_persist_batch_creates_passthrough_respiration_summaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.object(GarminImportStorage, "_auto_link_garmin_activities", return_value=(0, 0)):
+                initialize_database()
+                create_minimal_exec_tables(database_path)
+                storage = GarminImportStorage()
+
+                batch = build_quality_batch()
+                batch.activities[0].metric_readings.extend(
+                    [
+                        NormalizedMetricReading(metric_name="respiration_rate", sample_index=0, raw_value=28.5),
+                        NormalizedMetricReading(metric_name="respiration_rate", sample_index=1, raw_value=31.0),
+                    ]
+                )
+
+                storage.persist_batch(batch)
+
+                quality = get_activity_quality(1)
+                assert quality is not None
+                respiration_metric = next(metric for metric in quality["metrics"] if metric["metric_name"] == "respiration_rate")
+                self.assertEqual(respiration_metric["metric_status"], "clean")
+                self.assertEqual(respiration_metric["accepted_reading_count"], 2)
+                self.assertEqual(
+                    [impact["trusted_value"] for impact in respiration_metric["summary_impacts"]],
+                    [29.75, 31.0],
+                )
 
     def test_replay_endpoint_returns_conflict_when_canonical_readings_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

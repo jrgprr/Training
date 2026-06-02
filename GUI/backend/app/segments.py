@@ -10,7 +10,7 @@ TREND_READY_EFFORT_COUNT = 2
 
 def _missing_metrics(row: dict[str, Any]) -> list[str]:
     missing: list[str] = []
-    for metric_name in ("avg_power", "avg_cadence", "avg_heart_rate", "max_heart_rate"):
+    for metric_name in ("avg_power", "avg_cadence", "avg_heart_rate", "max_heart_rate", "avg_respiration_rate"):
         if row.get(metric_name) is None:
             missing.append(metric_name)
     return missing
@@ -93,6 +93,17 @@ def get_segment_history(segment_id: int, limit: int = 20) -> dict[str, Any] | No
                        se.avg_cadence,
                        se.avg_heart_rate,
                        se.max_heart_rate,
+                      (
+                          SELECT AVG(reading.raw_value)
+                          FROM exec_activity_metric_readings reading
+                          WHERE reading.activity_id = se.activity_id
+                         AND reading.metric_name = 'respiration_rate'
+                         AND se.started_at IS NOT NULL
+                         AND se.elapsed_time_seconds IS NOT NULL
+                         AND reading.recorded_at IS NOT NULL
+                         AND julianday(reading.recorded_at) >= julianday(se.started_at)
+                         AND julianday(reading.recorded_at) <= julianday(se.started_at, '+' || se.elapsed_time_seconds || ' seconds')
+                      ) AS avg_respiration_rate,
                        se.notes
                 FROM exec_segment_efforts se
                 JOIN exec_activities ea ON ea.activity_id = se.activity_id
@@ -133,7 +144,7 @@ def get_segment_history(segment_id: int, limit: int = 20) -> dict[str, Any] | No
     available_metric_names: list[str] = []
     if comparable_efforts:
         available_metric_names.append("elapsed_time_seconds")
-    for metric_name in ("avg_power", "avg_cadence", "avg_heart_rate", "max_heart_rate"):
+    for metric_name in ("avg_power", "avg_cadence", "avg_heart_rate", "max_heart_rate", "avg_respiration_rate"):
         if any(effort.get(metric_name) is not None for effort in efforts):
             available_metric_names.append(metric_name)
 

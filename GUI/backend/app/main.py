@@ -629,7 +629,23 @@ def get_activity(activity_id: int) -> dict[str, Any]:
                ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
-               ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                             ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                             (
+                                     SELECT trusted_value
+                                     FROM exec_activity_metric_summaries summary
+                                     WHERE summary.activity_id = ea.activity_id
+                                         AND summary.metric_name = 'respiration_rate'
+                                         AND summary.summary_kind = 'average'
+                                     LIMIT 1
+                             ) AS avg_respiration_rate,
+                             (
+                                     SELECT trusted_value
+                                     FROM exec_activity_metric_summaries summary
+                                     WHERE summary.activity_id = ea.activity_id
+                                         AND summary.metric_name = 'respiration_rate'
+                                         AND summary.summary_kind = 'maximum'
+                                     LIMIT 1
+                             ) AS max_respiration_rate,
              dm.stress_avg, dm.stress_max,
              dm.spo2_sleep_avg, dm.spo2_avg, dm.spo2_7d_avg, dm.spo2_lowest,
              ea.source_file, ea.raw_payload_path, ea.notes,
