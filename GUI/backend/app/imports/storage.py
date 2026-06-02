@@ -7,6 +7,8 @@ from typing import Any
 from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState, NormalizedActivity, NormalizedMetricReading, NormalizedSegmentEffort
 from ..activity_quality import ActivityQualityEvaluation, evaluate_activity_quality, normalize_metric_readings_from_tcx_artifact
 from ..db import _ensure_exec_activity_quality_schema, _ensure_exec_activity_segment_columns, get_connection
+from ..training_zones import persist_accepted_zone_profile as persist_zone_profile_record
+from ..training_zones import persist_activity_zone_results
 
 LEGACY_PENDING_NOTE = "Pendiente persistir staging e import jobs en la siguiente fase."
 PERSISTENCE_READY_NOTE = "Carga preparada para persistencia en staging y tablas finales."
@@ -67,6 +69,31 @@ class GarminImportStorage:
 
     def __init__(self) -> None:
         pass
+
+    def persist_accepted_zone_profile(
+        self,
+        *,
+        season_id: int,
+        discipline: str,
+        metric_basis: str,
+        profile_label: str,
+        effective_start_date: str,
+        boundaries: list[dict[str, Any]],
+        accepted_at: str | None = None,
+    ) -> int:
+        with get_connection() as connection:
+            zone_profile_id = persist_zone_profile_record(
+                connection,
+                season_id=season_id,
+                discipline=discipline,
+                metric_basis=metric_basis,
+                profile_label=profile_label,
+                effective_start_date=effective_start_date,
+                boundaries=boundaries,
+                accepted_at=accepted_at,
+            )
+            connection.commit()
+        return zone_profile_id
 
     @staticmethod
     def _discipline_family(discipline: str | None) -> str | None:
@@ -766,7 +793,7 @@ class GarminImportStorage:
             self._ensure_quality_storage_schema(connection)
             activity_row = connection.execute(
                 """
-                SELECT activity_id, external_activity_id, activity_date, started_at,
+                SELECT activity_id, season_id, external_activity_id, activity_date, started_at,
                        discipline, activity_type, duration_seconds, distance_meters,
                        ascent_meters, calories, avg_hr, max_hr, avg_power,
                        normalized_power, training_load, avg_pace_seconds_per_km,
@@ -857,6 +884,13 @@ class GarminImportStorage:
                 activity=activity,
                 evaluation=evaluation,
                 breakdown=breakdown,
+            )
+            persist_activity_zone_results(
+                connection,
+                season_id=int(activity_row["season_id"]),
+                activity_row_id=activity_id,
+                activity=activity,
+                evaluation=evaluation,
             )
             connection.execute(
                 """
@@ -1206,6 +1240,13 @@ class GarminImportStorage:
                         activity=activity,
                         evaluation=evaluation,
                         breakdown=breakdown,
+                    )
+                    persist_activity_zone_results(
+                        connection,
+                        season_id=batch.request.season_id,
+                        activity_row_id=int(persisted_activity["activity_id"]),
+                        activity=activity,
+                        evaluation=evaluation,
                     )
                     if existing_activity is None:
                         breakdown.activity_rows_inserted += 1

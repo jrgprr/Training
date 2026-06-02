@@ -256,6 +256,171 @@ CREATE TABLE IF NOT EXISTS exec_daily_metrics (
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
 
+CREATE TABLE IF NOT EXISTS zone_metric_profiles (
+    zone_metric_profile_id INTEGER PRIMARY KEY,
+    season_id INTEGER,
+    discipline TEXT NOT NULL,
+    metric_basis TEXT NOT NULL,
+    profile_label TEXT,
+    model_key TEXT NOT NULL,
+    resting_hr REAL,
+    max_hr REAL,
+    ftp REAL,
+    effective_start_date TEXT NOT NULL,
+    effective_end_date TEXT,
+    accepted_at TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (discipline, metric_basis, effective_start_date),
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
+);
+
+CREATE TABLE IF NOT EXISTS zone_profiles (
+    zone_profile_id INTEGER PRIMARY KEY,
+    season_id INTEGER,
+    discipline TEXT NOT NULL,
+    metric_basis TEXT NOT NULL,
+    profile_label TEXT,
+    governance_status TEXT NOT NULL DEFAULT 'pending',
+    effective_start_date TEXT NOT NULL,
+    effective_end_date TEXT,
+    accepted_at TEXT,
+    derived_from_proposal_id INTEGER,
+    source_metric_profile_id INTEGER,
+    calculation_model_key TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (discipline, metric_basis, effective_start_date, governance_status),
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id),
+    FOREIGN KEY (derived_from_proposal_id) REFERENCES zone_refinement_proposals (proposal_id),
+    FOREIGN KEY (source_metric_profile_id) REFERENCES zone_metric_profiles (zone_metric_profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS zone_profile_boundaries (
+    zone_profile_boundary_id INTEGER PRIMARY KEY,
+    zone_profile_id INTEGER NOT NULL,
+    zone_index INTEGER NOT NULL,
+    zone_code TEXT NOT NULL,
+    zone_name TEXT,
+    lower_bound_value REAL,
+    upper_bound_value REAL,
+    bound_unit TEXT NOT NULL,
+    target_kind TEXT NOT NULL DEFAULT 'closed',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (zone_profile_id, zone_index),
+    UNIQUE (zone_profile_id, zone_code),
+    FOREIGN KEY (zone_profile_id) REFERENCES zone_profiles (zone_profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS zone_refinement_proposals (
+    proposal_id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL,
+    discipline TEXT NOT NULL,
+    metric_basis TEXT NOT NULL,
+    source_zone_profile_id INTEGER,
+    proposal_status TEXT NOT NULL DEFAULT 'pending',
+    confidence_level TEXT NOT NULL DEFAULT 'medium',
+    recommendation_kind TEXT NOT NULL DEFAULT 'rebalance',
+    proposal_summary TEXT,
+    limiting_factors TEXT,
+    proposed_effective_start_date TEXT,
+    decided_at TEXT,
+    decision_notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id),
+    FOREIGN KEY (source_zone_profile_id) REFERENCES zone_profiles (zone_profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS zone_refinement_proposal_boundaries (
+    proposal_boundary_id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL,
+    zone_index INTEGER NOT NULL,
+    zone_code TEXT NOT NULL,
+    proposed_lower_bound_value REAL,
+    proposed_upper_bound_value REAL,
+    bound_unit TEXT NOT NULL,
+    delta_vs_current_lower REAL,
+    delta_vs_current_upper REAL,
+    UNIQUE (proposal_id, zone_index),
+    FOREIGN KEY (proposal_id) REFERENCES zone_refinement_proposals (proposal_id)
+);
+
+CREATE TABLE IF NOT EXISTS zone_refinement_evidence (
+    proposal_evidence_id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL,
+    evidence_type TEXT NOT NULL,
+    activity_id INTEGER,
+    daily_metric_id INTEGER,
+    evidence_date TEXT,
+    evidence_role TEXT NOT NULL,
+    metric_basis TEXT,
+    summary_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (proposal_id) REFERENCES zone_refinement_proposals (proposal_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id),
+    FOREIGN KEY (daily_metric_id) REFERENCES exec_daily_metrics (daily_metric_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_activity_zone_results (
+    activity_zone_result_id INTEGER PRIMARY KEY,
+    activity_id INTEGER NOT NULL,
+    zone_profile_id INTEGER NOT NULL,
+    metric_basis TEXT NOT NULL,
+    calculation_status TEXT NOT NULL DEFAULT 'unavailable',
+    quality_status_snapshot TEXT,
+    supported_sample_count INTEGER NOT NULL DEFAULT 0,
+    total_supported_seconds INTEGER NOT NULL DEFAULT 0,
+    dominant_zone_code TEXT,
+    dominant_zone_share REAL,
+    calculation_notes TEXT,
+    calculated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (activity_id, metric_basis, zone_profile_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id),
+    FOREIGN KEY (zone_profile_id) REFERENCES zone_profiles (zone_profile_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_activity_zone_buckets (
+    activity_zone_bucket_id INTEGER PRIMARY KEY,
+    activity_zone_result_id INTEGER NOT NULL,
+    zone_index INTEGER NOT NULL,
+    zone_code TEXT NOT NULL,
+    seconds_in_zone INTEGER NOT NULL DEFAULT 0,
+    share_in_zone REAL,
+    sample_count INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (activity_zone_result_id, zone_index),
+    FOREIGN KEY (activity_zone_result_id) REFERENCES exec_activity_zone_results (activity_zone_result_id)
+);
+
+CREATE TABLE IF NOT EXISTS plan_session_zone_targets (
+    planned_zone_target_id INTEGER PRIMARY KEY,
+    planned_session_id INTEGER NOT NULL UNIQUE,
+    target_basis TEXT,
+    target_kind TEXT NOT NULL,
+    source_kind TEXT NOT NULL DEFAULT 'explicit',
+    source_text TEXT,
+    comparison_eligibility TEXT NOT NULL DEFAULT 'eligible',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (planned_session_id) REFERENCES plan_planned_sessions (planned_session_id)
+);
+
+CREATE TABLE IF NOT EXISTS plan_session_zone_segments (
+    planned_zone_segment_id INTEGER PRIMARY KEY,
+    planned_zone_target_id INTEGER NOT NULL,
+    sequence_order INTEGER NOT NULL,
+    segment_label TEXT,
+    target_zone_min_code TEXT,
+    target_zone_max_code TEXT,
+    target_duration_seconds_min INTEGER,
+    target_duration_seconds_max INTEGER,
+    notes TEXT,
+    UNIQUE (planned_zone_target_id, sequence_order),
+    FOREIGN KEY (planned_zone_target_id) REFERENCES plan_session_zone_targets (planned_zone_target_id)
+);
+
 CREATE TABLE IF NOT EXISTS exec_segments (
     segment_id INTEGER PRIMARY KEY,
     source_system TEXT NOT NULL,
@@ -311,6 +476,11 @@ CREATE TABLE IF NOT EXISTS link_plan_execution (
 CREATE INDEX IF NOT EXISTS idx_exec_segments_name ON exec_segments (segment_name);
 CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_segment_date ON exec_segment_efforts (segment_id, activity_date DESC);
 CREATE INDEX IF NOT EXISTS idx_exec_segment_efforts_activity ON exec_segment_efforts (activity_id);
+CREATE INDEX IF NOT EXISTS idx_zone_profiles_lookup ON zone_profiles (discipline, metric_basis, governance_status, effective_start_date DESC);
+CREATE INDEX IF NOT EXISTS idx_zone_metric_profiles_lookup ON zone_metric_profiles (discipline, metric_basis, effective_start_date DESC);
+CREATE INDEX IF NOT EXISTS idx_zone_proposals_lookup ON zone_refinement_proposals (season_id, discipline, metric_basis, proposal_status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exec_activity_zone_results_activity ON exec_activity_zone_results (activity_id, metric_basis);
+CREATE INDEX IF NOT EXISTS idx_plan_session_zone_targets_session ON plan_session_zone_targets (planned_session_id);
 
 CREATE TABLE IF NOT EXISTS exec_activity_metric_readings (
     activity_metric_reading_id INTEGER PRIMARY KEY,

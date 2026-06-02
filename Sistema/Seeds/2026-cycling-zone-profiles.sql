@@ -1,0 +1,22 @@
+-- Canonical seed for accepted cycling zone profiles in season 2026.
+-- Power profile follows a 7-zone Coggan-style model anchored to FTP ~= 264 W:
+-- Z1 <= 55%, Z2 56-75%, Z3 76-90%, Z4 91-105%, Z5 106-120%, Z6 121-150%, Z7 > 150%.
+-- Heart-rate profile follows a 5-zone %HRmax model anchored to HRmax ~= 183 bpm:
+-- Z1 <= 72%, Z2 73-80%, Z3 81-87%, Z4 88-93%, Z5 >= 94%.
+-- Apply via backend helper or equivalent migration script so accepted profile versioning stays explicit.
+
+-- Heart-rate boundaries:
+-- Z1 Recuperacion: 0-133 bpm
+-- Z2 Aerobica: 134-146 bpm
+-- Z3 Tempo: 147-159 bpm
+-- Z4 Umbral: 160-170 bpm
+-- Z5 VO2 max: >= 171 bpm
+
+-- Power boundaries:
+-- Z1 Recuperacion activa: 0-145 W
+-- Z2 Resistencia aerobica: 146-198 W
+-- Z3 Tempo: 199-238 W
+-- Z4 Umbral: 239-277 W
+-- Z5 VO2 max: 278-317 W
+-- Z6 Capacidad anaerobica: 318-396 W
+-- Z7 Potencia neuromuscular: >= 397 W

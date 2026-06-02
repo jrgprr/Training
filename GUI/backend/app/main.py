@@ -10,6 +10,7 @@ from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 from .segments import get_segment_history, list_segments
+from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
 app = FastAPI(title="Training System GUI API", version="0.2.0")
 
@@ -58,6 +59,25 @@ class GarminConnectImportPayload(BaseModel):
 
 class ActivityQualityReplayPayload(BaseModel):
     source_mode: str = "canonical"
+
+
+class ZoneProposalAcceptancePayload(BaseModel):
+    effective_start_date: str | None = None
+    accepted_at: str | None = None
+    decision_notes: str | None = None
+
+
+class ZoneMetricProfileAcceptancePayload(BaseModel):
+    discipline: str
+    metric_basis: str
+    model_key: str
+    effective_start_date: str
+    profile_label: str | None = None
+    resting_hr: float | None = None
+    max_hr: float | None = None
+    ftp: float | None = None
+    accepted_at: str | None = None
+    notes: str | None = None
 
 
 class SegmentListQuery(BaseModel):
@@ -333,11 +353,14 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
             }
         )
 
+    zone_comparison_by_session = list_session_zone_comparisons(week_id)
+
     for row in rows:
         activities = [] if row["compliance_status"] == "skipped" else activities_by_session.get(row["planned_session_id"], [])
         row["activities"] = activities
         row["optional_daily_activities"] = optional_activities_by_date.get(row["session_date"], [])
         row["other_daily_activities"] = other_activities_by_date.get(row["session_date"], [])
+        row["zone_comparison"] = zone_comparison_by_session.get(row["planned_session_id"], [])
 
         if not activities:
             continue
@@ -761,11 +784,117 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
         """,
         (season_id,),
     )
-    return ensure_entity_exists(rows, f"No se encontraron actividades para la temporada {season_id}.")
+    rows = ensure_entity_exists(rows, f"No se encontraron actividades para la temporada {season_id}.")
+    zone_summaries = list_activity_zone_summaries([int(row["activity_id"]) for row in rows])
+    for row in rows:
+        row["zone_summary"] = zone_summaries.get(int(row["activity_id"]), {})
+    return rows
 
 @app.get("/api/seasons/{season_id}/daily-metrics/{metric_date}")
 def get_season_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     return get_daily_metric(season_id, metric_date)
+
+
+@app.get("/api/seasons/{season_id}/zone-profiles/current")
+def get_current_zone_profiles_endpoint(season_id: int, discipline: str) -> dict[str, Any]:
+    season = fetch_one(
+        """
+        SELECT season_id, season_code, season_name
+        FROM plan_seasons
+        WHERE season_id = ?
+        """,
+        (season_id,),
+    )
+    if season is None:
+        raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+
+    payload = list_current_zone_profiles(season_id=season_id, discipline=discipline)
+    if not payload["profiles"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existen perfiles de zonas vigentes para {discipline} en la temporada {season_id}.",
+        )
+    return payload
+
+
+@app.get("/api/seasons/{season_id}/zone-metric-profiles/current")
+def get_current_zone_metric_profiles_endpoint(season_id: int, discipline: str) -> dict[str, Any]:
+    season = fetch_one(
+        """
+        SELECT season_id
+        FROM plan_seasons
+        WHERE season_id = ?
+        """,
+        (season_id,),
+    )
+    if season is None:
+        raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+
+    payload = list_current_zone_metric_profiles(season_id=season_id, discipline=discipline)
+    if not payload["profiles"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existen perfiles metricos vigentes para {discipline} en la temporada {season_id}.",
+        )
+    return payload
+
+
+@app.post("/api/seasons/{season_id}/zone-metric-profiles/accept")
+def accept_zone_metric_profile_endpoint(season_id: int, payload: ZoneMetricProfileAcceptancePayload) -> dict[str, Any]:
+    try:
+        return accept_zone_metric_profile(
+            season_id=season_id,
+            discipline=payload.discipline,
+            metric_basis=payload.metric_basis,
+            model_key=payload.model_key,
+            effective_start_date=payload.effective_start_date,
+            profile_label=payload.profile_label,
+            resting_hr=payload.resting_hr,
+            max_hr=payload.max_hr,
+            ftp=payload.ftp,
+            accepted_at=payload.accepted_at,
+            notes=payload.notes,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.get("/api/seasons/{season_id}/zone-proposals")
+def get_zone_proposals_endpoint(season_id: int, discipline: str) -> dict[str, Any]:
+    season = fetch_one(
+        """
+        SELECT season_id
+        FROM plan_seasons
+        WHERE season_id = ?
+        """,
+        (season_id,),
+    )
+    if season is None:
+        raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+    return list_zone_proposals(season_id, discipline)
+
+
+@app.get("/api/zone-proposals/{proposal_id}")
+def get_zone_proposal_detail_endpoint(proposal_id: int) -> dict[str, Any]:
+    payload = get_zone_proposal_detail(proposal_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe la propuesta {proposal_id}.")
+    return payload
+
+
+@app.post("/api/zone-proposals/{proposal_id}/accept")
+def accept_zone_proposal_endpoint(proposal_id: int, payload: ZoneProposalAcceptancePayload) -> dict[str, Any]:
+    try:
+        return accept_zone_refinement_proposal(
+            proposal_id,
+            effective_start_date=payload.effective_start_date,
+            accepted_at=payload.accepted_at,
+            decision_notes=payload.decision_notes,
+        )
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.get("/api/activities/{activity_id}/quality")
@@ -788,6 +917,16 @@ def replay_activity_quality_endpoint(activity_id: int, payload: ActivityQualityR
     if result is None:
         raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
     return result
+
+
+@app.get("/api/activities/{activity_id}/zones")
+def get_activity_zones_endpoint(activity_id: int) -> dict[str, Any]:
+    payload = get_activity_zone_detail(activity_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
+    if not payload["results"]:
+        raise HTTPException(status_code=404, detail=f"No existen zonas calculadas para la actividad {activity_id}.")
+    return payload
 
 
 @app.get("/api/seasons")
@@ -851,12 +990,16 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
         """,
         (week_id,),
     )
+    for row in rows:
+        row["planned_zone_target"] = get_planned_session_zone_target(row["planned_session_id"])
     return ensure_entity_exists(rows, f"No se encontraron sesiones para la semana {week_id}.")
 
 
 @app.get("/api/planned-sessions/{planned_session_id}/prescription")
 def get_session_prescription(planned_session_id: int) -> dict[str, Any]:
-    return get_planned_session_prescription(planned_session_id)
+    payload = get_planned_session_prescription(planned_session_id)
+    payload["planned_zone_target"] = get_planned_session_zone_target(planned_session_id)
+    return payload
 
 
 @app.get("/api/weeks/{week_id}/plan-vs-real")
@@ -888,8 +1031,10 @@ def get_weekly_review(week_id: int) -> dict[str, Any]:
             "risk_level": None,
             "recommendation_text": None,
             "summary_text": None,
+            "zone_comparison_summary": get_week_zone_comparison_summary(week_id),
         }
     row["week_code"] = week["week_code"]
+    row["zone_comparison_summary"] = get_week_zone_comparison_summary(week_id)
     return row
 
 

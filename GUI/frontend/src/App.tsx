@@ -45,6 +45,28 @@ type Session = {
   duration_max: number | null;
   is_key_session: number;
   has_structured_prescription: number;
+  planned_zone_target?: PlannedZoneTarget | null;
+};
+
+type PlannedZoneTargetSegment = {
+  sequence_order: number;
+  segment_label: string | null;
+  target_zone_min_code: string | null;
+  target_zone_max_code: string | null;
+  target_duration_seconds_min: number | null;
+  target_duration_seconds_max: number | null;
+  notes: string | null;
+};
+
+type PlannedZoneTarget = {
+  planned_zone_target_id: number;
+  planned_session_id: number;
+  target_basis: "heart_rate" | "power" | string | null;
+  target_kind: string;
+  source_kind: string;
+  source_text: string | null;
+  comparison_eligibility: string;
+  segments: PlannedZoneTargetSegment[];
 };
 
 type SessionPrescriptionOption = {
@@ -116,6 +138,22 @@ type SessionPrescription = {
   adaptation_notes: string | null;
   source_markdown_path: string | null;
   blocks: SessionPrescriptionBlock[];
+  planned_zone_target?: PlannedZoneTarget | null;
+};
+
+type ZoneComparisonItem = {
+  planned_session_id: number;
+  session_date: string;
+  metric_basis: "heart_rate" | "power" | string | null;
+  target_kind: string | null;
+  comparison_eligibility: string | null;
+  target_zone_min_code: string | null;
+  target_zone_max_code: string | null;
+  activity_id: number | null;
+  calculation_status: string | null;
+  dominant_zone_code: string | null;
+  dominant_zone_share: number | null;
+  comparison_status: string;
 };
 
 type PlanVsRealRow = {
@@ -143,6 +181,26 @@ type PlanVsRealRow = {
   activities?: PlanVsRealActivity[];
   optional_daily_activities?: OptionalDailyActivity[];
   other_daily_activities?: DailyUnlinkedActivity[];
+  zone_comparison?: ZoneComparisonItem[];
+};
+
+type WeekZoneComparisonSummaryItem = {
+  metric_basis: "heart_rate" | "power" | string;
+  planned_session_count: number;
+  linked_activity_count: number;
+  aligned_count: number;
+  misaligned_count: number;
+  limited_count: number;
+  not_comparable_count: number;
+  sessions: Array<{
+    planned_session_id: number;
+    comparison_status: string;
+    dominant_zone_code: string | null;
+  }>;
+};
+
+type WeekZoneComparisonSummary = {
+  items: WeekZoneComparisonSummaryItem[];
 };
 
 type PlanVsRealActivity = {
@@ -177,6 +235,83 @@ type WeeklyReview = {
   risk_level: string | null;
   recommendation_text: string | null;
   summary_text: string | null;
+  zone_comparison_summary?: WeekZoneComparisonSummary;
+};
+
+type ZoneProposalItem = {
+  proposal_id: number;
+  discipline: string;
+  metric_basis: "heart_rate" | "power" | string;
+  proposal_status: string;
+  confidence_level: string;
+  recommendation_kind: string;
+  proposal_summary: string;
+  limiting_factors: string[];
+  source_zone_profile_id: number | null;
+  proposed_effective_start_date: string | null;
+  created_at: string | null;
+};
+
+type ZoneProposalListResponse = {
+  season_id?: number;
+  discipline?: string;
+  review_state?: string;
+  basis_summary?: Record<string, unknown>;
+  items: ZoneProposalItem[];
+};
+
+type ZoneProfileBoundary = {
+  zone_index: number;
+  zone_code: string;
+  zone_name: string | null;
+  lower_bound_value: number | null;
+  upper_bound_value: number | null;
+  bound_unit: string;
+  target_kind: string;
+};
+
+type CurrentZoneProfile = {
+  zone_profile_id: number;
+  metric_basis: "heart_rate" | "power" | string;
+  profile_label: string | null;
+  source_metric_profile_id?: number | null;
+  calculation_model_key?: string | null;
+  governance_status: string;
+  effective_start_date: string;
+  effective_end_date: string | null;
+  accepted_at: string | null;
+  metric_profile?: ZoneMetricProfile | null;
+  boundaries: ZoneProfileBoundary[];
+};
+
+type ZoneMetricProfile = {
+  zone_metric_profile_id: number;
+  metric_basis: "heart_rate" | "power" | string;
+  profile_label: string | null;
+  model_key: string;
+  effective_start_date: string;
+  effective_end_date: string | null;
+  accepted_at: string | null;
+  notes: string | null;
+  parameters: {
+    resting_hr?: number | null;
+    max_hr?: number | null;
+    ftp?: number | null;
+  };
+};
+
+type PhysiologicalAnchorsFormState = {
+  effective_start_date: string;
+  resting_hr: string;
+  max_hr: string;
+  ftp: string;
+  notes: string;
+};
+
+type CurrentZoneProfilesResponse = {
+  season_id: number;
+  discipline: string;
+  profiles: Partial<Record<"heart_rate" | "power", CurrentZoneProfile>> & Record<string, CurrentZoneProfile | undefined>;
 };
 
 type DailyMetricDetail = {
@@ -245,6 +380,16 @@ type ActivityDetail = {
   next_day_decision: string | null;
 };
 
+type ActivityZoneSummaryBasis = {
+  calculation_status: string;
+  dominant_zone_code: string | null;
+  dominant_zone_share: number | null;
+  zone_profile_id: number;
+  limiting_reasons?: string[];
+};
+
+type ActivityZoneSummary = Partial<Record<"heart_rate" | "power", ActivityZoneSummaryBasis>>;
+
 function getTodayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -307,6 +452,7 @@ type ActivityListItem = {
   actual_summary: string | null;
   general_feeling: string | null;
   next_day_decision: string | null;
+  zone_summary?: ActivityZoneSummary;
 };
 
 type ActivityQualitySummaryImpact = {
@@ -763,10 +909,32 @@ const emptyGarminImportForm = (): GarminImportFormState => ({
   include_daily_metrics: true,
 });
 
+const emptyPhysiologicalAnchorsForm = (): PhysiologicalAnchorsFormState => ({
+  effective_start_date: getTodayIsoDate(),
+  resting_hr: "",
+  max_hr: "",
+  ftp: "",
+  notes: "",
+});
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
     throw new Error(`Error ${response.status} cargando ${path}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function postJson<T>(path: string, payload: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, `Error ${response.status} guardando ${path}`));
   }
   return response.json() as Promise<T>;
 }
@@ -1334,6 +1502,141 @@ function formatQualitySummaryKindLabel(summaryKind: string) {
   return summaryKind;
 }
 
+function formatZoneBasisShortLabel(metricBasis: "heart_rate" | "power") {
+  if (metricBasis === "heart_rate") {
+    return "FC";
+  }
+  return "Pot";
+}
+
+function formatZoneBasisLabel(metricBasis: string | null | undefined) {
+  if (metricBasis === "heart_rate") {
+    return "FC";
+  }
+  if (metricBasis === "power") {
+    return "Potencia";
+  }
+  return metricBasis ?? "Sin base";
+}
+
+function formatPlannedZoneTargetLabel(target: PlannedZoneTarget | null | undefined) {
+  if (!target) {
+    return null;
+  }
+  const segments = target.segments.map((segment) => {
+    const minCode = segment.target_zone_min_code;
+    const maxCode = segment.target_zone_max_code;
+    if (!minCode && !maxCode) {
+      return null;
+    }
+    if (minCode && maxCode && minCode !== maxCode) {
+      return `${minCode}-${maxCode}`;
+    }
+    return minCode ?? maxCode;
+  }).filter(Boolean);
+  if (segments.length === 0) {
+    return null;
+  }
+  return `${formatZoneBasisLabel(target.target_basis)} · ${segments.join(" → ")}`;
+}
+
+function formatZoneComparisonStatusLabel(status: string) {
+  if (status === "aligned") {
+    return "alineada";
+  }
+  if (status === "misaligned") {
+    return "desalineada";
+  }
+  if (status === "limited") {
+    return "limitada";
+  }
+  if (status === "not_comparable") {
+    return "no comparable";
+  }
+  return status;
+}
+
+function formatZoneComparisonLabel(item: ZoneComparisonItem) {
+  const targetLabel = item.target_zone_min_code && item.target_zone_max_code && item.target_zone_min_code !== item.target_zone_max_code
+    ? `${item.target_zone_min_code}-${item.target_zone_max_code}`
+    : item.target_zone_min_code ?? item.target_zone_max_code ?? "sin objetivo";
+  const dominantLabel = item.dominant_zone_code ?? "sin resultado";
+  return `${formatZoneBasisLabel(item.metric_basis)} ${targetLabel} · ${formatZoneComparisonStatusLabel(item.comparison_status)} · ${dominantLabel}`;
+}
+
+function formatZoneBoundaryLabel(boundary: ZoneProfileBoundary) {
+  const zoneLabel = boundary.zone_name && boundary.zone_name !== boundary.zone_code
+    ? `${boundary.zone_code} ${boundary.zone_name}`
+    : boundary.zone_code;
+  const lower = boundary.lower_bound_value != null ? Math.round(boundary.lower_bound_value) : null;
+  const upper = boundary.upper_bound_value != null ? Math.round(boundary.upper_bound_value) : null;
+  if (lower != null && upper != null) {
+    return `${zoneLabel}: ${lower}-${upper} ${boundary.bound_unit}`;
+  }
+  if (lower != null) {
+    return `${zoneLabel}: >= ${lower} ${boundary.bound_unit}`;
+  }
+  if (upper != null) {
+    return `${zoneLabel}: <= ${upper} ${boundary.bound_unit}`;
+  }
+  return zoneLabel;
+}
+
+function formatMetricProfileModelLabel(modelKey: string | null | undefined) {
+  if (modelKey === "heart_rate_reserve_5_zone") {
+    return "FC por reserva cardiaca";
+  }
+  if (modelKey === "ftp_coggan_7_zone") {
+    return "Potencia por FTP";
+  }
+  return modelKey ?? "modelo no definido";
+}
+
+function toPhysiologicalAnchorsFormState(currentProfiles: CurrentZoneProfilesResponse | null, fallbackDate: string) {
+  const heartRateProfile = currentProfiles?.profiles.heart_rate?.metric_profile;
+  const powerProfile = currentProfiles?.profiles.power?.metric_profile;
+  return {
+    effective_start_date: fallbackDate,
+    resting_hr: heartRateProfile?.parameters.resting_hr != null ? String(Math.round(heartRateProfile.parameters.resting_hr)) : "",
+    max_hr: heartRateProfile?.parameters.max_hr != null ? String(Math.round(heartRateProfile.parameters.max_hr)) : "",
+    ftp: powerProfile?.parameters.ftp != null ? String(Math.round(powerProfile.parameters.ftp)) : "",
+    notes: "",
+  };
+}
+
+function formatActivityZoneSummaryLabel(zoneSummary: ActivityZoneSummary | null | undefined) {
+  if (!zoneSummary) {
+    return null;
+  }
+
+  const orderedBases: Array<"heart_rate" | "power"> = ["heart_rate", "power"];
+  const parts = orderedBases.flatMap((metricBasis) => {
+    const summary = zoneSummary[metricBasis];
+    if (!summary) {
+      return [];
+    }
+
+    const basisLabel = formatZoneBasisShortLabel(metricBasis);
+    if (summary.calculation_status === "calculated") {
+      const zoneCode = summary.dominant_zone_code ?? "sin zona";
+      const shareLabel = summary.dominant_zone_share != null ? ` ${toPercentLabel(summary.dominant_zone_share)}` : "";
+      return [`${basisLabel} ${zoneCode}${shareLabel}`];
+    }
+    if (summary.calculation_status === "limited") {
+      return [`${basisLabel} limitada`];
+    }
+    if (summary.calculation_status === "unavailable") {
+      return [`${basisLabel} sin datos`];
+    }
+    return [`${basisLabel} ${summary.calculation_status}`];
+  });
+
+  if (parts.length === 0) {
+    return null;
+  }
+  return `Zonas: ${parts.join(" · ")}`;
+}
+
 function formatQualityMetricValue(metricName: string, value: number | null) {
   if (metricName === "heart_rate") {
     return toMetricLabel(value, " bpm");
@@ -1457,6 +1760,9 @@ export default function App() {
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
   const [selectedSessionPrescription, setSelectedSessionPrescription] = useState<SessionPrescription | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
+  const [zoneProposals, setZoneProposals] = useState<ZoneProposalItem[]>([]);
+  const [currentZoneProfiles, setCurrentZoneProfiles] = useState<CurrentZoneProfilesResponse | null>(null);
+  const [physiologicalAnchorsForm, setPhysiologicalAnchorsForm] = useState<PhysiologicalAnchorsFormState>(emptyPhysiologicalAnchorsForm);
   const [selectedDailyMetric, setSelectedDailyMetric] = useState<DailyMetricDetail | null>(null);
   const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
@@ -1481,6 +1787,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
+  const [savingPhysiologicalAnchors, setSavingPhysiologicalAnchors] = useState(false);
 
   useEffect(() => {
     void loadSeasons();
@@ -1511,6 +1818,45 @@ export default function App() {
       setImportJobs(data);
     } catch {
       setImportJobs([]);
+    }
+  }
+
+  async function loadZoneProposals(seasonId: number) {
+    try {
+      const payload = await fetchJson<ZoneProposalListResponse>(`/api/seasons/${seasonId}/zone-proposals?discipline=cycling`);
+      setZoneProposals(payload.items);
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setZoneProposals([]);
+        return;
+      }
+      throw requestError;
+    }
+  }
+
+  async function loadCurrentZoneProfiles(seasonId: number) {
+    try {
+      const payload = await fetchJson<CurrentZoneProfilesResponse>(`/api/seasons/${seasonId}/zone-profiles/current?discipline=cycling`);
+      setCurrentZoneProfiles(payload);
+      setPhysiologicalAnchorsForm((current) => {
+        const next = toPhysiologicalAnchorsFormState(payload, current.effective_start_date || getTodayIsoDate());
+        return {
+          ...next,
+          effective_start_date: current.effective_start_date || next.effective_start_date,
+          notes: current.notes,
+        };
+      });
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setCurrentZoneProfiles({ season_id: seasonId, discipline: "cycling", profiles: {} });
+        setPhysiologicalAnchorsForm((current) => ({
+          ...emptyPhysiologicalAnchorsForm(),
+          effective_start_date: current.effective_start_date || getTodayIsoDate(),
+          notes: current.notes,
+        }));
+        return;
+      }
+      throw requestError;
     }
   }
 
@@ -1631,6 +1977,9 @@ export default function App() {
         setSelectedDailyMetricDate(null);
         setSelectedDailyMetric(null);
         setSelectedDailyMetricDate(null);
+        setZoneProposals([]);
+      setCurrentZoneProfiles(null);
+        setPhysiologicalAnchorsForm(emptyPhysiologicalAnchorsForm());
       setSegments([]);
       setSelectedSegmentId(null);
       setSelectedSegmentHistory(null);
@@ -1642,6 +1991,8 @@ export default function App() {
         fetchJson<Block[]>(`/api/seasons/${season.season_id}/blocks`),
         loadSeasonActivities(season.season_id),
         loadSegments(season.season_id),
+        loadZoneProposals(season.season_id),
+        loadCurrentZoneProfiles(season.season_id),
       ]);
       setBlocks(data);
       const preferredBlock = pickPreferredBlock(data, getTodayIsoDate());
@@ -1652,6 +2003,64 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function handlePhysiologicalAnchorsInputChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    const { name, value } = event.target;
+    setPhysiologicalAnchorsForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function savePhysiologicalAnchorsVersion() {
+    if (!selectedSeason) {
+      setError("Selecciona una temporada antes de crear una nueva version de anclas fisiologicas.");
+      return;
+    }
+
+    const restingHr = Number(physiologicalAnchorsForm.resting_hr);
+    const maxHr = Number(physiologicalAnchorsForm.max_hr);
+    const ftp = Number(physiologicalAnchorsForm.ftp);
+    if (!Number.isFinite(restingHr) || !Number.isFinite(maxHr) || !Number.isFinite(ftp)) {
+      setError("Introduce HRmin, HRmax y FTP validos para crear la nueva version.");
+      return;
+    }
+
+    try {
+      setSavingPhysiologicalAnchors(true);
+      setError(null);
+      setSubmissionMessage(null);
+      const effectiveStartDate = physiologicalAnchorsForm.effective_start_date || getTodayIsoDate();
+      const notes = physiologicalAnchorsForm.notes.trim() || null;
+      await Promise.all([
+        postJson(`/api/seasons/${selectedSeason.season_id}/zone-metric-profiles/accept`, {
+          discipline: "cycling",
+          metric_basis: "heart_rate",
+          model_key: "heart_rate_reserve_5_zone",
+          effective_start_date: effectiveStartDate,
+          profile_label: `cycling hr reserve 5 zones ${effectiveStartDate}`,
+          resting_hr: restingHr,
+          max_hr: maxHr,
+          notes,
+        }),
+        postJson(`/api/seasons/${selectedSeason.season_id}/zone-metric-profiles/accept`, {
+          discipline: "cycling",
+          metric_basis: "power",
+          model_key: "ftp_coggan_7_zone",
+          effective_start_date: effectiveStartDate,
+          profile_label: `cycling ftp 7 zones ${effectiveStartDate}`,
+          ftp,
+          notes,
+        }),
+      ]);
+      await loadCurrentZoneProfiles(selectedSeason.season_id);
+      setSubmissionMessage(`Nueva version de anclas fisiologicas creada con fecha efectiva ${effectiveStartDate}.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setSavingPhysiologicalAnchors(false);
     }
   }
 
@@ -2333,6 +2742,137 @@ export default function App() {
           </div>
         </div>
 
+        {selectedSeason ? (
+          <div className="zone-governance-strip">
+            <article className="zone-governance-card zone-governance-card-wide">
+              <div className="item-head">
+                <strong>Perfiles de zona activos</strong>
+                <span className="dashboard-label">cycling</span>
+              </div>
+              {currentZoneProfiles && Object.keys(currentZoneProfiles.profiles).length > 0 ? (
+                <div className="zone-profile-grid">
+                  {(["heart_rate", "power"] as const).flatMap((metricBasis) => {
+                    const profile = currentZoneProfiles.profiles[metricBasis];
+                    if (!profile) {
+                      return [];
+                    }
+                    return (
+                      <article key={metricBasis} className="zone-profile-card">
+                        <div className="item-head">
+                          <strong>{formatZoneBasisLabel(metricBasis)}</strong>
+                          <span className="zone-pill zone-pill-target">{profile.profile_label ?? "perfil activo"}</span>
+                        </div>
+                        <small>Desde {profile.effective_start_date}</small>
+                        <div className="zone-boundary-list">
+                          {profile.boundaries.map((boundary) => (
+                            <span key={`${metricBasis}-${boundary.zone_index}`} className="zone-pill">
+                              {formatZoneBoundaryLabel(boundary)}
+                            </span>
+                          ))}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p>No hay perfiles de zonas aceptados cargados para esta temporada. Cuando existan, aqui veras los rangos de FC y potencia.</p>
+              )}
+            </article>
+            <article className="zone-governance-card zone-governance-card-wide zone-anchors-card">
+              <div className="item-head">
+                <strong>Anclas fisiologicas</strong>
+                <span className="dashboard-label">nueva version</span>
+              </div>
+              <div className="zone-anchor-current-grid">
+                <article className="zone-profile-card">
+                  <div className="item-head">
+                    <strong>Frecuencia cardiaca</strong>
+                    <span className="zone-pill zone-pill-target">
+                      {formatMetricProfileModelLabel(currentZoneProfiles?.profiles.heart_rate?.metric_profile?.model_key ?? currentZoneProfiles?.profiles.heart_rate?.calculation_model_key)}
+                    </span>
+                  </div>
+                  <small>
+                    {currentZoneProfiles?.profiles.heart_rate?.metric_profile?.effective_start_date
+                      ? `Desde ${currentZoneProfiles.profiles.heart_rate.metric_profile.effective_start_date}`
+                      : "Sin version activa"}
+                  </small>
+                  <div className="zone-chip-list">
+                    <span className="zone-pill">HRmin {currentZoneProfiles?.profiles.heart_rate?.metric_profile?.parameters.resting_hr != null ? Math.round(currentZoneProfiles.profiles.heart_rate.metric_profile.parameters.resting_hr) : "-"} bpm</span>
+                    <span className="zone-pill">HRmax {currentZoneProfiles?.profiles.heart_rate?.metric_profile?.parameters.max_hr != null ? Math.round(currentZoneProfiles.profiles.heart_rate.metric_profile.parameters.max_hr) : "-"} bpm</span>
+                  </div>
+                </article>
+                <article className="zone-profile-card">
+                  <div className="item-head">
+                    <strong>Potencia</strong>
+                    <span className="zone-pill zone-pill-target">
+                      {formatMetricProfileModelLabel(currentZoneProfiles?.profiles.power?.metric_profile?.model_key ?? currentZoneProfiles?.profiles.power?.calculation_model_key)}
+                    </span>
+                  </div>
+                  <small>
+                    {currentZoneProfiles?.profiles.power?.metric_profile?.effective_start_date
+                      ? `Desde ${currentZoneProfiles.profiles.power.metric_profile.effective_start_date}`
+                      : "Sin version activa"}
+                  </small>
+                  <div className="zone-chip-list">
+                    <span className="zone-pill">FTP {currentZoneProfiles?.profiles.power?.metric_profile?.parameters.ftp != null ? Math.round(currentZoneProfiles.profiles.power.metric_profile.parameters.ftp) : "-"} W</span>
+                  </div>
+                </article>
+              </div>
+              <form className="manual-form zone-anchor-form" onSubmit={(event) => {
+                event.preventDefault();
+                void savePhysiologicalAnchorsVersion();
+              }}>
+                <div className="form-grid metrics-grid zone-anchor-form-grid">
+                  <label>
+                    Fecha efectiva
+                    <input name="effective_start_date" type="date" value={physiologicalAnchorsForm.effective_start_date} onChange={handlePhysiologicalAnchorsInputChange} />
+                  </label>
+                  <label>
+                    HRmin
+                    <input name="resting_hr" type="number" min="1" step="1" value={physiologicalAnchorsForm.resting_hr} onChange={handlePhysiologicalAnchorsInputChange} />
+                  </label>
+                  <label>
+                    HRmax
+                    <input name="max_hr" type="number" min="1" step="1" value={physiologicalAnchorsForm.max_hr} onChange={handlePhysiologicalAnchorsInputChange} />
+                  </label>
+                  <label>
+                    FTP
+                    <input name="ftp" type="number" min="1" step="1" value={physiologicalAnchorsForm.ftp} onChange={handlePhysiologicalAnchorsInputChange} />
+                  </label>
+                </div>
+                <label>
+                  Notas de la version
+                  <textarea name="notes" rows={2} value={physiologicalAnchorsForm.notes} onChange={handlePhysiologicalAnchorsInputChange} placeholder="Ejemplo: ajuste tras test de campo o revision de metricas recientes." />
+                </label>
+                <div className="review-actions zone-anchor-actions">
+                  <button className="secondary-button" type="submit" disabled={savingPhysiologicalAnchors}>
+                    {savingPhysiologicalAnchors ? "Creando version..." : "Crear nueva version"}
+                  </button>
+                  <small>Se crearan perfiles nuevos para FC por reserva cardiaca y potencia por FTP con la fecha efectiva indicada.</small>
+                </div>
+              </form>
+            </article>
+            <article className="zone-governance-card">
+              <span className="dashboard-label">Refinamientos pendientes</span>
+              <strong>{zoneProposals.length}</strong>
+              <p>{zoneProposals.length > 0 ? "Propuestas activas para revisar antes de consolidar los perfiles." : "Sin propuestas pendientes en la temporada activa."}</p>
+            </article>
+            {zoneProposals.slice(0, 3).map((proposal) => (
+              <article key={proposal.proposal_id} className="zone-governance-card zone-governance-card-detail">
+                <div className="item-head">
+                  <strong>{formatZoneBasisLabel(proposal.metric_basis)}</strong>
+                  <span className={toBadgeClass(proposal.proposal_status)}>{proposal.proposal_status}</span>
+                </div>
+                <p>{proposal.proposal_summary}</p>
+                <small>
+                  {toConfidenceLabel(proposal.confidence_level)}
+                  {proposal.proposed_effective_start_date ? ` · efectiva ${proposal.proposed_effective_start_date}` : ""}
+                </small>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
         {loadingSeasonActivities ? (
           <div className="empty-state-card empty-state-card-wide">
             <strong>Cargando actividades</strong>
@@ -2341,6 +2881,9 @@ export default function App() {
         ) : seasonActivities.length > 0 ? (
           <div className="activity-feed-list">
             {seasonActivities.map((activity) => (
+              (() => {
+                const zoneSummaryLabel = formatActivityZoneSummaryLabel(activity.zone_summary);
+                return (
               <button
                 key={activity.activity_id}
                 type="button"
@@ -2370,8 +2913,12 @@ export default function App() {
                   <span>Actividad #{activity.activity_id}</span>
                 </div>
 
+                {zoneSummaryLabel ? <p className="activity-feed-zones">{zoneSummaryLabel}</p> : null}
+
                 <p className="activity-feed-summary">{activity.actual_summary ?? activity.notes ?? "Sin resumen adicional."}</p>
               </button>
+                );
+              })()
             ))}
           </div>
         ) : (
@@ -2459,6 +3006,7 @@ export default function App() {
                     <th>Tipo</th>
                     <th>Objetivo</th>
                     <th>Sesion principal</th>
+                    <th>Zona</th>
                     <th>Complementario</th>
                     <th>Duracion</th>
                     <th>Detalle</th>
@@ -2474,6 +3022,13 @@ export default function App() {
                       <td>{session.planned_type}</td>
                       <td>{session.objective}</td>
                       <td>{session.primary_session}</td>
+                      <td>
+                        {session.planned_zone_target ? (
+                          <span className="zone-pill zone-pill-target">{formatPlannedZoneTargetLabel(session.planned_zone_target)}</span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
                       <td>{session.complementary_session ?? '-'}</td>
                       <td>{toDurationLabel(session.duration_min, session.duration_max)}</td>
                       <td>
@@ -2562,7 +3117,26 @@ export default function App() {
                   <span>Extras diarios</span>
                   <small>{optionalActivationCount} activacion · {optionalFlexibilityCount} flexibilidad</small>
                 </article>
+                <article>
+                  <strong>{weeklyReview?.zone_comparison_summary?.items.length ?? 0}</strong>
+                  <span>Vistas de zona</span>
+                  <small>{weeklyReview?.zone_comparison_summary?.items.map((item) => formatZoneBasisLabel(item.metric_basis)).join(" · ") || "sin comparativa"}</small>
+                </article>
               </div>
+
+              {weeklyReview?.zone_comparison_summary && weeklyReview.zone_comparison_summary.items.length > 0 ? (
+                <div className="zone-week-summary-grid">
+                  {weeklyReview.zone_comparison_summary.items.map((item) => (
+                    <article key={item.metric_basis} className="dashboard-card zone-week-summary-card">
+                      <span className="dashboard-label">{formatZoneBasisLabel(item.metric_basis)}</span>
+                      <strong>{item.aligned_count}/{item.planned_session_count}</strong>
+                      <p>
+                        {item.aligned_count} alineadas · {item.limited_count} limitadas · {item.misaligned_count} desalineadas
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
 
               <div className="dashboard-grid">
                 <article className="dashboard-card">
@@ -2652,6 +3226,15 @@ export default function App() {
                         <td>
                           <strong>{row.planned_type}</strong>
                           <small>{row.planned_session}</small>
+                          {row.zone_comparison && row.zone_comparison.length > 0 ? (
+                            <div className="zone-chip-list">
+                              {row.zone_comparison.map((item, index) => (
+                                <span key={`${row.planned_session_id}-${item.metric_basis}-${index}`} className={`zone-pill zone-pill-${item.comparison_status}`}>
+                                  {formatZoneComparisonLabel(item)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </td>
                         <td>
                           {rowActivities.length > 0 ? (
@@ -2811,7 +3394,18 @@ export default function App() {
                 <article><span>RPE objetivo</span><strong>{selectedSessionPrescription.target_rpe_min != null ? `RPE ${selectedSessionPrescription.target_rpe_min}${selectedSessionPrescription.target_rpe_max != null && selectedSessionPrescription.target_rpe_max !== selectedSessionPrescription.target_rpe_min ? `-${selectedSessionPrescription.target_rpe_max}` : ''}` : '-'}</strong></article>
                 <article><span>Foco principal</span><strong>{selectedSessionPrescription.focus_primary ?? '-'}</strong></article>
                 <article><span>Foco secundario</span><strong>{selectedSessionPrescription.focus_secondary ?? '-'}</strong></article>
+                <article><span>Zona estructurada</span><strong>{formatPlannedZoneTargetLabel(selectedSessionPrescription.planned_zone_target) ?? '-'}</strong></article>
               </div>
+
+              {selectedSessionPrescription.planned_zone_target?.segments.length ? (
+                <div className="zone-chip-list">
+                  {selectedSessionPrescription.planned_zone_target.segments.map((segment) => (
+                    <span key={segment.sequence_order} className="zone-pill zone-pill-target">
+                      {segment.segment_label ?? `Bloque ${segment.sequence_order}`}: {segment.target_zone_min_code === segment.target_zone_max_code ? segment.target_zone_min_code : `${segment.target_zone_min_code}-${segment.target_zone_max_code}`}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               <div className="activity-detail-notes">
                 <p><strong>Objetivo:</strong> {selectedSessionPrescription.objective ?? '-'}</p>

@@ -316,6 +316,129 @@ textarea {
   color: var(--muted);
 }
 
+.activity-feed-zones {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.zone-governance-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.zone-governance-card {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.74);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.zone-governance-card-wide {
+  grid-column: 1 / -1;
+}
+
+.zone-governance-card p,
+.zone-governance-card small {
+  margin: 0;
+  color: var(--muted);
+}
+
+.zone-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.zone-anchor-current-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.zone-profile-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  display: grid;
+  gap: 8px;
+}
+
+.zone-boundary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.zone-anchors-card {
+  gap: 12px;
+}
+
+.zone-anchor-form {
+  margin-top: 4px;
+}
+
+.zone-anchor-form-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.zone-anchor-actions {
+  align-items: center;
+}
+
+.zone-anchor-actions small {
+  max-width: 720px;
+}
+
+.zone-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.zone-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink);
+}
+
+.zone-pill-target {
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.25);
+  color: var(--accent-strong);
+}
+
+.zone-pill-aligned {
+  background: rgba(21, 128, 61, 0.12);
+  border-color: rgba(21, 128, 61, 0.22);
+  color: #166534;
+}
+
+.zone-pill-misaligned {
+  background: rgba(185, 28, 28, 0.1);
+  border-color: rgba(185, 28, 28, 0.18);
+  color: #991b1b;
+}
+
+.zone-pill-limited,
+.zone-pill-not_comparable {
+  background: rgba(180, 83, 9, 0.1);
+  border-color: rgba(180, 83, 9, 0.18);
+  color: #9a3412;
+}
+
 .activity-feed-quality {
   display: flex;
   flex-wrap: wrap;
@@ -514,6 +637,17 @@ textarea {
   display: grid;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.zone-week-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.zone-week-summary-card p {
+  margin: 0;
 }
 
 .activity-detail-meta {
