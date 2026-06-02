@@ -39,6 +39,8 @@ Plan/
 - Si se necesitan, deben generarse de forma explicita como staging o exportacion puntual.
 - La verdad estructurada debe terminar en SQLite.
 - No hace falta esperar a tener automatizacion completa con Garmin para empezar: se puede importar primero de forma manual o semimanual.
+- Los ficheros crudos de Garmin que conserven detalle util para analisis posteriores, como los `.tcx`, pueden versionarse en `Importaciones/` cuando SQLite no preserve toda esa informacion.
+- Esos ficheros deben tratarse como artefactos de trazabilidad y analisis: no se editan manualmente y se conservan con su identificador original.
 
 ## 5. Correspondencia minima con la base relacional
 
