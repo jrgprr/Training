@@ -63,7 +63,7 @@ Prioridad 3:
 - Reducir peso de forma gradual y sostenible sin romper la calidad del proceso.
 
 Prioridad 4:
-- Mantener fuerza mínima eficaz durante todo el año.
+- Mantener fuerza complementaria estructurada durante todo el año, con dosis ligera y alta frecuencia.
 
 Prioridad 5:
 - Introducir trabajo algo más intencional solo cuando la semana normal ya sea estable.
@@ -88,6 +88,7 @@ En la practica, el macro debe favorecer:
 - bicicleta como soporte principal de desarrollo,
 - variedad de medios como herramienta de adherencia,
 - prudencia especial con carrera intensa, series largas en bici y repeticiones cortas intensas,
+- un patron fijo de 6 micro-sesiones semanales de fuerza ligera como complemento, con lunes y jueves para pecho+triceps+hombro, martes y viernes para espalda+biceps, miercoles y sabado para core, y domingo libre de fuerza,
 - y una rutina matinal diaria de activacion y flexibilidad como soporte de continuidad y sensacion corporal.
 
 ## 4. Regla de control del peso
@@ -97,7 +98,7 @@ El objetivo no es bajar peso rapido, sino bajar peso bien.
 Criterios de trabajo:
 - priorizar tendencia descendente sostenida,
 - evitar estrategias que reduzcan mucho la energia disponible,
-- preservar fuerza minima, recuperacion y normalidad entrenando,
+- preservar fuerza estructurada ligera, recuperacion y normalidad entrenando,
 - y revisar si el peso baja al mismo tiempo que la semana sigue siendo repetible.
 
 Lectura dentro del MVP 2026:
@@ -106,7 +107,7 @@ Lectura dentro del MVP 2026:
 
 Referencia operativa inicial:
 - la referencia aerobica base sera una salida estable de 60-90 minutos en Z2 con potenciometro, registrando potencia media, frecuencia cardiaca media y sensacion.
-- la referencia de fuerza minima sera completar una rutina base sin fatiga excesiva ni interferencia clara con la carga principal.
+- la referencia de fuerza sera sostener 6 micro-sesiones ligeras por semana con patron fijo de lunes a sabado, sin interferencia clara con la carga principal y protegiendo el domingo para la salida larga de bici.
 - la rutina matinal base sera de 20 minutos de activacion ligera y 20 minutos de flexibilidad, ajustable a la baja si algun dia compromete la recuperacion.
 
 ## 5. Criterios de éxito del macro
@@ -116,7 +117,7 @@ El año va bien si ocurre la mayor parte de lo siguiente:
 - La bicicleta vuelve a sentirse normal como actividad central.
 - El índice aeróbico mejora o se estabiliza en una zona funcional.
 - El peso corporal desciende de forma gradual sin deterioro claro de sensaciones o fuerza.
-- La fuerza se mantiene sin interferir con la carga principal.
+- La fuerza complementaria se sostiene con regularidad sin interferir con la carga principal.
 - Los paseos, la rutina matinal y la recuperación sostienen el proceso.
 - La variedad de medios ayuda a mantener continuidad sin desordenar el foco principal.
 - La semana puede llenarse con frecuencia alta sin necesidad de rescatar dias por exceso de intensidad.
@@ -149,7 +150,7 @@ Secuencia base:
 - `B2-Construccion-aerobica-extensiva-I`: ampliar la base aerobica por acumulacion controlada.
 - `B3-Consolidacion-y-absorcion`: estabilizar y absorber lo construido antes de un segundo empuje.
 - `B4-Construccion-aerobica-extensiva-II`: hacer un segundo crecimiento de la base sin perder control.
-- `B5-Consolidacion-funcional`: sostener la base, mantener fuerza minima y afinar sin romper continuidad.
+- `B5-Consolidacion-funcional`: sostener la base, mantener fuerza estructurada ligera y afinar sin romper continuidad.
 - `B6-Cierre-util-y-transicion`: cerrar el ano con actividad, control y sin deuda fisiologica.
 
 Reglas de coherencia:

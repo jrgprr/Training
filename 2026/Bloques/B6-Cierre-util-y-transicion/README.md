@@ -10,7 +10,7 @@
 ## 2. Objetivo del bloque
 
 - Objetivo principal: mantener actividad y base sin presion de seguir construyendo.
-- Objetivo secundario: conservar fuerza minima y rutina suficiente para no perder normalidad.
+- Objetivo secundario: conservar fuerza estructurada ligera y rutina suficiente para no perder normalidad.
 - Objetivo complementario: llegar al siguiente ciclo con ganas de construir, no de recuperarse.
 
 ## 3. Criterios de entrada
@@ -39,7 +39,7 @@ La unidad micro de este bloque es la semana.
 
 Cada semana debe dejar claro:
 - como se conserva actividad sin tension,
-- que minimo aerobico y de fuerza se protege,
+- que minimo aerobico y de fuerza estructurada se protege,
 - donde hay flexibilidad adicional por calendario o motivacion,
 - y como se cierra el ano sin deuda.
 
@@ -48,3 +48,9 @@ Cada semana debe dejar claro:
 - Primer tramo: transicion desde B5 sin perder rutina.
 - Tramo central: mantenimiento ligero y flexible.
 - Cierre: semanas que dejan apetito de volver a construir.
+
+Patron de fuerza esperado durante B6:
+- mantener la frecuencia de 6 micro-sesiones solo si sigue siendo facil y natural,
+- mantener el mismo patron fijo de lunes a sabado,
+- reducir duracion o densidad antes que eliminar por completo la rutina,
+- y dejar el domingo libre de fuerza o incluso simplificar el sabado si el cierre del ano pide mas soltura.

@@ -1,5 +1,15 @@
 # Diseno de extension SQLite para plan de fuerza estructurado
 
+## Estado actual
+
+Esta nota queda como documento de diseno historico y como referencia de esquema, pero no describe ya una superficie activa de GUI o API.
+
+Situacion vigente:
+- la GUI no expone detalle estructurado de prescripcion;
+- el endpoint dedicado de detalle fue retirado;
+- el plan operativo visible vive en `plan_planned_sessions` y en los objetivos de zona derivados;
+- las tablas de prescripcion pueden seguir existiendo como soporte interno o compatibilidad, pero no forman parte del flujo actual de lectura minima.
+
 ## 1. Problema que hay que resolver
 
 El modelo actual permite guardar bien el plan a nivel semanal y de sesion, pero no la prescripcion interna de una sesion de fuerza.
@@ -25,9 +35,9 @@ La extension correcta no debe ser una tabla solo para `fuerza`, sino una capa de
 
 Principios:
 - `plan_planned_sessions` sigue siendo la cabecera minima de cada sesion.
-- La prescripcion detallada vive en tablas hijas nuevas.
-- La GUI puede seguir leyendo el resumen semanal sin cargar toda la estructura.
-- La ficha detallada de una sesion se consulta bajo demanda.
+- La prescripcion detallada, si existe, vive en tablas hijas nuevas como soporte interno.
+- La GUI sigue leyendo el resumen semanal sin cargar toda la estructura.
+- No existe actualmente ficha detallada de sesion ni consulta bajo demanda desde la GUI.
 - La solucion debe permitir sesiones diferentes semana a semana sin obligar a reutilizar plantillas.
 - Las plantillas reutilizables pueden venir despues, pero no deben bloquear la primera version util.
 
@@ -223,77 +233,57 @@ ON plan_prescription_exercises (prescription_block_id, sequence_order);
 
 ## 5. Por que esta extension es mejor que usar solo `notes`
 
-- permite mostrar la sesion en GUI por bloques y ejercicios;
-- permite editar y validar partes concretas;
+- permite conservar estructura rica si mas adelante vuelve a necesitarse;
+- permite derivar reglas o lectura adicional sin depender de texto libre;
 - permite contar ejercicios, bloques, duraciones y objetivos;
 - permite sustituciones explicitadas;
-- y mantiene `plan_planned_sessions` limpio como resumen semanal.
+- y mantiene `plan_planned_sessions` limpio como resumen semanal cuando se quiera separar resumen operativo de detalle interno.
 
 `notes` y `adjustment_rule` siguen siendo utiles, pero como capa corta de lectura rapida, no como modelo principal de la fuerza.
 
 ## 6. Como encaja con B1
 
-Para B1, cada miercoles de fuerza tendria:
-- una fila en `plan_planned_sessions` con el resumen corto,
-- una fila en `plan_session_prescriptions`,
-- varios bloques (`warmup`, `main`, `core`, `cooldown`),
-- y ejercicios concretos por semana.
+La version actual de B1 ya no usa una sesion principal de fuerza con detalle estructurado expuesto.
+
+Para B1, el patron operativo vigente es:
+- lunes y jueves: pecho, triceps y hombro;
+- martes y viernes: espalda y biceps;
+- miercoles y sabado: core;
+- domingo: sin fuerza.
 
 Ejemplo conceptual para una semana:
-- cabecera: `Fuerza tren superior y core 35-45 min`;
-- bloque 1: calentamiento escapular;
-- bloque 2: empuje y traccion principal;
-- bloque 3: accesorio de hombro/escapula;
-- bloque 4: core;
-- bloque 5: cierre.
+- cabecera operativa en `plan_planned_sessions`;
+- complementario breve por grupo muscular;
+- y, si alguna vez hiciera falta, una capa estructurada interna separada del flujo GUI.
 
 ## 7. Superficie API recomendada
 
-Mantener el endpoint actual de sesiones semanales ligero:
+Superficie vigente:
 - `GET /api/weeks/{week_id}/sessions`
 
-Y anadir uno especifico para detalle estructurado:
-- `GET /api/planned-sessions/{planned_session_id}/prescription`
-
-Respuesta esperada:
-- cabecera de prescripcion,
-- lista ordenada de bloques,
-- ejercicios de cada bloque,
-- y opciones de sustitucion.
-
-Adicionalmente, el endpoint semanal podria exponer solo dos banderas nuevas:
-- `has_structured_prescription`
-- `prescription_type`
+Estado actual:
+- no existe endpoint publico de detalle estructurado para una sesion planificada;
+- el endpoint semanal ya no expone `has_structured_prescription`;
+- y la lectura operativa se concentra en resumen de sesion, comparativa plan vs realidad y objetivos de zona.
 
 ## 8. Superficie GUI recomendada
 
-En la tabla `Sesiones planificadas`:
-- mantener el resumen corto actual,
-- mostrar un indicador si la sesion tiene prescripcion estructurada,
-- y permitir abrir una ficha lateral o modal.
-
-En la ficha de sesion:
-- mostrar bloques en orden,
-- renderizar ejercicios con series, repeticiones y RPE,
-- mostrar sustituciones plegables,
-- y preservar el resumen corto de la semana.
+Superficie vigente:
+- la tabla `Sesiones planificadas` muestra solo lectura operativa de dia, tipo, objetivo, sesion principal, zona, complementario y duracion;
+- no hay indicador de detalle estructurado;
+- y no hay ficha lateral o modal de prescripcion.
 
 ## 9. Migracion recomendada
 
-Paso 1:
-- crear tablas nuevas sin tocar el contrato actual de sesiones.
+La migracion ejecutada finalmente tomo otra direccion:
+- se consolidaron los cambios operativos en `plan_planned_sessions` y en seeds de planificacion;
+- se retiraron la GUI y la API de detalle estructurado;
+- y se eliminaron seeds de B1 que solo alimentaban ese drill-down.
 
-Paso 2:
-- poblar prescripciones solo para sesiones `planned_type = 'fuerza'` de B1.
-
-Paso 3:
-- anadir endpoint de detalle de prescripcion.
-
-Paso 4:
-- hacer que la GUI muestre el detalle solo cuando exista.
-
-Paso 5:
-- decidir despues si merece la pena introducir plantillas reutilizables.
+Si alguna vez se reabre esta linea:
+- primero habria que justificar un consumidor real de GUI o API;
+- despues decidir si conviene reintroducir prescripciones persistidas o derivacion al vuelo;
+- y solo entonces volver a poblar detalle estructurado.
 
 ## 10. Lo que no haria en esta fase
 
@@ -304,11 +294,8 @@ Paso 5:
 
 ## 11. Decision propuesta
 
-La extension correcta del esquema para este caso es:
-- mantener `plan_planned_sessions` como resumen operativo,
-- anadir `plan_session_prescriptions` como cabecera detallada,
-- anadir `plan_prescription_blocks` para estructura,
-- anadir `plan_prescription_exercises` para contenido real,
-- y `plan_prescription_exercise_options` para sustituciones.
-
-Con eso el plan de fuerza deja de vivir en texto libre y pasa a ser parte estructurada real del plan global en SQLite, lista para mostrarse correctamente en la GUI.
+Decision vigente:
+- mantener `plan_planned_sessions` como resumen operativo canonico visible;
+- mantener objetivos de zona y comparativa semanal como lectura estructurada activa;
+- no exponer detalle estructurado de prescripcion en GUI o API mientras no exista un caso de uso claro;
+- y tratar esta extension como esquema potencial o soporte interno, no como contrato activo de lectura.

@@ -11,7 +11,7 @@
 
 - Objetivo principal: estabilizar lo construido y bajar la presion de progreso.
 - Objetivo secundario: confirmar que la semana sigue siendo repetible con buena sensacion.
-- Objetivo complementario: mantener peso y fuerza en una zona compatible con entrenar bien.
+- Objetivo complementario: mantener peso y fuerza estructurada ligera en una zona compatible con entrenar bien.
 
 ## 3. Criterios de entrada
 
@@ -41,6 +41,7 @@ Cada semana debe dejar claro:
 - como se reduce la presion sin perder estructura,
 - que indicadores confirman absorcion,
 - como se mantiene la base sin buscar crecimiento fuerte,
+- como se conserva la fuerza estructurada con 6 micro-sesiones ligeras sin convertirla en carga extra,
 - y en que momento se puede abrir el paso a B4.
 
 ## 7. Estructura del bloque
@@ -48,3 +49,9 @@ Cada semana debe dejar claro:
 - Primera semana: alivio relativo y lectura de sensaciones.
 - Semanas siguientes: consolidacion de rutina y control aerobico.
 - Cierre: decision de pasar a nueva construccion o prolongar estabilizacion.
+
+Patron de fuerza esperado durante B3:
+- conservar las 6 micro-sesiones ligeras con menos ambicion de progresion,
+- bajar series o ejercicios antes que perder frecuencia,
+- mantener el mismo patron fijo de lunes a sabado,
+- y dejar el domingo libre de fuerza para favorecer absorcion y salida larga.

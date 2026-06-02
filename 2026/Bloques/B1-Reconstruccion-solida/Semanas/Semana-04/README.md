@@ -18,14 +18,14 @@
 ## 3. Objetivo semanal
 
 - Carga principal de la semana: reducir ligeramente el volumen manteniendo estructura y frecuencia.
-- Prioridad secundaria: confirmar que la fuerza minima y la bici siguen conviviendo bien.
+- Prioridad secundaria: confirmar que la fuerza estructurada ligera y la bici siguen conviviendo bien.
 - Riesgo a vigilar: convertir una semana de consolidacion en otra semana de empuje por buenas sensaciones.
 - Objetivo de control del peso: sostener normalidad, no acelerar nada.
 
 ## 4. Distribucion orientativa
 
 - Dias clave: 2 dias aerobicos medios y 1 salida larga algo mas corta.
-- Dias de soporte: fuerza minima muy controlada, paseo y movilidad.
+- Dias de soporte: fuerza estructurada ligera muy controlada, paseo y movilidad.
 - Limite de la semana: terminar con sensacion de frescura creciente.
 - Volumen orientativo: 7-8 horas.
 - Rutina estructural diaria: 20 minutos de activacion ligera y 20 minutos de flexibilidad, preferentemente por la manana; si molesta o carga, reducir.
@@ -35,34 +35,44 @@
 ### Lunes
 - Objetivo: descanso util y absorcion.
 - Sesion principal: paseo 45-60 minutos o descanso activo.
-- Complementario: movilidad 10-15 minutos.
+- Complementario: pecho, triceps y hombro 10-15 minutos.
 - Observaciones: dia de descarga real.
 
 ### Martes
 - Objetivo: sostener el gesto aerobico sin exigir.
 - Sesion principal: bicicleta Z2 75 minutos.
-- Complementario: 4 aceleraciones suaves de cadencia.
+- Complementario: espalda y biceps 10-15 minutos.
 - Observaciones: sensacion de facilidad como criterio principal.
 
 ### Miercoles
-- Objetivo: mantener fuerza minima con menos carga.
-- Sesion principal: rutina base de fuerza 25-35 minutos.
-- Complementario: paseo opcional 20 minutos.
-- Observaciones: reducir volumen respecto a semanas 02-03.
+- Objetivo: mantener fuerza estructurada ligera con menos carga y foco en core.
+- Sesion principal: paseo suave 20-40 minutos o descanso activo.
+- Complementario: core 10-15 minutos.
+- Observaciones: version muy controlada para absorber; no comprometer jueves.
 
 ### Jueves
 - Objetivo: repetir un dia aerobico estable y corto.
 - Sesion principal: bicicleta Z2 60-75 minutos.
-- Complementario: movilidad o core muy suave.
+- Complementario: pecho, triceps y hombro 10-15 minutos.
 - Observaciones: si hay molestias o cansancio, recortar sin problema.
 
 ### Viernes
 - Objetivo: despejar antes del fin de semana.
 - Sesion principal: descanso activo o paseo 45 minutos.
-- Complementario: estiramientos suaves.
+- Complementario: espalda y biceps 10-15 minutos.
 - Observaciones: dia deliberadamente facil.
 
 ### Sabado
+- Objetivo: mantener la salida larga, pero con menor coste.
+- Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2.
+- Complementario: core 10-15 minutos y nutricion e hidratacion normales.
+- Observaciones: debe dejar mejores sensaciones que la semana 03.
+
+### Domingo
+- Objetivo: cerrar la semana con soltura.
+- Sesion principal: paseo largo, monte suave o bicicleta facil 45-60 minutos.
+- Complementario: revision de sensaciones generales, sin fuerza.
+- Observaciones: si aparece cansancio, dejar solo paseo.
 - Objetivo: mantener la salida larga, pero con menor coste.
 - Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2.
 - Complementario: nutricion e hidratacion normales.

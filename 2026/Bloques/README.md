@@ -43,7 +43,7 @@ La temporada 2026 se organiza en seis bloques meso operativos. Las tres fases gr
 
 ### Fase 3. Consolidacion y cierre
 
-- `B5-Consolidacion-funcional`: estabilizacion funcional con fuerza minima eficaz y algun estimulo mas intencional solo si la recuperacion lo permite.
+- `B5-Consolidacion-funcional`: estabilizacion funcional con fuerza estructurada ligera y algun estimulo mas intencional solo si la recuperacion lo permite.
 - `B6-Cierre-util-y-transicion`: mantenimiento ligero, continuidad y cierre del ano sin deuda.
 
 ## 4. Detalle de bloques 2026
@@ -70,7 +70,7 @@ La temporada 2026 se organiza en seis bloques meso operativos. Las tres fases gr
 
 ### B5 - Consolidacion funcional
 - Duracion orientativa: 4 semanas.
-- Objetivo: sostener la base, mantener fuerza minima eficaz y valorar algun estimulo mas intencional si ya no rompe la continuidad.
+- Objetivo: sostener la base, mantener fuerza estructurada ligera y valorar algun estimulo mas intencional si ya no rompe la continuidad.
 - Criterio de salida: semanas completas toleradas con normalidad y margen para cerrar el ano sin tension.
 
 ### B6 - Cierre util y transicion

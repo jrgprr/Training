@@ -11,7 +11,7 @@
 
 - Objetivo principal: ampliar de nuevo la base aerobica por duracion o densidad, sin depender de intensidad alta.
 - Objetivo secundario: mejorar la tolerancia a semanas llenas con la bicicleta como eje central.
-- Objetivo complementario: seguir sosteniendo fuerza minima y tendencia de peso con buena recuperacion.
+- Objetivo complementario: seguir sosteniendo fuerza estructurada ligera y tendencia de peso con buena recuperacion.
 
 ## 3. Criterios de entrada
 
@@ -41,6 +41,7 @@ Cada semana debe dejar claro:
 - que variable crece respecto a B2,
 - como se protege la recuperacion,
 - que dias son realmente clave,
+- como se mantiene la fuerza estructurada ligera sin tension innecesaria,
 - y cual es el limite a partir del cual toca estabilizar.
 
 ## 7. Estructura del bloque
@@ -48,3 +49,8 @@ Cada semana debe dejar claro:
 - Primer tramo: reentrada controlada tras B3.
 - Tramo central: acumulacion aerobica principal.
 - Cierre: semana de consolidacion o preparacion hacia B5.
+
+Patron de fuerza esperado durante B4:
+- mantener 6 micro-sesiones ligeras por semana como soporte estable,
+- conservar el patron fijo lunes/jueves pecho+triceps+hombro, martes/viernes espalda+biceps y miercoles/sabado core,
+- y dejar el domingo libre de fuerza para proteger la sesion larga.

@@ -44,7 +44,6 @@ type Session = {
   duration_min: number | null;
   duration_max: number | null;
   is_key_session: number;
-  has_structured_prescription: number;
   planned_zone_target?: PlannedZoneTarget | null;
 };
 
@@ -67,78 +66,6 @@ type PlannedZoneTarget = {
   source_text: string | null;
   comparison_eligibility: string;
   segments: PlannedZoneTargetSegment[];
-};
-
-type SessionPrescriptionOption = {
-  exercise_option_id: number;
-  sequence_order: number;
-  option_name: string;
-  equipment: string | null;
-  condition_notes: string | null;
-};
-
-type SessionPrescriptionExercise = {
-  prescription_exercise_id: number;
-  prescription_block_id: number;
-  sequence_order: number;
-  exercise_name: string;
-  movement_pattern: string | null;
-  equipment: string | null;
-  unilateral_mode: string;
-  sets_count: number | null;
-  reps_min: number | null;
-  reps_max: number | null;
-  hold_seconds_min: number | null;
-  hold_seconds_max: number | null;
-  distance_meters: number | null;
-  target_rpe_min: number | null;
-  target_rpe_max: number | null;
-  target_rir_min: number | null;
-  target_rir_max: number | null;
-  tempo: string | null;
-  load_guidance: string | null;
-  optional_flag: number;
-  substitution_group: string | null;
-  notes: string | null;
-  options: SessionPrescriptionOption[];
-};
-
-type SessionPrescriptionBlock = {
-  prescription_block_id: number;
-  sequence_order: number;
-  block_type: string;
-  block_name: string | null;
-  objective: string | null;
-  rounds: number | null;
-  rest_seconds: number | null;
-  notes: string | null;
-  exercises: SessionPrescriptionExercise[];
-};
-
-type SessionPrescription = {
-  planned_session_id: number;
-  session_date: string;
-  day_name: string;
-  planned_type: string;
-  objective: string | null;
-  primary_session: string | null;
-  complementary_session: string | null;
-  prescription_id: number;
-  prescription_type: string;
-  title: string | null;
-  focus_primary: string | null;
-  focus_secondary: string | null;
-  estimated_duration_min: number | null;
-  estimated_duration_max: number | null;
-  target_rpe_min: number | null;
-  target_rpe_max: number | null;
-  warmup_notes: string | null;
-  cooldown_notes: string | null;
-  execution_notes: string | null;
-  adaptation_notes: string | null;
-  source_markdown_path: string | null;
-  blocks: SessionPrescriptionBlock[];
-  planned_zone_target?: PlannedZoneTarget | null;
 };
 
 type ZoneComparisonItem = {
@@ -1297,34 +1224,6 @@ function toMetricLabel(value: number | null, suffix = "") {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}${suffix}`;
 }
 
-function toPrescriptionDoseLabel(exercise: SessionPrescriptionExercise) {
-  const parts: string[] = [];
-  if (exercise.sets_count != null) {
-    if (exercise.reps_min != null) {
-      parts.push(`${exercise.sets_count} x ${exercise.reps_min}${exercise.reps_max != null && exercise.reps_max !== exercise.reps_min ? `-${exercise.reps_max}` : ""}`);
-    } else if (exercise.hold_seconds_min != null) {
-      parts.push(`${exercise.sets_count} x ${exercise.hold_seconds_min}${exercise.hold_seconds_max != null && exercise.hold_seconds_max !== exercise.hold_seconds_min ? `-${exercise.hold_seconds_max}` : ""} s`);
-    } else if (exercise.distance_meters != null) {
-      parts.push(`${exercise.sets_count} x ${toMetricLabel(exercise.distance_meters, " m")}`);
-    }
-  }
-  if (parts.length === 0) {
-    return "Sin dosificacion detallada";
-  }
-  return parts.join(" · ");
-}
-
-function toPrescriptionIntensityLabel(exercise: SessionPrescriptionExercise) {
-  const parts: string[] = [];
-  if (exercise.target_rpe_min != null) {
-    parts.push(`RPE ${exercise.target_rpe_min}${exercise.target_rpe_max != null && exercise.target_rpe_max !== exercise.target_rpe_min ? `-${exercise.target_rpe_max}` : ""}`);
-  }
-  if (exercise.target_rir_min != null) {
-    parts.push(`RIR ${exercise.target_rir_min}${exercise.target_rir_max != null && exercise.target_rir_max !== exercise.target_rir_min ? `-${exercise.target_rir_max}` : ""}`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
 function getOptionalDailyLoadMinutes(row: PlanVsRealRow) {
   return Math.round((row.optional_daily_activities ?? []).reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
 }
@@ -1861,7 +1760,6 @@ export default function App() {
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityDetail | null>(null);
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
-  const [selectedSessionPrescription, setSelectedSessionPrescription] = useState<SessionPrescription | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
   const [zoneProposals, setZoneProposals] = useState<ZoneProposalItem[]>([]);
   const [currentZoneProfiles, setCurrentZoneProfiles] = useState<CurrentZoneProfilesResponse | null>(null);
@@ -1884,7 +1782,6 @@ export default function App() {
   const [loadingSegmentHistory, setLoadingSegmentHistory] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
-  const [loadingSessionPrescription, setLoadingSessionPrescription] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
   const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2075,7 +1972,6 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
-      setSelectedSessionPrescription(null);
         setSelectedDailyMetric(null);
         setSelectedDailyMetricDate(null);
         setSelectedDailyMetric(null);
@@ -2178,7 +2074,6 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
-      setSelectedSessionPrescription(null);
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
@@ -2209,7 +2104,6 @@ export default function App() {
       setSelectedWeek(week);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
-      setSelectedSessionPrescription(null);
       const [sessionData, comparisonData, reviewData] = await Promise.all([
         fetchJson<Session[]>(`/api/weeks/${week.week_id}/sessions`),
         fetchJson<PlanVsRealRow[]>(`/api/weeks/${week.week_id}/plan-vs-real`),
@@ -2371,20 +2265,6 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setReplayingActivityQuality(false);
-    }
-  }
-
-  async function loadSessionPrescription(plannedSessionId: number) {
-    try {
-      setLoadingSessionPrescription(true);
-      setError(null);
-      const prescription = await fetchJson<SessionPrescription>(`/api/planned-sessions/${plannedSessionId}/prescription`);
-      setSelectedSessionPrescription(prescription);
-    } catch (requestError) {
-      setSelectedSessionPrescription(null);
-      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
-    } finally {
-      setLoadingSessionPrescription(false);
     }
   }
 
@@ -3112,7 +2992,6 @@ export default function App() {
                     <th>Zona</th>
                     <th>Complementario</th>
                     <th>Duracion</th>
-                    <th>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3134,15 +3013,6 @@ export default function App() {
                       </td>
                       <td>{session.complementary_session ?? '-'}</td>
                       <td>{toDurationLabel(session.duration_min, session.duration_max)}</td>
-                      <td>
-                        {session.has_structured_prescription === 1 ? (
-                          <button className="table-link-button" type="button" onClick={() => void loadSessionPrescription(session.planned_session_id)}>
-                            Ver fuerza
-                          </button>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -3468,95 +3338,6 @@ export default function App() {
         </section>
 
         <section className="panel panel-form">
-          <div className="section-heading">
-            <div>
-              <h2>Sesion planificada</h2>
-              <p className="section-subtitle">Detalle estructurado de la prescripcion cuando existe en SQLite.</p>
-            </div>
-          </div>
-
-          {loadingSessionPrescription ? (
-            <div className="empty-state-card empty-state-card-wide">
-              <strong>Cargando sesion planificada</strong>
-              <p>Recuperando la prescripcion estructurada de la sesion seleccionada.</p>
-            </div>
-          ) : selectedSessionPrescription ? (
-            <div className="prescription-detail-card">
-              <div className="activity-detail-header">
-                <div>
-                  <strong>{selectedSessionPrescription.title ?? selectedSessionPrescription.primary_session ?? 'Prescripcion estructurada'}</strong>
-                  <p>
-                    {selectedSessionPrescription.day_name} · {selectedSessionPrescription.session_date} · {selectedSessionPrescription.planned_type}
-                  </p>
-                </div>
-                <span className="badge badge-completed">{selectedSessionPrescription.prescription_type}</span>
-              </div>
-
-              <div className="activity-detail-grid">
-                <article><span>Duracion objetivo</span><strong>{toDurationLabel(selectedSessionPrescription.estimated_duration_min, selectedSessionPrescription.estimated_duration_max)}</strong></article>
-                <article><span>RPE objetivo</span><strong>{selectedSessionPrescription.target_rpe_min != null ? `RPE ${selectedSessionPrescription.target_rpe_min}${selectedSessionPrescription.target_rpe_max != null && selectedSessionPrescription.target_rpe_max !== selectedSessionPrescription.target_rpe_min ? `-${selectedSessionPrescription.target_rpe_max}` : ''}` : '-'}</strong></article>
-                <article><span>Foco principal</span><strong>{selectedSessionPrescription.focus_primary ?? '-'}</strong></article>
-                <article><span>Foco secundario</span><strong>{selectedSessionPrescription.focus_secondary ?? '-'}</strong></article>
-                <article><span>Zona estructurada</span><strong>{formatPlannedZoneTargetLabel(selectedSessionPrescription.planned_zone_target) ?? '-'}</strong></article>
-              </div>
-
-              {selectedSessionPrescription.planned_zone_target?.segments.length ? (
-                <div className="zone-chip-list">
-                  {selectedSessionPrescription.planned_zone_target.segments.map((segment) => (
-                    <span key={segment.sequence_order} className="zone-pill zone-pill-target">
-                      {segment.segment_label ?? `Bloque ${segment.sequence_order}`}: {segment.target_zone_min_code === segment.target_zone_max_code ? segment.target_zone_min_code : `${segment.target_zone_min_code}-${segment.target_zone_max_code}`}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="activity-detail-notes">
-                <p><strong>Objetivo:</strong> {selectedSessionPrescription.objective ?? '-'}</p>
-                <p><strong>Calentamiento:</strong> {selectedSessionPrescription.warmup_notes ?? '-'}</p>
-                <p><strong>Ejecucion:</strong> {selectedSessionPrescription.execution_notes ?? '-'}</p>
-                <p><strong>Ajustes:</strong> {selectedSessionPrescription.adaptation_notes ?? '-'}</p>
-                <p><strong>Cierre:</strong> {selectedSessionPrescription.cooldown_notes ?? '-'}</p>
-              </div>
-
-              <div className="prescription-block-list">
-                {selectedSessionPrescription.blocks.map((block) => (
-                  <article key={block.prescription_block_id} className="prescription-block-card">
-                    <div className="item-head">
-                      <strong>{block.block_name ?? block.block_type}</strong>
-                      <span>{block.block_type}</span>
-                    </div>
-                    {block.objective ? <p>{block.objective}</p> : null}
-                    {block.notes ? <small>{block.notes}</small> : null}
-                    <div className="prescription-exercise-list">
-                      {block.exercises.map((exercise) => (
-                        <div key={exercise.prescription_exercise_id} className="prescription-exercise-item">
-                          <strong>{exercise.exercise_name}</strong>
-                          <small>{toPrescriptionDoseLabel(exercise)}</small>
-                          {toPrescriptionIntensityLabel(exercise) ? <small>{toPrescriptionIntensityLabel(exercise)}</small> : null}
-                          {exercise.equipment ? <small>{exercise.equipment}</small> : null}
-                          {exercise.load_guidance ? <small>{exercise.load_guidance}</small> : null}
-                          {exercise.notes ? <small>{exercise.notes}</small> : null}
-                          {exercise.options.length > 0 ? (
-                            <div className="prescription-option-list">
-                              {exercise.options.map((option) => (
-                                <small key={option.exercise_option_id}>Alternativa: {option.option_name}{option.condition_notes ? ` · ${option.condition_notes}` : ''}</small>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="empty-state-card empty-state-card-wide">
-              <strong>Sin sesion estructurada seleccionada</strong>
-              <p>Usa "Ver fuerza" en una sesion planificada para abrir su prescripcion estructurada.</p>
-            </div>
-          )}
-
           <div className="section-heading">
             <div>
               <h2>Metricas del dia</h2>

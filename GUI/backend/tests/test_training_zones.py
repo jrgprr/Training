@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from app.db import initialize_database
 from app.imports.contracts import GarminImportBatch, GarminImportRequest, ImportFetchMetadata, NormalizedActivity, NormalizedMetricReading
 from app.imports.storage import GarminImportStorage
-from app.main import ZoneMetricProfileAcceptancePayload, ZoneProposalAcceptancePayload, accept_zone_metric_profile_endpoint, accept_zone_proposal_endpoint, get_activity_zones_endpoint, get_current_zone_metric_profiles_endpoint, get_current_zone_profiles_endpoint, get_season_activities, get_session_prescription, get_sessions, get_week_plan_vs_real, get_weekly_review, get_zone_proposal_detail_endpoint, get_zone_proposals_endpoint
+from app.main import ZoneMetricProfileAcceptancePayload, ZoneProposalAcceptancePayload, accept_zone_metric_profile_endpoint, accept_zone_proposal_endpoint, get_activity_zones_endpoint, get_current_zone_metric_profiles_endpoint, get_current_zone_profiles_endpoint, get_season_activities, get_sessions, get_week_plan_vs_real, get_weekly_review, get_zone_proposal_detail_endpoint, get_zone_proposals_endpoint
 from app.training_zones import accept_zone_metric_profile, derive_zone_boundaries_from_metrics, generate_zone_refinement_proposals, get_active_zone_profile_for_date, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, is_zone_supported_discipline, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals, normalize_zone_basis, persist_accepted_zone_profile
 
 
@@ -1539,7 +1539,7 @@ class PlannedZoneTargetTests(unittest.TestCase):
         self.assertIsNone(payload)
         self.assertEqual(target_count, 0)
 
-    def test_session_endpoints_expose_planned_zone_targets(self) -> None:
+    def test_session_endpoint_exposes_planned_zone_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "training.sqlite"
             with patch("app.db.get_database_path", return_value=database_path), patch("app.db.normalize_existing_manual_activity_disciplines"):
@@ -1548,13 +1548,13 @@ class PlannedZoneTargetTests(unittest.TestCase):
                     self._create_planned_zone_context(connection)
 
                 sessions = get_sessions(20)
-                prescription = get_session_prescription(201)
 
         single_zone_row = next(row for row in sessions if row["planned_session_id"] == 200)
         no_zone_row = next(row for row in sessions if row["planned_session_id"] == 202)
+        multi_segment_row = next(row for row in sessions if row["planned_session_id"] == 201)
         self.assertEqual(single_zone_row["planned_zone_target"]["target_kind"], "single_zone")
         self.assertIsNone(no_zone_row["planned_zone_target"])
-        self.assertEqual(prescription["planned_zone_target"]["target_kind"], "multi_segment")
+        self.assertEqual(multi_segment_row["planned_zone_target"]["target_kind"], "multi_segment")
 
 
 class TrainingZonePersistenceTests(unittest.TestCase):

@@ -11,7 +11,7 @@
 
 - Objetivo principal: aumentar el tiempo aerobico util sin romper continuidad.
 - Objetivo secundario: consolidar la bicicleta como medio principal de desarrollo.
-- Objetivo complementario: sostener la tendencia de peso y la fuerza minima sin interferencia.
+- Objetivo complementario: sostener la tendencia de peso y la fuerza estructurada ligera sin interferencia.
 
 ## 3. Criterios de entrada
 
@@ -41,6 +41,7 @@ Cada semana debe dejar claro:
 - cuanto tiempo aerobico util se acumula,
 - donde estan los dias de soporte y los dias clave,
 - como se protege la recuperacion entre dias,
+- como se distribuyen las 6 micro-sesiones ligeras de fuerza sin invadir la carga principal,
 - y que ajuste se aplica si la carga deja deuda.
 
 ## 7. Estructura del bloque
@@ -48,3 +49,10 @@ Cada semana debe dejar claro:
 - Primeras semanas: crecimiento suave del tiempo aerobico.
 - Semanas centrales: consolidacion de frecuencia y salida larga.
 - Ultima semana: cierre del bloque o entrada en consolidacion si aparece fatiga.
+
+Patron de fuerza esperado durante B2:
+- mantener 6 micro-sesiones ligeras semanales,
+- lunes y jueves pecho+triceps+hombro,
+- martes y viernes espalda+biceps,
+- miercoles y sabado core,
+- y domingo libre de fuerza para proteger la salida larga.

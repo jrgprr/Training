@@ -24,7 +24,7 @@
 El bloque se considera completado si la mayor parte de lo siguiente ya es normal:
 - semanas terminadas sin deuda clara,
 - salida larga controlada tolerada,
-- fuerza minima integrada sin interferencia,
+- fuerza complementaria estructurada integrada sin interferencia,
 - y sensacion de semana tipo asumible.
 
 ## 5. Riesgos principales
@@ -45,6 +45,8 @@ Cada semana debe dejar claro:
 
 Patron semanal de referencia al final del bloque:
 - martes y jueves como dias aerobicos utiles en Z2,
+- seis micro-sesiones complementarias ligeras de fuerza repartidas entre lunes y sabado,
+- con patron fijo de pecho+triceps+hombro lunes y jueves, espalda+biceps martes y viernes, y core miercoles y sabado,
 - viernes como dia protector muy facil,
 - sabado como actividad complementaria suave,
 - y domingo como salida larga principal cuando la semana ya esta suficientemente asentada.
@@ -64,7 +66,7 @@ Patron semanal de referencia al final del bloque:
 - El bloque dura 6 semanas reales, de 4 de mayo a 14 de junio.
 - La progresion se hace por tiempo aerobico util, no por intensidad.
 - La bicicleta es el eje principal del bloque.
-- La fuerza aparece en dosis minima eficaz para recuperar sensacion de soporte, no para generar fatiga.
+- La fuerza aparece en formato estructurado y ligero, con micro-sesiones complementarias de espalda+biceps, pecho+triceps+hombro y core para recuperar sensacion de soporte sin generar fatiga.
 - La carrera solo se usa como recurso secundario y muy controlado.
 - La rutina matinal diaria de activacion y flexibilidad actua como soporte estructural del bloque, no como segunda sesion.
 
@@ -89,5 +91,5 @@ Se pasa a B2 si al final de la semana 06 ocurre la mayor parte de lo siguiente:
 - 5-6 dias de actividad son asumibles sin deuda clara,
 - la salida larga de 3 horas se integra con normalidad,
 - la bici vuelve a sentirse como medio central y natural,
-- la fuerza minima no interfiere con la semana,
+- la fuerza complementaria no interfiere con la semana,
 - y la carga aerobica todavia deja margen para crecer por acumulacion.

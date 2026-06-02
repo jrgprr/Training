@@ -4,53 +4,70 @@
 
 - Temporada: 2026.
 - Bloque: B1 - Reconstruccion solida.
-- Uso previsto: dias de fuerza planificados del bloque, normalmente los miercoles.
-- Duracion orientativa por sesion: 30-45 minutos.
+- Uso previsto: 6 micro-sesiones complementarias ligeras por semana de lunes a sabado.
+- Duracion orientativa por micro-sesion complementaria: 12-20 minutos.
 - Material disponible: mancuernas, banco, barra, bandas y maquina de dominadas.
-- Enfoque: fuerza minima eficaz centrada en tren superior y core, con interferencia baja sobre la bicicleta.
+- Enfoque: fuerza complementaria estructurada centrada en tren superior y core, con interferencia baja sobre la bicicleta.
 
 ## 2. Objetivo del plan
 
 - Sostener una rutina de fuerza estable dentro de B1 sin dejar fatiga residual clara en piernas.
-- Reforzar empuje, traccion, control escapular y rigidez del tronco.
+- Reforzar empuje, traccion, control escapular y rigidez del tronco con alta frecuencia y baja fatiga.
 - Mejorar soporte postural y tolerancia general al entrenamiento.
-- Llegar a B2 con una sesion de fuerza repetible y facil de encajar en la semana.
+- Llegar a B2 con 6 complementarias ligeras por semana faciles de encajar alrededor de la bici.
 
 ## 3. Principios de uso
 
 - Prioridad: tecnica limpia y sensacion de control.
-- Intensidad objetivo: RPE 6-7 en casi todo el bloque.
-- Margen: dejar 2-3 repeticiones en reserva.
+- Intensidad objetivo: RPE 5-6 en las micro-sesiones.
+- Margen: dejar 3-4 repeticiones en reserva en complementarias.
 - Prohibido en este bloque: llegar al fallo, buscar agujetas o convertir la sesion en culturismo por acumulacion.
 - Regla de convivencia con la bici: si la sesion compromete claramente jueves o sabado, esta demasiado cargada.
-- Descansos orientativos: 60-90 s en accesorios y 90-120 s en ejercicios principales.
+- Descansos orientativos: 30-60 s en complementarias.
 
-## 4. Estructura base de cada sesion
+## 4. Estructura semanal objetivo
 
-### A. Calentamiento - 8 a 10 min
+- 2 micro-sesiones de espalda y biceps.
+- 2 micro-sesiones de pecho, triceps y hombro.
+- 2 micro-sesiones de core.
+- Domingo libre de fuerza para proteger la salida larga de bici.
 
-- movilidad toracica y escapular,
-- 1-2 series de band pull-aparts,
-- 1-2 series de face pulls con banda,
-- plancha corta o dead bug,
-- y 2 series progresivas del primer ejercicio.
+Distribucion recomendada en B1:
+- lunes: pecho, triceps y hombro.
+- martes: espalda y biceps.
+- miercoles: core.
+- jueves: pecho, triceps y hombro.
+- viernes: espalda y biceps.
+- sabado: core.
+- domingo: sin fuerza.
 
-### B. Bloque principal
+## 5. Plantillas de trabajo
 
-Cada sesion combina:
-- 1 empuje horizontal,
-- 1 traccion horizontal o vertical,
-- 1 empuje complementario,
-- 1 traccion complementaria o trabajo escapular,
-- y 2 bloques de core.
+### A. Espalda y biceps - 12 a 20 min
 
-### C. Cierre - 3 a 5 min
+Elegir 2-3 ejercicios:
+- remo con mancuerna: 2-3 x 8-12 por lado,
+- dominadas asistidas o jalon con banda: 2-3 x 4-8,
+- curl con mancuerna o banda: 2 x 10-12,
+- face pulls o band pull-aparts: 2 x 12-15.
 
-- respiracion,
-- movilidad suave de hombro y toracica,
-- y descarga ligera de cuello y dorsales.
+### B. Pecho, triceps y hombro - 12 a 20 min
 
-## 5. Reglas de progresion del bloque
+Elegir 2-3 ejercicios:
+- press banca con mancuernas o flexiones: 2-3 x 8-12,
+- press inclinado o press militar sentado ligero: 2 x 8-10,
+- extensiones de triceps con banda o mancuerna: 2 x 10-12,
+- elevaciones laterales ligeras: 2 x 10-12.
+
+### C. Core - 10 a 20 min
+
+Elegir 2-3 ejercicios:
+- pallof press: 2-3 x 10 por lado,
+- dead bug: 2-3 x 8 por lado,
+- plancha lateral: 2-3 x 20-30 s por lado,
+- hollow hold o reverse crunch: 2-3 x 20-30 s o 8-10 repeticiones.
+
+## 6. Reglas de progresion del bloque
 
 - Semana 01: reentrada y ajuste tecnico.
 - Semana 02: continuidad con una pequena subida de volumen.
@@ -60,25 +77,17 @@ Cada sesion combina:
 - Semana 06: validacion, sin necesidad de superar la semana 05.
 
 Progresion practica:
-- si completas todas las series con tecnica limpia y RPE real menor que 6, sube 1-2 kg por mancuerna o 2.5-5 kg en barra la semana siguiente;
-- si la tecnica cae o el RPE se acerca a 8, repite carga;
-- si llegas fatigado de la bici, recorta una serie por ejercicio antes de bajar demasiado la calidad.
+- si completas todas las series con tecnica limpia y RPE real menor que 5 en una complementaria, sube 1-2 repeticiones o una pequena carga la semana siguiente;
+- si la tecnica cae o el RPE se acerca a 7 en una complementaria, repite o recorta;
+- si llegas fatigado de la bici, reduce a 1-2 ejercicios y deja solo una serie efectiva por ejercicio antes de bajar demasiado la calidad.
 
-## 6. Plan completo por semanas
+## 7. Plan completo por semanas
 
 ## Semana 01 - Reactivacion
 
-- Objetivo: volver a mover con buena tecnica y sin rigidez al dia siguiente.
-- Duracion objetivo: 30-35 min.
-
-### Sesion
-
-1. Press banca con mancuernas: 3 x 8.
-2. Remo con mancuerna a una mano: 3 x 10 por lado.
-3. Press militar con mancuernas sentado: 2 x 8.
-4. Dominadas asistidas con banda o dominadas controladas: 3 x 4-6.
-5. Pallof press con banda: 3 x 10 por lado.
-6. Plancha lateral: 3 x 20-30 s por lado.
+- Objetivo: introducir las 6 complementarias con sensacion de soltura.
+- Micro-sesiones: 2 ejercicios por grupo, 2 series por ejercicio.
+- Domingo protegido sin fuerza; mantener solo el patron ligero de lunes a sabado.
 
 ### Criterio de control
 
@@ -86,17 +95,9 @@ Progresion practica:
 
 ## Semana 02 - Continuidad
 
-- Objetivo: repetir la sesion con un poco mas de trabajo util.
-- Duracion objetivo: 35-40 min.
-
-### Sesion
-
-1. Press banca con barra o mancuernas: 4 x 6-8.
-2. Remo con barra o remo apoyado en banco: 4 x 8.
-3. Press inclinado con mancuernas: 3 x 8.
-4. Dominadas asistidas o jalon con banda: 3 x 5-6.
-5. Dead bug con mancuerna ligera o banda: 3 x 8 por lado.
-6. Farmer carry o suitcase carry con mancuerna: 3 x 20-30 m por lado.
+- Objetivo: repetir las 6 complementarias con un pequeno aumento de trabajo util.
+- Micro-sesiones: mantener 2 ejercicios por grupo y subir una serie en el ejercicio principal si la recuperacion es buena.
+- Mantener domingo libre y usar el miercoles solo como micro-sesion de core.
 
 ### Criterio de control
 
@@ -104,18 +105,9 @@ Progresion practica:
 
 ## Semana 03 - Progresion suave
 
-- Objetivo: primera semana realmente constructiva del bloque.
-- Duracion objetivo: 40-45 min.
-
-### Sesion
-
-1. Press banca con barra: 4 x 6.
-2. Dominadas asistidas o dominadas estrictas segun nivel: 4 x 4-6.
-3. Remo con mancuerna a una mano: 3 x 8-10 por lado.
-4. Press militar con barra o mancuernas: 3 x 6-8.
-5. Elevaciones Y-T-W en banco inclinado o face pulls con banda: 2 x 10-12.
-6. Hanging knee raise o elevacion de rodillas en silla/dominadas: 3 x 8-10.
-7. Pallof press isometrico: 2 x 20-25 s por lado.
+- Objetivo: primera semana realmente constructiva con las 6 complementarias asentadas.
+- Micro-sesiones: 2-3 ejercicios por grupo segun tiempo y recuperacion.
+- Mantener domingo libre y subir volumen solo dentro de las micro-sesiones si sigue habiendo margen.
 
 ### Criterio de control
 
@@ -124,17 +116,8 @@ Progresion practica:
 ## Semana 04 - Absorcion
 
 - Objetivo: mantener patron y tono sin acumular cansancio.
-- Duracion objetivo: 25-35 min.
-
-### Sesion
-
-1. Press banca con mancuernas: 2 x 8.
-2. Remo con mancuerna a una mano: 2 x 8 por lado.
-3. Press militar ligero: 2 x 8.
-4. Dominadas asistidas o jalon con banda: 2 x 4-5.
-5. Face pull con banda: 2 x 12.
-6. Dead bug: 2 x 8 por lado.
-7. Plancha lateral: 2 x 20 s por lado.
+- Micro-sesiones: dejar cada grupo en 1-2 ejercicios y 1-2 series.
+- Si hay fatiga, reducir primero el sabado o el miercoles antes que tocar el domingo largo.
 
 ### Criterio de control
 
@@ -142,18 +125,9 @@ Progresion practica:
 
 ## Semana 05 - Segundo empuje controlado
 
-- Objetivo: consolidar una sesion robusta sin salirte del caracter de B1.
-- Duracion objetivo: 40-45 min.
-
-### Sesion
-
-1. Press banca con barra: 4 x 5-6.
-2. Dominadas asistidas o estrictas: 4 x 4-6.
-3. Press inclinado con mancuernas: 3 x 8.
-4. Remo con barra o remo en banco: 3 x 8.
-5. Press militar con mancuernas: 2 x 8.
-6. Suitcase carry con mancuerna pesada: 3 x 25-35 m por lado.
-7. Hanging knee raise o reverse crunch en banco: 3 x 8-10.
+- Objetivo: consolidar el patron de 6 complementarias y una principal bien encajada.
+- Micro-sesiones: mantener 2-3 ejercicios por grupo si no interfieren con la bici.
+- Mantener el domingo sin fuerza incluso si la semana se siente muy buena.
 
 ### Criterio de control
 
@@ -161,47 +135,38 @@ Progresion practica:
 
 ## Semana 06 - Validacion
 
-- Objetivo: cerrar el bloque confirmando que la sesion se puede repetir.
-- Duracion objetivo: 35-40 min.
-
-### Sesion
-
-1. Press banca con barra o mancuernas: 3 x 6.
-2. Dominadas asistidas o estrictas: 3 x 4-6.
-3. Remo con mancuerna a una mano: 3 x 8 por lado.
-4. Press militar sentado con mancuernas: 2 x 8.
-5. Face pull con banda: 2 x 12.
-6. Pallof press: 2 x 10 por lado.
-7. Plancha lateral o hollow hold: 2-3 x 20-30 s.
+- Objetivo: cerrar el bloque confirmando que el patron de 6 complementarias sigue siendo repetible.
+- Micro-sesiones: mantener los tres grupos dos veces cada uno sin deuda residual.
+- Validar que el patron de lunes a sabado deja el domingo limpio para la bici larga.
 
 ### Criterio de control
 
 - Debe dejar confianza para entrar en B2, no necesidad de descargar.
 
-## 7. Sustituciones rapidas segun material o molestias
+## 8. Sustituciones rapidas segun material o molestias
 
 - Si el hombro no tolera bien el press militar: sustituir por press inclinado mas suave o landmine press improvisado si lo tienes montado.
 - Si las dominadas cargan demasiado codo u hombro: usar banda en jalon alto o remo con banda pesado.
 - Si la barra no resulta comoda en banca: mantener mancuernas durante todo el bloque.
 - Si un dia llegas muy cansado: quitar el tercer ejercicio de empuje y dejar solo 1 bloque de core.
 
-## 8. Senales de que la fuerza esta bien ajustada
+## 9. Senales de que la fuerza esta bien ajustada
 
 - Jueves puedes pedalear con sensacion normal.
 - No aparecen agujetas intensas en pectoral, dorsal u hombro.
 - La tecnica mejora semana a semana aunque la carga suba poco.
 - El core se nota mas estable sobre la bici y en la postura general.
 
-## 9. Senales de que la fuerza se esta pasando
+## 10. Senales de que la fuerza se esta pasando
 
 - Fatiga clara en hombros o dorsales mas alla de 24-36 horas.
 - Perdida de comodidad en la bici del jueves.
 - Necesidad de recortar demasiado el sabado por cansancio acumulado.
 - Molestias articulares en hombro, codo o zona lumbar.
 
-## 10. Regla final para B1
+## 11. Regla final para B1
 
-En este bloque la fuerza no tiene que impresionar. Tiene que encajar.
+En este bloque la fuerza no tiene que impresionar. Tiene que aparecer con frecuencia y seguir encajando.
 
 Si al terminar la semana piensas que podrias haber hecho un poco mas, probablemente esta bien calibrada.
 Si al terminar la semana piensas que la fuerza te ha costado la bici, esta mal calibrada aunque el gimnasio haya salido bien.

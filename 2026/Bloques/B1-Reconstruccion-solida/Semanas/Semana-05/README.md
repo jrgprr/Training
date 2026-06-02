@@ -24,7 +24,7 @@
 
 ## 4. Distribucion orientativa
 
-- Dias clave: 2 dias aerobicos entre semana, 1 fuerza minima y 1 salida larga asentada.
+- Dias clave: 2 dias aerobicos entre semana, 1 fuerza principal y 1 salida larga asentada.
 - Dias de soporte: paseo, movilidad y un dia muy facil.
 - Limite de la semana: terminar exigido pero no castigado.
 - Volumen orientativo: 9.5-10.5 horas.
@@ -35,34 +35,44 @@
 ### Lunes
 - Objetivo: preparar una semana de nuevo crecimiento.
 - Sesion principal: paseo 45-60 minutos.
-- Complementario: movilidad 10-15 minutos.
+- Complementario: pecho, triceps y hombro 15-20 minutos.
 - Observaciones: el dia facil sigue siendo obligatorio.
 
 ### Martes
 - Objetivo: sumar carga aerobica util.
 - Sesion principal: bicicleta Z2 90-105 minutos.
-- Complementario: 4-6 aceleraciones de cadencia muy cortas.
+- Complementario: espalda y biceps 15-20 minutos.
 - Observaciones: mantener control absoluto del esfuerzo.
 
 ### Miercoles
-- Objetivo: mantener fuerza minima eficaz.
-- Sesion principal: rutina base de fuerza 35-45 minutos.
-- Complementario: paseo suave 20-30 minutos opcional.
-- Observaciones: sin buscar progresos agresivos en cargas.
+- Objetivo: mantener fuerza estructurada ligera con foco en core.
+- Sesion principal: paseo suave 20-45 minutos o descanso activo.
+- Complementario: core 15-20 minutos.
+- Observaciones: dia ligero; no buscar progresos agresivos y proteger jueves y domingo.
 
 ### Jueves
 - Objetivo: reforzar la semana tipo con otro dia aerobico estable.
 - Sesion principal: bicicleta Z2 90 minutos.
-- Complementario: core suave o movilidad.
+- Complementario: pecho, triceps y hombro 15-20 minutos.
 - Observaciones: si la fuerza pesa demasiado, recortar a 75 minutos.
 
 ### Viernes
 - Objetivo: proteger la salida larga y llegar suelto.
 - Sesion principal: bicicleta muy facil 45-60 minutos o paseo.
-- Complementario: estiramientos suaves.
+- Complementario: espalda y biceps 15-20 minutos.
 - Observaciones: nada que suba la fatiga sistemica.
 
 ### Sabado
+- Objetivo: mantener actividad sin perder recuperacion y llegar activado al domingo.
+- Sesion principal: monte suave, paseo largo o bicicleta facil 60-90 minutos.
+- Complementario: core 15-20 minutos y revision de peso, sensacion y carga.
+- Observaciones: debe sumar continuidad sin dejar deuda para la salida larga.
+
+### Domingo
+- Objetivo: normalizar la salida larga de 3 horas.
+- Sesion principal: bicicleta 3 horas en Z2 estable.
+- Complementario: alimentacion, bebida y ritmo bien ordenados, sin fuerza.
+- Observaciones: si el sabado carga demasiado, simplificarlo para proteger este dia clave.
 - Objetivo: mantener actividad sin perder recuperacion y llegar activado al domingo.
 - Sesion principal: monte suave, paseo largo o bicicleta facil 60-90 minutos.
 - Complementario: revision de peso, sensacion y carga.

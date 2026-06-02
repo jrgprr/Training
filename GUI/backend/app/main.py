@@ -458,106 +458,6 @@ def calculate_weekly_review_metrics(week_id: int) -> dict[str, Any]:
     }
 
 
-def get_planned_session_context(planned_session_id: int) -> dict[str, Any]:
-    row = fetch_one(
-        """
-        SELECT ps.planned_session_id, ps.session_date, ps.objective, ps.primary_session,
-               w.week_id, b.block_id, b.season_id
-        FROM plan_planned_sessions ps
-        JOIN plan_micro_weeks w ON w.week_id = ps.week_id
-        JOIN plan_meso_blocks b ON b.block_id = w.block_id
-        WHERE ps.planned_session_id = ?
-        """,
-        (planned_session_id,),
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"No existe la sesion planificada {planned_session_id}.")
-    return row
-
-
-def get_planned_session_prescription(planned_session_id: int) -> dict[str, Any]:
-    session = fetch_one(
-        """
-        SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type,
-               ps.objective, ps.primary_session, ps.complementary_session,
-               p.prescription_id, p.prescription_type, p.title, p.focus_primary,
-               p.focus_secondary, p.estimated_duration_min, p.estimated_duration_max,
-               p.target_rpe_min, p.target_rpe_max, p.warmup_notes, p.cooldown_notes,
-               p.execution_notes, p.adaptation_notes, p.source_markdown_path
-        FROM plan_planned_sessions ps
-        JOIN plan_session_prescriptions p ON p.planned_session_id = ps.planned_session_id
-        WHERE ps.planned_session_id = ?
-        """,
-        (planned_session_id,),
-    )
-    if session is None:
-        raise HTTPException(status_code=404, detail=f"No existe prescripcion estructurada para la sesion {planned_session_id}.")
-
-    blocks = fetch_all(
-        """
-        SELECT prescription_block_id, sequence_order, block_type, block_name,
-               objective, rounds, rest_seconds, notes
-        FROM plan_prescription_blocks
-        WHERE prescription_id = ?
-        ORDER BY sequence_order
-        """,
-        (session["prescription_id"],),
-    )
-
-    exercises = fetch_all(
-        """
-        SELECT prescription_exercise_id, prescription_block_id, sequence_order,
-               exercise_name, movement_pattern, equipment, unilateral_mode,
-               sets_count, reps_min, reps_max, hold_seconds_min, hold_seconds_max,
-               distance_meters, target_rpe_min, target_rpe_max, target_rir_min,
-               target_rir_max, tempo, load_guidance, optional_flag,
-               substitution_group, notes
-        FROM plan_prescription_exercises
-        WHERE prescription_block_id IN (
-            SELECT prescription_block_id
-            FROM plan_prescription_blocks
-            WHERE prescription_id = ?
-        )
-        ORDER BY prescription_block_id, sequence_order
-        """,
-        (session["prescription_id"],),
-    )
-
-    options = fetch_all(
-        """
-        SELECT exercise_option_id, prescription_exercise_id, sequence_order,
-               option_name, equipment, condition_notes
-        FROM plan_prescription_exercise_options
-        WHERE prescription_exercise_id IN (
-            SELECT prescription_exercise_id
-            FROM plan_prescription_exercises
-            WHERE prescription_block_id IN (
-                SELECT prescription_block_id
-                FROM plan_prescription_blocks
-                WHERE prescription_id = ?
-            )
-        )
-        ORDER BY prescription_exercise_id, sequence_order
-        """,
-        (session["prescription_id"],),
-    )
-
-    options_by_exercise: dict[int, list[dict[str, Any]]] = {}
-    for option in options:
-        options_by_exercise.setdefault(option["prescription_exercise_id"], []).append(option)
-
-    exercises_by_block: dict[int, list[dict[str, Any]]] = {}
-    for exercise in exercises:
-        exercise["options"] = options_by_exercise.get(exercise["prescription_exercise_id"], [])
-        exercises_by_block.setdefault(exercise["prescription_block_id"], []).append(exercise)
-
-    for block in blocks:
-        block["exercises"] = exercises_by_block.get(block["prescription_block_id"], [])
-
-    session["blocks"] = blocks
-    return session
-
-
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "database": str(get_database_path())}
@@ -978,13 +878,8 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         """
         SELECT planned_session_id, session_date, day_name, planned_type, objective,
-               primary_session, complementary_session, intensity_class,
-               duration_min, duration_max, is_key_session,
-               EXISTS (
-                   SELECT 1
-                   FROM plan_session_prescriptions p
-                   WHERE p.planned_session_id = ps.planned_session_id
-               ) AS has_structured_prescription
+             primary_session, complementary_session, intensity_class,
+             duration_min, duration_max, is_key_session
         FROM plan_planned_sessions
         AS ps
         WHERE week_id = ?
@@ -995,13 +890,6 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
     for row in rows:
         row["planned_zone_target"] = get_planned_session_zone_target(row["planned_session_id"])
     return ensure_entity_exists(rows, f"No se encontraron sesiones para la semana {week_id}.")
-
-
-@app.get("/api/planned-sessions/{planned_session_id}/prescription")
-def get_session_prescription(planned_session_id: int) -> dict[str, Any]:
-    payload = get_planned_session_prescription(planned_session_id)
-    payload["planned_zone_target"] = get_planned_session_zone_target(planned_session_id)
-    return payload
 
 
 @app.get("/api/weeks/{week_id}/plan-vs-real")

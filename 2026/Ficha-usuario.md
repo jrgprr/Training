@@ -57,13 +57,13 @@ Su funcion no es fijar objetivos del ano, sino dejar claro el contexto real sobr
 - Duracion tolerable de salida larga: 3 horas
 - Frecuencia semanal tolerable: 6 días
 - Referencia aerobica simple: salida estable de 60-90 minutos en Z2 con potenciometro, registrando potencia media, frecuencia cardiaca media y sensacion; idealmente en un formato repetible para comparar deriva y eficiencia
-- Referencia de fuerza minima: rutina base completada sin fatiga excesiva
+- Referencia de fuerza: 6 micro-sesiones ligeras por semana con patron fijo: lunes y jueves pecho+triceps+hombro, martes y viernes espalda+biceps, miercoles y sabado core, y domingo sin fuerza para proteger la salida larga de bici
 - Tendencia reciente de peso: ligera bajada gradual de peso con la actividad de entrenamiento
 
 ## 8. Preferencias del usuario
 
 - Objetivo principal percibido: volver a entrenar bien y construir una base solida
-- Objetivos secundarios percibidos: bajar peso de forma gradual, recuperar fuerza minima eficaz y mantener variedad multideporte sin perder el foco en bicicleta
+- Objetivos secundarios percibidos: bajar peso de forma gradual, consolidar una fuerza estructurada ligera y mantener variedad multideporte sin perder el foco en bicicleta
 - Motivaciones principales: salud, continuidad, disfrute del entrenamiento y sensacion de progreso sostenible
 - Sesiones que mas disfruta: cualquiera
 - Sesiones que menos le apetecen: cualquiera
@@ -75,11 +75,12 @@ Su funcion no es fijar objetivos del ano, sino dejar claro el contexto real sobr
 - Prioridad actual: continuidad y salud antes que rendimiento puntual
 - Regla de progresion inicial: progresar solo si la semana previa deja margen; priorizar aumento de tiempo aerobico antes que intensidad y tocar una sola variable cada vez
 - Regla de prudencia inicial: no progresar si la semana deja deuda clara o cuesta demasiado repetirla
+- Regla actual para fuerza complementaria: usar 6 micro-sesiones ligeras semanales con patron fijo de lunes a sabado; no programar fuerza el domingo para proteger la salida larga de bici
 - Margen de flexibilidad semanal: alto a nivel de calendario, pero condicionado por la recuperacion tras sesiones intensas
 - Regla para la rutina matinal: mantenerla a diario como base de activacion y movilidad, pero reducirla a 10-20 minutos totales o suspender la parte activa si algun dia interfiere con la recuperacion
 
 ## 10. Datos pendientes
 
 - Concretar el formato exacto de la salida aerobica de referencia: interior o exterior, duracion fija y recorrido o condicion equivalente.
-- Definir el contenido exacto de la rutina base de fuerza para poder usarla como control.
+- Convertir esta estructura de fuerza complementaria en plantillas por bloque cuando cambie la tolerancia de carga.
 - Completar nombre o alias si hace falta identificar la ficha.

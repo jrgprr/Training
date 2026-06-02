@@ -25,7 +25,7 @@
 ## 4. Distribucion orientativa
 
 - Dias clave: 1 salida larga controlada.
-- Dias de soporte: rodajes suaves, fuerza minima eficaz y movilidad.
+- Dias de soporte: rodajes suaves, fuerza estructurada ligera y movilidad.
 - Limite de la semana: terminar con sensacion de margen, no de rescate.
 - Volumen orientativo: 7-8 horas.
 - Rutina estructural diaria: 20 minutos de activacion ligera y 20 minutos de flexibilidad, preferentemente por la manana; si molesta o carga, reducir.
@@ -35,34 +35,44 @@
 ### Lunes
 - Objetivo: abrir la semana con activacion suave y sin fatiga.
 - Sesion principal: paseo de 45-60 minutos o descanso activo.
-- Complementario: movilidad general 10-15 minutos.
-- Observaciones: si hay sensacion de pesadez, convertir el dia en descanso completo. 
+- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Observaciones: si hay sensacion de pesadez, convertir el dia en descanso completo.
 
 ### Martes
 - Objetivo: recuperar sensacion de trabajo aerobico estructurado.
 - Sesion principal: bicicleta Z2 75-90 minutos, estable y sin apretar.
-- Complementario: 4-6 aceleraciones muy cortas de cadencia, solo para soltar piernas.
-- Observaciones: evitar convertir la sesion en tempo o series encubiertas. 
+- Complementario: espalda y biceps 15-20 minutos.
+- Observaciones: evitar convertir la sesion en tempo o series encubiertas.
 
 ### Miercoles
-- Objetivo: introducir fuerza minima sin interferencia.
-- Sesion principal: rutina base de fuerza 30-40 minutos con cargas comodas.
-- Complementario: paseo suave 20-30 minutos opcional.
-- Observaciones: cortar antes de notar fatiga residual para el dia siguiente. 
+- Objetivo: introducir el trabajo de core sin interferencia.
+- Sesion principal: paseo suave 20-45 minutos o descanso activo.
+- Complementario: core 15-20 minutos.
+- Observaciones: debe sentirse ligero y no comprometer el jueves.
 
 ### Jueves
 - Objetivo: sumar otro dia aerobico util con control.
 - Sesion principal: bicicleta Z2 60-75 minutos.
-- Complementario: movilidad o core suave 10 minutos.
-- Observaciones: dia deliberadamente facil; mejor quedarse corto que dejar deuda. 
+- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Observaciones: dia deliberadamente facil; mejor quedarse corto que dejar deuda.
 
 ### Viernes
 - Objetivo: llegar fresco al fin de semana.
 - Sesion principal: descanso activo o paseo de 45 minutos.
-- Complementario: estiramientos suaves o movilidad 10 minutos.
-- Observaciones: si la semana viene muy facil, no usar este dia para anadir carga. 
+- Complementario: espalda y biceps 15-20 minutos.
+- Observaciones: si la semana viene muy facil, no usar este dia para anadir carga.
 
 ### Sabado
+- Objetivo: completar la primera salida larga controlada del bloque.
+- Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2 comoda.
+- Complementario: core 15-20 minutos y nutricion e hidratacion ordenadas durante la salida.
+- Observaciones: debe terminar con sensacion de que aun quedaba margen.
+
+### Domingo
+- Objetivo: cerrar la semana soltando y comprobando recuperacion.
+- Sesion principal: paseo largo, monte suave o bicicleta muy facil 45-75 minutos.
+- Complementario: revision rapida de sensaciones, peso y fatiga, sin fuerza.
+- Observaciones: si el sabado deja carga alta, reducir claramente este dia.
 - Objetivo: completar la primera salida larga controlada del bloque.
 - Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2 comoda.
 - Complementario: nutricion e hidratacion ordenadas durante la salida.
