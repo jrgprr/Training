@@ -2836,7 +2836,7 @@ export default function App() {
               </form>
             </article>
             <article className="zone-governance-card">
-              <span className="dashboard-label">Refinamientos pendientes</span>
+              <span className="dashboard-label">Propuestas de refinamiento</span>
               <strong>{zoneProposals.length}</strong>
               <p>{zoneProposals.length > 0 ? "Propuestas activas para revisar antes de consolidar los perfiles." : "Sin propuestas pendientes en la temporada activa."}</p>
             </article>
@@ -3547,18 +3547,6 @@ export default function App() {
               <p>Pulsa en "Ver actividad" dentro de Plan vs realidad para abrir su ficha.</p>
             </div>
           )}
-
-          <div className="section-heading manual-section-heading">
-            <div>
-              <h2>Registro manual</h2>
-              <p className="section-subtitle">Deshabilitado en este entorno para mantener el dataset Garmin-only.</p>
-            </div>
-          </div>
-
-          <div className="empty-state-card empty-state-card-wide">
-            <strong>Registro manual deshabilitado</strong>
-            <p>La escritura manual de actividades, metricas y revisiones esta bloqueada en esta instancia para no mezclar fuentes con Garmin Connect.</p>
-          </div>
         </section>
       </section>
     </div>

@@ -931,10 +931,6 @@ textarea {
   color: var(--ink);
 }
 
-.manual-section-heading {
-  margin-top: 18px;
-}
-
 .grid-layout {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr 1fr 1.7fr;

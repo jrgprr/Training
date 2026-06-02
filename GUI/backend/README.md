@@ -98,6 +98,6 @@ Validacion realizada para cierre de V0.3:
 ## Modo Garmin-only
 
 La instancia de trabajo actual queda fijada en modo Garmin-only:
-- `POST /api/manual/session-executions` se mantiene solo como superficie heredada y responde `410`,
 - las actividades y metricas reales nuevas deben entrar por Garmin Connect,
+- el backend ya no expone endpoints de escritura manual heredados,
 - y el dataset activo se ha saneado para eliminar capturas manuales y residuos sinteticos.

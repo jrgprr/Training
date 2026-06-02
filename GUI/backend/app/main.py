@@ -81,12 +81,6 @@ class ZoneMetricProfileAcceptancePayload(BaseModel):
     notes: str | None = None
 
 
-class SegmentListQuery(BaseModel):
-    season_id: int
-    query: str | None = None
-    limit: int = 50
-
-
 def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     metric = fetch_one(
         """
@@ -988,11 +982,3 @@ def reopen_weekly_review(week_id: int) -> dict[str, Any]:
     with get_connection() as connection:
         connection.execute("DELETE FROM review_weekly_reviews WHERE week_id = ?", (week_id,))
     return {"status": "ok", "week_id": week_id, "review_status": "open"}
-
-
-@app.post("/api/manual/session-executions")
-def create_manual_session_execution() -> dict[str, Any]:
-    raise HTTPException(
-        status_code=410,
-        detail="El entorno actual esta en modo Garmin-only. El registro manual esta deshabilitado.",
-    )
