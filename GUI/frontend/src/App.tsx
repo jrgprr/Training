@@ -319,6 +319,21 @@ type DailyMetricDetail = {
   season_id: number;
   metric_date: string;
   source_system: string;
+  load_model?: {
+    daily_training_load: number;
+    atl: number;
+    ctl: number;
+    tsb: number;
+    atl_time_constant_days: number;
+    ctl_time_constant_days: number;
+    trend: Array<{
+      metric_date: string;
+      daily_training_load: number;
+      atl: number;
+      ctl: number;
+      tsb: number;
+    }>;
+  } | null;
   weight_kg: number | null;
   sleep_hours: number | null;
   sleep_quality: string | null;
@@ -1146,6 +1161,94 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
 
         <text x={leftGutter} y={chartHeight - 12} className="segment-chart-date">{formatSegmentChartDateLabel(minTimestamp)}</text>
         <text x={width - rightGutter} y={chartHeight - 12} textAnchor="end" className="segment-chart-date">{formatSegmentChartDateLabel(maxTimestamp)}</text>
+      </svg>
+    </section>
+  );
+}
+
+function renderLoadModelChart(loadModel: NonNullable<DailyMetricDetail["load_model"]>) {
+  const history = loadModel.trend;
+  if (!history.length) {
+    return null;
+  }
+
+  const width = 760;
+  const height = 260;
+  const leftGutter = 52;
+  const rightGutter = 18;
+  const topGutter = 22;
+  const bottomGutter = 44;
+  const plotWidth = width - leftGutter - rightGutter;
+  const plotHeight = height - topGutter - bottomGutter;
+  const minTsb = Math.min(...history.map((entry) => entry.tsb), 0);
+  const maxPositive = Math.max(...history.map((entry) => Math.max(entry.daily_training_load, entry.atl, entry.ctl, entry.tsb)), 1);
+  const totalRange = Math.max(maxPositive - minTsb, 1);
+  const zeroY = topGutter + ((maxPositive - 0) / totalRange) * plotHeight;
+  const stepX = history.length > 1 ? plotWidth / (history.length - 1) : 0;
+
+  const toY = (value: number) => topGutter + ((maxPositive - value) / totalRange) * plotHeight;
+  const toX = (index: number) => leftGutter + index * stepX;
+  const toPath = (values: number[]) => values.map((value, index) => `${index === 0 ? "M" : "L"}${toX(index).toFixed(1)},${toY(value).toFixed(1)}`).join(" ");
+
+  const atlPath = toPath(history.map((entry) => entry.atl));
+  const ctlPath = toPath(history.map((entry) => entry.ctl));
+  const tsbPath = toPath(history.map((entry) => entry.tsb));
+  const tickValues = [maxPositive, (maxPositive + minTsb) / 2, minTsb].filter((value, index, values) => values.findIndex((candidate) => Math.abs(candidate - value) < 0.01) === index);
+
+  return (
+    <section className="load-chart-card panel-subcard">
+      <div className="load-chart-head">
+        <div>
+          <strong>Tendencia ATL / CTL / TSB</strong>
+          <p className="segment-missing-copy">Carga diaria en barras y ATL, CTL, TSB en lineas sobre los ultimos {history.length} dias.</p>
+        </div>
+        <div className="load-chart-legend" aria-label="Leyenda del grafico de carga">
+          <span><i className="load-chart-swatch load-chart-swatch-load" />Carga</span>
+          <span><i className="load-chart-swatch load-chart-swatch-atl" />ATL</span>
+          <span><i className="load-chart-swatch load-chart-swatch-ctl" />CTL</span>
+          <span><i className="load-chart-swatch load-chart-swatch-tsb" />TSB</span>
+        </div>
+      </div>
+      <svg className="load-model-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de carga con ATL, CTL y TSB">
+        {tickValues.map((tick) => (
+          <g key={tick}>
+            <line x1={leftGutter} y1={toY(tick)} x2={width - rightGutter} y2={toY(tick)} className="load-chart-grid" />
+            <text x={12} y={toY(tick) + 4} className="load-chart-axis-label">{toMetricLabel(tick)}</text>
+          </g>
+        ))}
+        <line x1={leftGutter} y1={zeroY} x2={width - rightGutter} y2={zeroY} className="load-chart-zero" />
+        {history.map((entry, index) => {
+          const x = toX(index);
+          const barWidth = Math.max(plotWidth / Math.max(history.length * 2, 12), 8);
+          const barTop = toY(entry.daily_training_load);
+          const barHeight = Math.max(zeroY - barTop, 0);
+          return (
+            <g key={entry.metric_date}>
+              <rect x={x - barWidth / 2} y={barTop} width={barWidth} height={barHeight} className="load-chart-bar">
+                <title>{`${entry.metric_date} · Carga ${toMetricLabel(entry.daily_training_load)}`}</title>
+              </rect>
+              {index === 0 || index === history.length - 1 || index % Math.max(Math.floor(history.length / 4), 1) === 0 ? (
+                <text x={x} y={height - 14} textAnchor="middle" className="load-chart-date-label">{entry.metric_date.slice(5)}</text>
+              ) : null}
+            </g>
+          );
+        })}
+        <path d={atlPath} className="load-chart-line load-chart-line-atl" />
+        <path d={ctlPath} className="load-chart-line load-chart-line-ctl" />
+        <path d={tsbPath} className="load-chart-line load-chart-line-tsb" />
+        {history.map((entry, index) => (
+          <g key={`${entry.metric_date}-dots`}>
+            <circle cx={toX(index)} cy={toY(entry.atl)} r={3.5} className="load-chart-dot load-chart-dot-atl">
+              <title>{`${entry.metric_date} · ATL ${toMetricLabel(entry.atl)}`}</title>
+            </circle>
+            <circle cx={toX(index)} cy={toY(entry.ctl)} r={3.5} className="load-chart-dot load-chart-dot-ctl">
+              <title>{`${entry.metric_date} · CTL ${toMetricLabel(entry.ctl)}`}</title>
+            </circle>
+            <circle cx={toX(index)} cy={toY(entry.tsb)} r={3.5} className="load-chart-dot load-chart-dot-tsb">
+              <title>{`${entry.metric_date} · TSB ${toMetricLabel(entry.tsb)}`}</title>
+            </circle>
+          </g>
+        ))}
       </svg>
     </section>
   );
@@ -3492,6 +3595,10 @@ export default function App() {
                   </div>
 
                   <div className="activity-detail-grid">
+                    {selectedDailyMetric.load_model ? <article><span>Carga del dia</span><strong>{toMetricLabel(selectedDailyMetric.load_model.daily_training_load)}</strong></article> : null}
+                    {selectedDailyMetric.load_model ? <article><span>ATL</span><strong>{toMetricLabel(selectedDailyMetric.load_model.atl)}</strong></article> : null}
+                    {selectedDailyMetric.load_model ? <article><span>CTL</span><strong>{toMetricLabel(selectedDailyMetric.load_model.ctl)}</strong></article> : null}
+                    {selectedDailyMetric.load_model ? <article><span>TSB</span><strong>{toMetricLabel(selectedDailyMetric.load_model.tsb)}</strong></article> : null}
                     {selectedDailyMetric.weight_kg != null ? <article><span>Peso</span><strong>{toMetricLabel(selectedDailyMetric.weight_kg, " kg")}</strong></article> : null}
                     {selectedDailyMetric.sleep_hours != null ? <article><span>Sueno</span><strong>{toMetricLabel(selectedDailyMetric.sleep_hours, " h")}</strong></article> : null}
                     {selectedDailyMetric.sleep_quality != null ? <article><span>Calidad sueno</span><strong>{selectedDailyMetric.sleep_quality}</strong></article> : null}
@@ -3514,6 +3621,8 @@ export default function App() {
                       <p><strong>Notas:</strong> {selectedDailyMetric.notes}</p>
                     </div>
                   ) : null}
+
+                  {selectedDailyMetric.load_model?.trend?.length ? renderLoadModelChart(selectedDailyMetric.load_model) : null}
                 </div>
               ) : (
                 <div className="empty-state-card empty-state-card-wide">

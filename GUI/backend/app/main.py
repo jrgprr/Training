@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
+from .load_engine import get_load_model_snapshot
 from .segments import get_segment_history, list_segments
 from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
@@ -103,6 +104,7 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     )
     if metric is None:
         raise HTTPException(status_code=404, detail=f"No existen metricas diarias para {metric_date} en la temporada {season_id}.")
+    metric["load_model"] = get_load_model_snapshot(season_id=season_id, metric_date=metric_date)
     return metric
 
 

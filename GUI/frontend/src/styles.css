@@ -742,6 +742,133 @@ textarea {
   gap: 12px;
 }
 
+.load-model-table-wrapper {
+  margin-top: 4px;
+}
+
+.load-model-table td,
+.load-model-table th {
+  white-space: nowrap;
+}
+
+.load-chart-card {
+  display: grid;
+  gap: 12px;
+}
+
+.load-chart-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.load-chart-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.load-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.load-chart-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.load-chart-swatch-load {
+  background: rgba(217, 119, 6, 0.8);
+}
+
+.load-chart-swatch-atl {
+  background: #0f766e;
+}
+
+.load-chart-swatch-ctl {
+  background: #1d4ed8;
+}
+
+.load-chart-swatch-tsb {
+  background: #b91c1c;
+}
+
+.load-model-chart {
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(241, 245, 249, 0.8));
+  border: 1px solid var(--line);
+}
+
+.load-chart-grid {
+  stroke: rgba(28, 36, 48, 0.12);
+  stroke-width: 1;
+}
+
+.load-chart-zero {
+  stroke: rgba(28, 36, 48, 0.22);
+  stroke-width: 1.25;
+}
+
+.load-chart-axis-label,
+.load-chart-date-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.load-chart-bar {
+  fill: rgba(217, 119, 6, 0.28);
+  stroke: rgba(180, 83, 9, 0.45);
+  stroke-width: 1;
+}
+
+.load-chart-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.load-chart-line-atl {
+  stroke: #0f766e;
+}
+
+.load-chart-line-ctl {
+  stroke: #1d4ed8;
+}
+
+.load-chart-line-tsb {
+  stroke: #b91c1c;
+}
+
+.load-chart-dot {
+  stroke-width: 1.5;
+}
+
+.load-chart-dot-atl {
+  fill: #d1fae5;
+  stroke: #0f766e;
+}
+
+.load-chart-dot-ctl {
+  fill: #dbeafe;
+  stroke: #1d4ed8;
+}
+
+.load-chart-dot-tsb {
+  fill: #fee2e2;
+  stroke: #b91c1c;
+}
+
 .activity-quality-head {
   display: flex;
   justify-content: space-between;
