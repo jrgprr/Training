@@ -4,7 +4,11 @@
 
 **Created**: 2026-06-01
 
-**Status**: Draft
+**Status**: Closed
+
+**Closed**: 2026-06-02
+
+**Closure Note**: Implemented with canonical SQLite support for accepted physiological anchors and derived heart-rate/power zone profiles, executed time-in-zone persistence, traceable refinement proposals, structured planned zone targets, thin GUI visibility, active HRR/FTP profiles for 2026 cycling, and end-to-end validation across backend tests, frontend build, live API checks, and runtime SQLite updates.
 
 **Input**: User description: "I want to have the information of the training zones in the system. Some scheduled activities already indicate zones like Z2, but the main priority is that the system calculate and refine my zones from my real activities and daily metrics. Zones should be defined both for power and for heart rate. Planned zones should be represented too, but as secondary support."
 
