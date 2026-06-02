@@ -187,6 +187,30 @@ textarea {
   align-items: start;
 }
 
+.segment-detail-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 10px;
+  align-items: start;
+}
+
+.segment-history-limit-control {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.segment-history-limit-control select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
 .segment-list-meta {
   display: flex;
   flex-wrap: wrap;

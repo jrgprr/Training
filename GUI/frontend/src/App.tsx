@@ -241,6 +241,9 @@ type CurrentZoneProfilesResponse = {
   profiles: Partial<Record<"heart_rate" | "power", CurrentZoneProfile>> & Record<string, CurrentZoneProfile | undefined>;
 };
 
+const SEGMENT_HISTORY_LIMIT_OPTIONS = [5, 10, 20, 30, 50] as const;
+const SEGMENT_DAY_OCCURRENCE_COLORS = ["#0f766e", "#b45309", "#2563eb", "#9333ea", "#dc2626"] as const;
+
 type DailyMetricDetail = {
   daily_metric_id: number;
   season_id: number;
@@ -1009,6 +1012,14 @@ function formatSegmentChartDateLabel(value: number) {
   });
 }
 
+function formatSegmentChartDateParts(activityDate: string) {
+  const [year = "", month = "", day = ""] = activityDate.split("-");
+  if (!year || !month || !day) {
+    return { day: activityDate, month: "" };
+  }
+  return { day, month };
+}
+
 function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
   const metricCandidates = [
     "elapsed_time_seconds",
@@ -1029,20 +1040,50 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
   const topGutter = 18;
   const rowHeight = 78;
   const rowGap = 18;
-  const chartHeight = topGutter + chartMetrics.length * rowHeight + (chartMetrics.length - 1) * rowGap + 46;
+  const chartHeight = topGutter + chartMetrics.length * rowHeight + (chartMetrics.length - 1) * rowGap + 72;
   const plotWidth = width - leftGutter - rightGutter;
   const chartStartY = topGutter;
   const timestamps = history.efforts.map(getSegmentEffortMoment);
   const minTimestamp = Math.min(...timestamps);
   const maxTimestamp = Math.max(...timestamps);
   const timestampSpan = Math.max(maxTimestamp - minTimestamp, 1);
+  const effortsByDate = new Map<string, SegmentHistoryEffort[]>();
+
+  history.efforts.forEach((effort) => {
+    const items = effortsByDate.get(effort.activity_date) ?? [];
+    items.push(effort);
+    effortsByDate.set(effort.activity_date, items);
+  });
+
+  const effortStyleById = new Map<number, { dayOccurrenceIndex: number; sameDayOccurrenceCount: number; color: string }>();
+  effortsByDate.forEach((efforts) => {
+    efforts.forEach((effort, index) => {
+      effortStyleById.set(effort.segment_effort_id, {
+        dayOccurrenceIndex: index,
+        sameDayOccurrenceCount: efforts.length,
+        color: SEGMENT_DAY_OCCURRENCE_COLORS[index % SEGMENT_DAY_OCCURRENCE_COLORS.length],
+      });
+    });
+  });
+  const hasSameDayDuplicates = Array.from(effortsByDate.values()).some((efforts) => efforts.length > 1);
+  const dateTicks = Array.from(effortsByDate.entries()).map(([activityDate, efforts]) => {
+    const meanTimestamp = efforts.reduce((sum, effort) => sum + getSegmentEffortMoment(effort), 0) / efforts.length;
+    const x = leftGutter + ((meanTimestamp - minTimestamp) / timestampSpan) * plotWidth;
+    return {
+      activityDate,
+      x,
+    };
+  });
 
   return (
     <section className="segment-chart-card panel-subcard">
       <div className="segment-chart-head">
         <div>
           <strong>Evolucion del segmento</strong>
-          <p className="segment-missing-copy">Fecha en eje X y una escala propia por metrica para no mezclar unidades.</p>
+          <p className="segment-missing-copy">
+            Fecha en eje X y una escala propia por metrica para no mezclar unidades.
+            {hasSameDayDuplicates ? " Si hay varias ocurrencias el mismo dia, el color identifica el orden de cada intento dentro de ese dia." : ""}
+          </p>
         </div>
       </div>
       <svg className="segment-evolution-chart" viewBox={`0 0 ${width} ${chartHeight}`} role="img" aria-label="Grafico de evolucion del segmento">
@@ -1067,7 +1108,6 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
             const y = rowBottom - ((value - minValue) / valueSpan) * (rowHeight - 16) - 8;
             return [{ effort, value, x, y }];
           });
-          const pathData = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
 
           return (
             <g key={metric}>
@@ -1076,18 +1116,31 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
               <text x={12} y={rowTop + 16} className="segment-chart-label">{formatMetricAxisLabel(metric)}</text>
               <text x={12} y={rowMid + 18} className="segment-chart-range">{formatMetricValueLabel(metric, maxValue)}</text>
               <text x={12} y={rowBottom - 4} className="segment-chart-range">{formatMetricValueLabel(metric, minValue)}</text>
-              {points.length > 1 ? <path d={pathData} className="segment-chart-line" /> : null}
               {points.map((point) => (
-                <circle key={point.effort.segment_effort_id} cx={point.x} cy={point.y} r={4.5} className="segment-chart-dot">
-                  <title>{`${point.effort.activity_date}${point.effort.started_at ? ` ${toDateTimeLabel(point.effort.started_at)}` : ""} · ${formatMetricAxisLabel(metric)}: ${formatMetricValueLabel(metric, point.value)}`}</title>
+                <circle
+                  key={point.effort.segment_effort_id}
+                  cx={point.x}
+                  cy={point.y}
+                  r={4.5}
+                  className="segment-chart-dot"
+                  style={{ fill: effortStyleById.get(point.effort.segment_effort_id)?.color }}
+                >
+                  <title>{`${point.effort.activity_date}${point.effort.started_at ? ` ${toDateTimeLabel(point.effort.started_at)}` : ""}${(effortStyleById.get(point.effort.segment_effort_id)?.sameDayOccurrenceCount ?? 0) > 1 ? ` · intento ${(effortStyleById.get(point.effort.segment_effort_id)?.dayOccurrenceIndex ?? 0) + 1}/${effortStyleById.get(point.effort.segment_effort_id)?.sameDayOccurrenceCount}` : ""} · ${formatMetricAxisLabel(metric)}: ${formatMetricValueLabel(metric, point.value)}`}</title>
                 </circle>
               ))}
             </g>
           );
         })}
 
-        <text x={leftGutter} y={chartHeight - 12} className="segment-chart-date">{formatSegmentChartDateLabel(minTimestamp)}</text>
-        <text x={width - rightGutter} y={chartHeight - 12} textAnchor="end" className="segment-chart-date">{formatSegmentChartDateLabel(maxTimestamp)}</text>
+        {dateTicks.map((tick) => (
+          <g key={tick.activityDate} transform={`translate(${tick.x.toFixed(1)}, ${chartHeight - 28})`}>
+            <line x1={0} y1={-10} x2={0} y2={-2} className="segment-chart-axis" />
+            <text textAnchor="middle" className="segment-chart-date">
+              <tspan x={0} dy={0}>{formatSegmentChartDateParts(tick.activityDate).day}</tspan>
+              <tspan x={0} dy={11}>{formatSegmentChartDateParts(tick.activityDate).month}</tspan>
+            </text>
+          </g>
+        ))}
       </svg>
     </section>
   );
@@ -1774,6 +1827,7 @@ export default function App() {
   const [importForm, setImportForm] = useState<GarminImportFormState>(emptyGarminImportForm);
   const [importPreview, setImportPreview] = useState<GarminImportPreview | null>(null);
   const [segments, setSegments] = useState<SegmentListItem[]>([]);
+  const [segmentHistoryLimit, setSegmentHistoryLimit] = useState<number>(20);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [selectedSegmentHistory, setSelectedSegmentHistory] = useState<SegmentHistoryResponse | null>(null);
   const [importing, setImporting] = useState(false);
@@ -1909,10 +1963,10 @@ export default function App() {
     }
   }
 
-  async function loadSegmentHistory(segmentId: number) {
+  async function loadSegmentHistory(segmentId: number, historyLimit: number = segmentHistoryLimit) {
     try {
       setLoadingSegmentHistory(true);
-      const data = await fetchJson<SegmentHistoryResponse>(`/api/segments/${segmentId}/history?limit=20`);
+      const data = await fetchJson<SegmentHistoryResponse>(`/api/segments/${segmentId}/history?limit=${historyLimit}`);
       setSelectedSegmentId(segmentId);
       setSelectedSegmentHistory(data);
     } catch (requestError) {
@@ -1923,6 +1977,14 @@ export default function App() {
       throw requestError;
     } finally {
       setLoadingSegmentHistory(false);
+    }
+  }
+
+  async function handleSegmentHistoryLimitChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextLimit = Number(event.target.value);
+    setSegmentHistoryLimit(nextLimit);
+    if (selectedSegmentId != null) {
+      await loadSegmentHistory(selectedSegmentId, nextLimit);
     }
   }
 
@@ -2645,18 +2707,28 @@ export default function App() {
                       {selectedSegmentHistory.segment.average_grade_percent != null ? ` · ${selectedSegmentHistory.segment.average_grade_percent.toFixed(1)}% media` : ""}
                     </p>
                   </div>
-                  <span
-                    className={
-                      selectedSegmentHistory.summary.comparable_effort_count > 0 &&
-                      selectedSegmentHistory.summary.trend_status === "improving"
-                        ? "status-pill status-pill-ready"
-                        : "status-pill status-pill-missing"
-                    }
-                  >
-                    {selectedSegmentHistory.summary.comparable_effort_count === 0
-                      ? "Solo presencia"
-                      : formatTrendLabel(selectedSegmentHistory.summary.trend_status)}
-                  </span>
+                  <div className="segment-detail-controls">
+                    <label className="segment-history-limit-control">
+                      <span>Ultimas ocurrencias</span>
+                      <select value={segmentHistoryLimit} onChange={(event) => void handleSegmentHistoryLimitChange(event)}>
+                        {SEGMENT_HISTORY_LIMIT_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <span
+                      className={
+                        selectedSegmentHistory.summary.comparable_effort_count > 0 &&
+                        selectedSegmentHistory.summary.trend_status === "improving"
+                          ? "status-pill status-pill-ready"
+                          : "status-pill status-pill-missing"
+                      }
+                    >
+                      {selectedSegmentHistory.summary.comparable_effort_count === 0
+                        ? "Solo presencia"
+                        : formatTrendLabel(selectedSegmentHistory.summary.trend_status)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="summary-strip segment-summary-strip">

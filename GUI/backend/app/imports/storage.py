@@ -133,6 +133,19 @@ class GarminImportStorage:
             inferred_families.add("walking")
         return inferred_families
 
+    @staticmethod
+    def _pick_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda candidate: (
+                candidate.get("duration_seconds") or 0,
+                candidate.get("started_at") or "",
+                candidate.get("activity_id") or 0,
+            ),
+        )
+
     def _auto_link_garmin_activities(self, connection: Any, season_id: int, activity_dates: list[str]) -> tuple[int, int]:
         unique_dates = sorted({activity_date for activity_date in activity_dates if activity_date})
         if not unique_dates:
@@ -189,7 +202,7 @@ class GarminImportStorage:
 
         garmin_candidates = connection.execute(
             f"""
-            SELECT activity_id, activity_date, discipline
+                        SELECT activity_id, activity_date, discipline, duration_seconds, started_at
             FROM exec_activities
             WHERE source_system = 'garmin'
               AND season_id = ?
@@ -255,10 +268,10 @@ class GarminImportStorage:
                 for candidate in candidates_by_date.get(planned_session["session_date"], [])
                 if self._discipline_family(candidate.get("discipline")) in target_families
             ]
-            if len(compatible_candidates) != 1:
+            candidate = self._pick_preferred_candidate(compatible_candidates)
+            if candidate is None:
                 continue
 
-            candidate = compatible_candidates[0]
             connection.execute(
                 """
                 INSERT INTO link_plan_execution (

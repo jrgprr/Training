@@ -81,22 +81,26 @@ def get_segment_history(segment_id: int, limit: int = 20) -> dict[str, Any] | No
 
         effort_rows = connection.execute(
             """
-            SELECT se.segment_effort_id,
-                   se.activity_id,
-                   ea.external_activity_id,
-                   se.activity_date,
-                   se.started_at,
-                   se.elapsed_time_seconds,
-                   se.avg_power,
-                   se.avg_cadence,
-                   se.avg_heart_rate,
-                   se.max_heart_rate,
-                   se.notes
-            FROM exec_segment_efforts se
-            JOIN exec_activities ea ON ea.activity_id = se.activity_id
-            WHERE se.segment_id = ?
-            ORDER BY se.activity_date ASC, se.segment_effort_id ASC
-            LIMIT ?
+            SELECT *
+            FROM (
+                SELECT se.segment_effort_id,
+                       se.activity_id,
+                       ea.external_activity_id,
+                       se.activity_date,
+                       se.started_at,
+                       se.elapsed_time_seconds,
+                       se.avg_power,
+                       se.avg_cadence,
+                       se.avg_heart_rate,
+                       se.max_heart_rate,
+                       se.notes
+                FROM exec_segment_efforts se
+                JOIN exec_activities ea ON ea.activity_id = se.activity_id
+                WHERE se.segment_id = ?
+                ORDER BY se.activity_date DESC, se.segment_effort_id DESC
+                LIMIT ?
+            ) recent_efforts
+            ORDER BY activity_date ASC, segment_effort_id ASC
             """,
             (segment_id, limit),
         ).fetchall()

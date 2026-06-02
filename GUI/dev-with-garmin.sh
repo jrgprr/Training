@@ -54,7 +54,7 @@ echo "Tokenstore Garmin: $GARMIN_CONNECT_SESSION_PATH"
 (
   cd "$GUI_DIR/backend"
   source "$ROOT_DIR/.venv/bin/activate"
-  exec uvicorn app.main:app --host 127.0.0.1 --port 8000
+  exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ) &
 BACKEND_PID=$!
 
