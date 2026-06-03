@@ -14,6 +14,7 @@ It also writes a markdown logbook file for the same assessment under the season 
 - The user explicitly wants to save a daily assessment.
 - The user wants to write a next-day decision into the database.
 - The user wants a dry-run preview before persisting a daily review.
+- The request arrives as a persistence handoff from `Daily Performance Coach` after a concrete day assessment.
 
 ## Procedure
 
@@ -24,9 +25,10 @@ It also writes a markdown logbook file for the same assessment under the season 
    [review-payload-template.json](./assets/review-payload-template.json)
 5. Validate the required and optional fields using:
    [field-contract.md](./references/field-contract.md)
-6. Run:
+6. If the request is a persistence handoff from `Daily Performance Coach` and there is no read-only or dry-run override, run write mode directly.
+7. Otherwise run:
    [upsert_daily_review.py](./scripts/upsert_daily_review.py)
-7. Default to `--dry-run` unless the user explicitly asked to persist.
+8. Default to `--dry-run` unless the request is that explicit persistence handoff or the user explicitly asked to persist.
 
 ## Safety Rules
 

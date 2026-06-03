@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
+import ReactMarkdown from "react-markdown";
 
 type Season = {
   season_id: number;
@@ -114,6 +115,13 @@ type PlanVsRealRow = {
   zone_comparison?: ZoneComparisonItem[];
 };
 
+type DailyAssessmentView = {
+  dailyReviewId: number;
+  sessionDate: string;
+  plannedSession: string;
+  markdown: string;
+};
+
 type WeekZoneComparisonSummaryItem = {
   metric_basis: "heart_rate" | "power" | string;
   planned_session_count: number;
@@ -165,6 +173,8 @@ type WeeklyReview = {
   risk_level: string | null;
   recommendation_text: string | null;
   summary_text: string | null;
+  weekly_assessment_available?: boolean;
+  weekly_assessment_url?: string | null;
   zone_comparison_summary?: WeekZoneComparisonSummary;
 };
 
@@ -877,6 +887,14 @@ async function fetchJson<T>(path: string): Promise<T> {
     throw new Error(`Error ${response.status} cargando ${path}`);
   }
   return response.json() as Promise<T>;
+}
+
+async function fetchText(path: string): Promise<string> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, `Error ${response.status} cargando ${path}`));
+  }
+  return response.text();
 }
 
 async function postJson<T>(path: string, payload: unknown): Promise<T> {
@@ -1844,6 +1862,8 @@ export default function App() {
   const [physiologicalAnchorsForm, setPhysiologicalAnchorsForm] = useState<PhysiologicalAnchorsFormState>(emptyPhysiologicalAnchorsForm);
   const [selectedDailyMetric, setSelectedDailyMetric] = useState<DailyMetricDetail | null>(null);
   const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
+  const [selectedDailyAssessment, setSelectedDailyAssessment] = useState<DailyAssessmentView | null>(null);
+  const [selectedWeeklyAssessmentMarkdown, setSelectedWeeklyAssessmentMarkdown] = useState<string | null>(null);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1863,6 +1883,8 @@ export default function App() {
   const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
   const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
+  const [loadingDailyAssessment, setLoadingDailyAssessment] = useState(false);
+  const [loadingWeeklyAssessment, setLoadingWeeklyAssessment] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
@@ -2059,13 +2081,13 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
-        setSelectedDailyMetric(null);
-        setSelectedDailyMetricDate(null);
-        setSelectedDailyMetric(null);
-        setSelectedDailyMetricDate(null);
-        setZoneProposals([]);
+      setSelectedDailyAssessment(null);
+      setSelectedWeeklyAssessmentMarkdown(null);
+      setSelectedDailyMetric(null);
+      setSelectedDailyMetricDate(null);
+      setZoneProposals([]);
       setCurrentZoneProfiles(null);
-        setPhysiologicalAnchorsForm(emptyPhysiologicalAnchorsForm());
+      setPhysiologicalAnchorsForm(emptyPhysiologicalAnchorsForm);
       setSegments([]);
       setSelectedSegmentId(null);
       setSelectedSegmentHistory(null);
@@ -2161,6 +2183,8 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
+      setSelectedDailyAssessment(null);
+      setSelectedWeeklyAssessmentMarkdown(null);
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
@@ -2191,6 +2215,8 @@ export default function App() {
       setSelectedWeek(week);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
+      setSelectedDailyAssessment(null);
+      setSelectedWeeklyAssessmentMarkdown(null);
       const [sessionData, comparisonData, reviewData] = await Promise.all([
         fetchJson<Session[]>(`/api/weeks/${week.week_id}/sessions`),
         fetchJson<PlanVsRealRow[]>(`/api/weeks/${week.week_id}/plan-vs-real`),
@@ -2206,6 +2232,43 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadDailyAssessment(row: PlanVsRealRow) {
+    if (!row.daily_assessment_url || row.daily_review_id == null) {
+      return;
+    }
+    try {
+      setLoadingDailyAssessment(true);
+      setError(null);
+      const markdown = await fetchText(row.daily_assessment_url);
+      setSelectedDailyAssessment({
+        dailyReviewId: row.daily_review_id,
+        sessionDate: row.session_date,
+        plannedSession: row.planned_session,
+        markdown,
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setLoadingDailyAssessment(false);
+    }
+  }
+
+  async function loadWeeklyAssessment() {
+    if (!weeklyReview?.weekly_assessment_url) {
+      return;
+    }
+    try {
+      setLoadingWeeklyAssessment(true);
+      setError(null);
+      const markdown = await fetchText(weeklyReview.weekly_assessment_url);
+      setSelectedWeeklyAssessmentMarkdown(markdown);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setLoadingWeeklyAssessment(false);
     }
   }
 
@@ -2454,6 +2517,7 @@ export default function App() {
       setSavingWeeklyReview(true);
       setError(null);
       setInfoMessage(null);
+      setSelectedWeeklyAssessmentMarkdown(null);
       const review = await fetchJson<WeeklyReview>(`/api/weeks/${selectedWeek.week_id}/review`,);
       const response = await fetch(`/api/weeks/${selectedWeek.week_id}/review`, {
         method: "PUT",
@@ -2484,6 +2548,7 @@ export default function App() {
       setSavingWeeklyReview(true);
       setError(null);
       setInfoMessage(null);
+      setSelectedWeeklyAssessmentMarkdown(null);
       const response = await fetch(`/api/weeks/${selectedWeek.week_id}/review`, {
         method: "DELETE",
       });
@@ -3388,15 +3453,16 @@ export default function App() {
                           </small>
                           <small>{row.actual_summary ?? 'Sin revision diaria'}</small>
                           {row.daily_assessment_available && row.daily_assessment_url ? (
-                            <a
+                            <button
                               className="table-link-button"
-                              href={row.daily_assessment_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(event) => event.stopPropagation()}
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void loadDailyAssessment(row);
+                              }}
                             >
                               Ver assessment diario
-                            </a>
+                            </button>
                           ) : null}
                         </td>
                         <td>
@@ -3443,7 +3509,79 @@ export default function App() {
                 <button className="ghost-button" type="button" onClick={() => void reopenWeeklyReview()} disabled={savingWeeklyReview || !isWeeklyReviewClosed}>
                   {savingWeeklyReview && isWeeklyReviewClosed ? "Reabriendo..." : "Reabrir revision"}
                 </button>
+                {weeklyReview?.weekly_assessment_available && weeklyReview.weekly_assessment_url ? (
+                  <button className="ghost-button" type="button" onClick={() => void loadWeeklyAssessment()} disabled={loadingWeeklyAssessment}>
+                    {loadingWeeklyAssessment ? "Cargando assessment semanal..." : "Ver assessment semanal"}
+                  </button>
+                ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {selectedWeek ? (
+            <div className="week-review-card daily-assessment-card">
+              <div className="daily-assessment-card-head">
+                <div>
+                  <h3>Assessment semanal</h3>
+                  <p className="daily-assessment-subtitle">Logbook narrativo semanal, accesible sin salir de la GUI.</p>
+                </div>
+                {selectedWeeklyAssessmentMarkdown ? (
+                  <button className="ghost-button" type="button" onClick={() => setSelectedWeeklyAssessmentMarkdown(null)}>
+                    Cerrar assessment semanal
+                  </button>
+                ) : null}
+              </div>
+
+              {loadingWeeklyAssessment ? (
+                <p>Cargando assessment semanal...</p>
+              ) : selectedWeeklyAssessmentMarkdown ? (
+                <article className="daily-assessment-markdown" aria-label="assessment semanal renderizado">
+                  <ReactMarkdown>{selectedWeeklyAssessmentMarkdown}</ReactMarkdown>
+                </article>
+              ) : (
+                <div className="empty-state-card">
+                  <strong>Sin assessment semanal cargado</strong>
+                  <p>Cuando exista una valoracion semanal persistida, podras abrirla aqui desde la revision semanal.</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {selectedWeek ? (
+            <div className="week-review-card daily-assessment-card">
+              <div className="daily-assessment-card-head">
+                <div>
+                  <h3>Assessment diario</h3>
+                  <p className="daily-assessment-subtitle">Logbook narrativo del dia seleccionado, accesible sin salir de la GUI.</p>
+                </div>
+                {selectedDailyAssessment ? (
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => setSelectedDailyAssessment(null)}
+                  >
+                    Cerrar assessment
+                  </button>
+                ) : null}
+              </div>
+
+              {loadingDailyAssessment ? (
+                <p>Cargando assessment diario...</p>
+              ) : selectedDailyAssessment ? (
+                <>
+                  <p>
+                    {selectedDailyAssessment.sessionDate} · {selectedDailyAssessment.plannedSession}
+                  </p>
+                  <article className="daily-assessment-markdown" aria-label="assessment diario renderizado">
+                    <ReactMarkdown>{selectedDailyAssessment.markdown}</ReactMarkdown>
+                  </article>
+                </>
+              ) : (
+                <div className="empty-state-card">
+                  <strong>Sin assessment diario cargado</strong>
+                  <p>Pulsa en "Ver assessment diario" dentro de Plan vs realidad para abrir el logbook en esta misma vista.</p>
+                </div>
+              )}
             </div>
           ) : null}
         </section>

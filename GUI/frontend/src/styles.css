@@ -1336,6 +1336,76 @@ textarea {
   margin-top: 8px;
 }
 
+.daily-assessment-card {
+  display: grid;
+  gap: 12px;
+}
+
+.daily-assessment-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.daily-assessment-subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.daily-assessment-markdown {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 16px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.daily-assessment-markdown > :first-child {
+  margin-top: 0;
+}
+
+.daily-assessment-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.daily-assessment-markdown h1,
+.daily-assessment-markdown h2,
+.daily-assessment-markdown h3 {
+  margin: 1rem 0 0.5rem;
+  color: #0f3d3a;
+  line-height: 1.2;
+}
+
+.daily-assessment-markdown p {
+  margin: 0.75rem 0;
+}
+
+.daily-assessment-markdown ul {
+  margin: 0.75rem 0;
+  padding-left: 1.25rem;
+}
+
+.daily-assessment-markdown li + li {
+  margin-top: 0.35rem;
+}
+
+.daily-assessment-markdown hr {
+  border: 0;
+  border-top: 1px solid rgba(15, 118, 110, 0.2);
+  margin: 1rem 0;
+}
+
+.daily-assessment-markdown code {
+  font-family: "IBM Plex Mono", "Fira Code", monospace;
+  font-size: 0.95em;
+  padding: 0.08rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(15, 118, 110, 0.08);
+  color: #0f3d3a;
+}
+
 .manual-form {
   display: grid;
   gap: 14px;

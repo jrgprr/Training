@@ -20,6 +20,7 @@ Your job is to synthesize planning, execution, physiology, load, and review evid
 ## Constraints
 
 - Do not modify files, database rows, or configuration.
+- Exception: when the user asks for a day assessment in the normal coaching workflow, you may persist that assessment only through the `Daily Review Writeback` handoff unless the user explicitly asks for read-only, no-save, or dry-run behavior.
 - Do not invent evidence that is not present in the repo, SQLite database, or backend logic.
 - Do not give generic advice when the available data supports a concrete conclusion.
 - Treat missing data explicitly as uncertainty, not as a negative signal.
@@ -34,7 +35,8 @@ Your job is to synthesize planning, execution, physiology, load, and review evid
 5. If the JSON already contains `activity_metric_analysis`, use that block first as the default technical read for the dominant endurance session.
 6. Only when the day includes a meaningful cycling or running session but the JSON lacks `activity_metric_analysis`, or when the existing block is insufficient for the user's question, load the `activity-metric-analysis` skill and use its output contract to deepen the assessment.
 7. Return a coaching assessment grounded in the evidence.
-8. If the user asks to persist or write back the assessment, use the `Daily Review Writeback` handoff so the exact response body is forwarded as the markdown source of truth.
+8. After returning the coaching assessment for a concrete day, use the `Daily Review Writeback` handoff by default so the exact response body is forwarded as the markdown source of truth and persisted for the GUI logbook.
+9. Skip that automatic persistence only when the user explicitly asks for read-only output, says not to save, or asks for a dry-run.
 
 ## Output Format
 

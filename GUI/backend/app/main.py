@@ -19,6 +19,7 @@ app = FastAPI(title="Training System GUI API", version="0.2.0")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
+WEEKLY_ASSESSMENT_ROOT_NAME = "Weekly-Assessment-Logbook"
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,8 +58,14 @@ def get_daily_assessment_markdown_path(season_id: int, review_date: str, planned
     return REPO_ROOT / str(season_id) / DAILY_ASSESSMENT_ROOT_NAME / f"{review_date}-{suffix}.md"
 
 
+def get_weekly_assessment_markdown_path(season_id: int, week_code: str, week_id: int) -> Path:
+    return REPO_ROOT / str(season_id) / WEEKLY_ASSESSMENT_ROOT_NAME / f"{week_code}-week-{week_id}.md"
+
+
 class WeeklyReviewPayload(BaseModel):
     summary_text: str | None = None
+    recommendation_text: str | None = None
+    risk_level: str | None = None
 
 
 class GarminConnectImportPayload(BaseModel):
@@ -973,17 +980,44 @@ def get_weekly_review(week_id: int) -> dict[str, Any]:
             "risk_level": None,
             "recommendation_text": None,
             "summary_text": None,
+            "weekly_assessment_available": False,
+            "weekly_assessment_url": None,
             "zone_comparison_summary": get_week_zone_comparison_summary(week_id),
         }
+    markdown_path = get_weekly_assessment_markdown_path(int(row["season_id"]), str(week["week_code"]), int(week["week_id"]))
     row["week_code"] = week["week_code"]
+    row["weekly_assessment_available"] = markdown_path.exists()
+    row["weekly_assessment_url"] = f"/api/weeks/{week_id}/assessment-markdown" if markdown_path.exists() else None
     row["zone_comparison_summary"] = get_week_zone_comparison_summary(week_id)
     return row
+
+
+@app.get("/api/weeks/{week_id}/assessment-markdown")
+def get_weekly_assessment_markdown(week_id: int) -> FileResponse:
+    week = get_week_context(week_id)
+    row = fetch_one(
+        """
+        SELECT weekly_review_id, season_id, week_id
+        FROM review_weekly_reviews
+        WHERE week_id = ?
+        """,
+        (week_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No se encontro la revision semanal {week_id}.")
+
+    markdown_path = get_weekly_assessment_markdown_path(int(row["season_id"]), str(week["week_code"]), int(week_id))
+    if not markdown_path.exists():
+        raise HTTPException(status_code=404, detail="No existe markdown para esta revision semanal.")
+    return FileResponse(markdown_path, media_type="text/markdown")
 
 
 @app.put("/api/weeks/{week_id}/review")
 def upsert_weekly_review(week_id: int, payload: WeeklyReviewPayload) -> dict[str, Any]:
     metrics = calculate_weekly_review_metrics(week_id)
     summary_text = payload.summary_text or metrics["summary_text"]
+    recommendation_text = payload.recommendation_text or metrics["recommendation_text"]
+    risk_level = payload.risk_level or metrics["risk_level"]
 
     with get_connection() as connection:
         connection.execute(
@@ -1016,15 +1050,15 @@ def upsert_weekly_review(week_id: int, payload: WeeklyReviewPayload) -> dict[str
                 metrics["actual_minutes"],
                 metrics["planned_reference_minutes"],
                 metrics["volume_delta_minutes"],
-                metrics["risk_level"],
-                metrics["recommendation_text"],
+                risk_level,
+                recommendation_text,
                 summary_text,
             ),
         )
 
     review = get_weekly_review(week_id)
-    review["recommendation_text"] = metrics["recommendation_text"]
-    review["risk_level"] = metrics["risk_level"]
+    review["recommendation_text"] = recommendation_text
+    review["risk_level"] = risk_level
     review["summary_text"] = summary_text
     review["adherence_rate"] = metrics["adherence_rate"]
     review["traceability_rate"] = metrics["traceability_rate"]
