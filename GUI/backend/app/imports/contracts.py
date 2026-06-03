@@ -77,6 +77,9 @@ class NormalizedDailyMetric:
     sleep_hours: float | None = None
     sleep_quality: str | None = None
     resting_hr: float | None = None
+    vo2max_cycling: float | None = None
+    vo2max_running: float | None = None
+    lactate_threshold_hr: float | None = None
     hrv: float | None = None
     body_battery: float | None = None
     stress_avg: float | None = None

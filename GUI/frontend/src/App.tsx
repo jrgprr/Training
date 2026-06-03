@@ -268,6 +268,9 @@ type DailyMetricDetail = {
   sleep_hours: number | null;
   sleep_quality: string | null;
   resting_hr: number | null;
+  vo2max_cycling: number | null;
+  vo2max_running: number | null;
+  lactate_threshold_hr: number | null;
   hrv: number | null;
   body_battery: number | null;
   stress_avg: number | null;
@@ -3473,6 +3476,9 @@ export default function App() {
                     {selectedDailyMetric.sleep_hours != null ? <article><span>Sueno</span><strong>{toMetricLabel(selectedDailyMetric.sleep_hours, " h")}</strong></article> : null}
                     {selectedDailyMetric.sleep_quality != null ? <article><span>Calidad sueno</span><strong>{selectedDailyMetric.sleep_quality}</strong></article> : null}
                     {selectedDailyMetric.resting_hr != null ? <article><span>FC reposo</span><strong>{toMetricLabel(selectedDailyMetric.resting_hr, " bpm")}</strong></article> : null}
+                    {selectedDailyMetric.vo2max_cycling != null ? <article><span>VO2max ciclismo Garmin</span><strong>{toMetricLabel(selectedDailyMetric.vo2max_cycling, " ml/kg/min")}</strong></article> : null}
+                    {selectedDailyMetric.vo2max_running != null ? <article><span>VO2max carrera Garmin</span><strong>{toMetricLabel(selectedDailyMetric.vo2max_running, " ml/kg/min")}</strong></article> : null}
+                    {selectedDailyMetric.lactate_threshold_hr != null ? <article><span>FC umbral Garmin</span><strong>{toMetricLabel(selectedDailyMetric.lactate_threshold_hr, " bpm")}</strong></article> : null}
                     {selectedDailyMetric.hrv != null ? <article><span>HRV</span><strong>{toMetricLabel(selectedDailyMetric.hrv)}</strong></article> : null}
                     {selectedDailyMetric.body_battery != null ? <article><span>Body Battery</span><strong>{toMetricLabel(selectedDailyMetric.body_battery)}</strong></article> : null}
                     {selectedDailyMetric.stress_avg != null ? <article><span>Estres medio</span><strong>{toMetricLabel(selectedDailyMetric.stress_avg)}</strong></article> : null}

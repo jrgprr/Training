@@ -825,6 +825,15 @@ class GarminConnectAdapter:
         return cls._pick_first(heart_rates_payload, "restingHeartRate", "lastSevenDaysAvgRestingHeartRate")
 
     @classmethod
+    def _extract_profile_metric(cls, user_profile_payload: dict[str, Any] | None, *keys: str) -> float | None:
+        if not user_profile_payload:
+            return None
+        user_data = user_profile_payload.get("userData") if isinstance(user_profile_payload, dict) else None
+        if not isinstance(user_data, dict):
+            return None
+        return cls._normalize_numeric(cls._pick_first(user_data, *keys))
+
+    @classmethod
     def _extract_hrv(cls, hrv_payload: dict[str, Any] | None) -> float | None:
         if not hrv_payload:
             return None
@@ -934,6 +943,7 @@ class GarminConnectAdapter:
         stats_payload: dict[str, Any],
         sleep_payload: dict[str, Any],
         heart_rates_payload: dict[str, Any],
+        user_profile_payload: dict[str, Any] | None,
         hrv_payload: dict[str, Any] | None,
         body_battery_payload: list[dict[str, Any]] | dict[str, Any] | None,
         stress_payload: dict[str, Any] | None,
@@ -946,6 +956,13 @@ class GarminConnectAdapter:
             sleep_hours=cls._extract_sleep_hours(sleep_payload),
             sleep_quality=cls._extract_sleep_quality(sleep_payload),
             resting_hr=cls._extract_resting_hr(heart_rates_payload),
+            vo2max_cycling=cls._extract_profile_metric(user_profile_payload, "vo2MaxCycling"),
+            vo2max_running=cls._extract_profile_metric(user_profile_payload, "vo2MaxRunning"),
+            lactate_threshold_hr=cls._extract_profile_metric(
+                user_profile_payload,
+                "lactateThresholdHeartRateCycling",
+                "lactateThresholdHeartRate",
+            ),
             hrv=cls._extract_hrv(hrv_payload),
             body_battery=cls._extract_body_battery(body_battery_payload, metric_date),
             stress_avg=cls._extract_stress_avg(stress_payload),
@@ -1023,6 +1040,10 @@ class GarminConnectAdapter:
 
     def _fetch_daily_metrics(self, client: Garmin, request: GarminImportRequest) -> list[NormalizedDailyMetric]:
         metrics: list[NormalizedDailyMetric] = []
+        try:
+            user_profile_payload = client.get_user_profile() or {}
+        except Exception:
+            user_profile_payload = None
         for metric_date in iter_dates(request.date_from, request.date_to):
             stats_payload = client.get_stats(metric_date) or {}
             sleep_payload = client.get_sleep_data(metric_date) or {}
@@ -1038,6 +1059,7 @@ class GarminConnectAdapter:
                     stats_payload=stats_payload,
                     sleep_payload=sleep_payload,
                     heart_rates_payload=heart_rates_payload,
+                    user_profile_payload=user_profile_payload,
                     hrv_payload=hrv_payload,
                     body_battery_payload=body_battery_payload,
                     stress_payload=stress_payload,

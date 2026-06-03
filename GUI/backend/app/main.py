@@ -85,7 +85,9 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     metric = fetch_one(
         """
         SELECT daily_metric_id, season_id, metric_date, source_system,
-               weight_kg, sleep_hours, sleep_quality, resting_hr, hrv, body_battery,
+             weight_kg, sleep_hours, sleep_quality, resting_hr,
+             vo2max_cycling, vo2max_running, lactate_threshold_hr,
+             hrv, body_battery,
                stress_avg, stress_max,
                spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                subjective_energy, subjective_fatigue, soreness, notes

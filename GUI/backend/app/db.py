@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS staging_garmin_daily_metrics (
     sleep_hours REAL,
     sleep_quality TEXT,
     resting_hr REAL,
+    vo2max_cycling REAL,
+    vo2max_running REAL,
+    lactate_threshold_hr REAL,
     hrv REAL,
     body_battery REAL,
     stress_avg REAL,
@@ -592,6 +595,9 @@ def _ensure_daily_metric_columns(connection: sqlite3.Connection) -> None:
             "spo2_sleep_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_sleep_avg REAL",
             "spo2_7d_avg": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_7d_avg REAL",
             "spo2_lowest": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN spo2_lowest REAL",
+            "vo2max_cycling": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN vo2max_cycling REAL",
+            "vo2max_running": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN vo2max_running REAL",
+            "lactate_threshold_hr": "ALTER TABLE staging_garmin_daily_metrics ADD COLUMN lactate_threshold_hr REAL",
         },
         "exec_daily_metrics": {
             "stress_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN stress_avg REAL",
@@ -600,6 +606,9 @@ def _ensure_daily_metric_columns(connection: sqlite3.Connection) -> None:
             "spo2_sleep_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_sleep_avg REAL",
             "spo2_7d_avg": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_7d_avg REAL",
             "spo2_lowest": "ALTER TABLE exec_daily_metrics ADD COLUMN spo2_lowest REAL",
+            "vo2max_cycling": "ALTER TABLE exec_daily_metrics ADD COLUMN vo2max_cycling REAL",
+            "vo2max_running": "ALTER TABLE exec_daily_metrics ADD COLUMN vo2max_running REAL",
+            "lactate_threshold_hr": "ALTER TABLE exec_daily_metrics ADD COLUMN lactate_threshold_hr REAL",
         },
     }
     for table_name, expected_columns in expected_columns_by_table.items():
