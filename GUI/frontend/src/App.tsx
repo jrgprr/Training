@@ -101,10 +101,13 @@ type PlanVsRealRow = {
   compatible_garmin_count: number;
   actual_duration_min: number | null;
   perceived_exertion: number | null;
+  daily_review_id: number | null;
   compliance_status: string;
   actual_summary: string | null;
   general_feeling: string | null;
   next_day_decision: string | null;
+  daily_assessment_available?: boolean;
+  daily_assessment_url?: string | null;
   activities?: PlanVsRealActivity[];
   optional_daily_activities?: OptionalDailyActivity[];
   other_daily_activities?: DailyUnlinkedActivity[];
@@ -3384,6 +3387,17 @@ export default function App() {
                               : ''}
                           </small>
                           <small>{row.actual_summary ?? 'Sin revision diaria'}</small>
+                          {row.daily_assessment_available && row.daily_assessment_url ? (
+                            <a
+                              className="table-link-button"
+                              href={row.daily_assessment_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              Ver assessment diario
+                            </a>
+                          ) : null}
                         </td>
                         <td>
                           <span className={toBadgeClass(row.compliance_status)}>{row.compliance_status}</span>

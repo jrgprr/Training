@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .activity_quality import get_activity_quality
@@ -14,6 +16,9 @@ from .segments import get_segment_history, list_segments
 from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
 app = FastAPI(title="Training System GUI API", version="0.2.0")
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +50,11 @@ def ensure_entity_exists(rows: list[dict[str, Any]], message: str) -> list[dict[
     if not rows:
         raise HTTPException(status_code=404, detail=message)
     return rows
+
+
+def get_daily_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
+    suffix = f"ps-{planned_session_id}" if planned_session_id is not None else "general"
+    return REPO_ROOT / str(season_id) / DAILY_ASSESSMENT_ROOT_NAME / f"{review_date}-{suffix}.md"
 
 
 class WeeklyReviewPayload(BaseModel):
@@ -139,6 +149,7 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type,
                ps.objective AS planned_objective, ps.primary_session AS planned_session,
                ps.duration_min, ps.duration_max, ps.is_key_session,
+             rr.daily_review_id, rr.season_id AS review_season_id,
                CASE
                    WHEN COALESCE(rr.compliance_status, rl.compliance_status, 'pending') = 'skipped' THEN NULL
                    ELSE rl.activity_id
@@ -201,6 +212,16 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         """,
         (week_id,),
     )
+
+    for row in rows:
+        daily_review_id = row.get("daily_review_id")
+        review_season_id = row.get("review_season_id")
+        markdown_available = False
+        if daily_review_id is not None and review_season_id is not None:
+            markdown_path = get_daily_assessment_markdown_path(int(review_season_id), str(row["session_date"]), row["planned_session_id"])
+            markdown_available = markdown_path.exists()
+        row["daily_assessment_available"] = markdown_available
+        row["daily_assessment_url"] = f"/api/daily-reviews/{daily_review_id}/markdown" if markdown_available else None
 
     linked_rows = fetch_all(
         """
@@ -908,6 +929,25 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
 def get_week_plan_vs_real(week_id: int) -> list[dict[str, Any]]:
     rows = get_week_plan_vs_real_rows(week_id)
     return ensure_entity_exists(rows, f"No se encontro comparativa plan vs realidad para la semana {week_id}.")
+
+
+@app.get("/api/daily-reviews/{daily_review_id}/markdown")
+def get_daily_review_markdown(daily_review_id: int) -> FileResponse:
+    row = fetch_one(
+        """
+        SELECT daily_review_id, season_id, review_date, planned_session_id
+        FROM review_daily_reviews
+        WHERE daily_review_id = ?
+        """,
+        (daily_review_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No se encontro la revision diaria {daily_review_id}.")
+
+    markdown_path = get_daily_assessment_markdown_path(int(row["season_id"]), str(row["review_date"]), row["planned_session_id"])
+    if not markdown_path.exists():
+        raise HTTPException(status_code=404, detail="No existe markdown para esta revision diaria.")
+    return FileResponse(markdown_path, media_type="text/markdown")
 
 
 @app.get("/api/weeks/{week_id}/review")
