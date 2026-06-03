@@ -1159,18 +1159,21 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
   );
 }
 
-function renderLoadModelChart(loadModel: NonNullable<DailyMetricDetail["load_model"]>) {
+function renderLoadModelChart(
+  loadModel: NonNullable<DailyMetricDetail["load_model"]>,
+  className = "load-chart-card panel-subcard",
+) {
   const history = loadModel.trend;
   if (!history.length) {
     return null;
   }
 
-  const width = 760;
-  const height = 260;
-  const leftGutter = 52;
-  const rightGutter = 18;
-  const topGutter = 22;
-  const bottomGutter = 44;
+  const width = 1200;
+  const height = 360;
+  const leftGutter = 56;
+  const rightGutter = 24;
+  const topGutter = 26;
+  const bottomGutter = 52;
   const plotWidth = width - leftGutter - rightGutter;
   const plotHeight = height - topGutter - bottomGutter;
   const minTsb = Math.min(...history.map((entry) => entry.tsb), 0);
@@ -1189,7 +1192,7 @@ function renderLoadModelChart(loadModel: NonNullable<DailyMetricDetail["load_mod
   const tickValues = [maxPositive, (maxPositive + minTsb) / 2, minTsb].filter((value, index, values) => values.findIndex((candidate) => Math.abs(candidate - value) < 0.01) === index);
 
   return (
-    <section className="load-chart-card panel-subcard">
+    <section className={className}>
       <div className="load-chart-head">
         <div>
           <strong>Tendencia ATL / CTL / TSB</strong>
@@ -2521,6 +2524,8 @@ export default function App() {
         <span>{selectedWeek?.week_code ?? "Sin semana"}</span>
       </section>
 
+      {selectedDailyMetric?.load_model?.trend?.length ? renderLoadModelChart(selectedDailyMetric.load_model, "panel load-chart-card load-chart-panel-top") : null}
+
       <section className="import-layout">
         <section className="panel import-panel">
           <div className="section-heading">
@@ -3497,8 +3502,6 @@ export default function App() {
                       <p><strong>Notas:</strong> {selectedDailyMetric.notes}</p>
                     </div>
                   ) : null}
-
-                  {selectedDailyMetric.load_model?.trend?.length ? renderLoadModelChart(selectedDailyMetric.load_model) : null}
                 </div>
               ) : (
                 <div className="empty-state-card empty-state-card-wide">

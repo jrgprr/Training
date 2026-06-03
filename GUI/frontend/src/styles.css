@@ -780,6 +780,15 @@ textarea {
   gap: 12px;
 }
 
+.load-chart-panel-top {
+  margin-bottom: 16px;
+  padding: 20px 22px;
+}
+
+.load-chart-panel-top .load-chart-head strong {
+  font-size: 1.08rem;
+}
+
 .load-chart-head {
   display: flex;
   justify-content: space-between;

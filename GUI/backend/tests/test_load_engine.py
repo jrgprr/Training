@@ -274,6 +274,14 @@ class LoadEngineTests(unittest.TestCase):
         self.assertEqual(result["load_source"], "hr_trimp")
         self.assertAlmostEqual(result["load_value"], 145.67, places=2)
 
+    def test_load_model_snapshot_reports_tsb_from_same_day_atl_ctl(self) -> None:
+        snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-03")
+
+        self.assertAlmostEqual(snapshot["tsb"], round(snapshot["ctl"] - snapshot["atl"], 2), places=2)
+        self.assertTrue(snapshot["trend"])
+        for entry in snapshot["trend"]:
+            self.assertLess(abs(entry["tsb"] - round(entry["ctl"] - entry["atl"], 2)), 0.011)
+
     def test_compute_activity_load_uses_hr_trimp_when_activity_type_marks_new_walking_like_activity(self) -> None:
         original_fetch = load_engine._fetch_anchor_profile
         try:

@@ -321,7 +321,7 @@ def _compute_load_model_series(
         "daily_training_load": round(float(daily_loads.get(through_date, 0.0) or 0.0), 2),
         "atl": round(atl, 2),
         "ctl": round(ctl, 2),
-        "tsb": round(previous_ctl - previous_atl, 2),
+        "tsb": round(ctl - atl, 2),
         "atl_time_constant_days": atl_time_constant_days,
         "ctl_time_constant_days": ctl_time_constant_days,
     }
@@ -356,7 +356,7 @@ def _compute_load_model_history(
                     "daily_training_load": round(load_value, 2),
                     "atl": round(atl, 2),
                     "ctl": round(ctl, 2),
-                    "tsb": round(previous_ctl - previous_atl, 2),
+                    "tsb": round(ctl - atl, 2),
                 }
             )
         current_date += timedelta(days=1)
@@ -408,7 +408,7 @@ def _compute_load_model_series(
         "daily_training_load": round(float(daily_loads.get(through_date, 0.0) or 0.0), 2),
         "atl": round(atl, 2),
         "ctl": round(ctl, 2),
-        "tsb": round(previous_ctl - previous_atl, 2),
+        "tsb": round(ctl - atl, 2),
         "atl_time_constant_days": atl_time_constant_days,
         "ctl_time_constant_days": ctl_time_constant_days,
     }
@@ -443,7 +443,7 @@ def _compute_load_model_history(
                     "daily_training_load": round(load_value, 2),
                     "atl": round(atl, 2),
                     "ctl": round(ctl, 2),
-                    "tsb": round(previous_ctl - previous_atl, 2),
+                    "tsb": round(ctl - atl, 2),
                 }
             )
         current_date += timedelta(days=1)
