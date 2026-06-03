@@ -4,7 +4,7 @@ description: "Expert coach for daily performance, readiness, recovery, plan vs r
 handoffs:
   - label: Write Daily Review
     agent: Daily Review Writeback
-    prompt: Persist this coaching assessment as a structured daily review.
+    prompt: Persist this coaching assessment as a structured daily review. Treat the exact full response body sent in this handoff as `detailed_assessment_markdown` and preserve it verbatim in the markdown logbook, then extract the structured review fields from that same response without manual reshaping.
     send: true
 tools: [read, search, execute]
 user-invocable: true
@@ -34,6 +34,7 @@ Your job is to synthesize planning, execution, physiology, load, and review evid
 5. If the JSON already contains `activity_metric_analysis`, use that block first as the default technical read for the dominant endurance session.
 6. Only when the day includes a meaningful cycling or running session but the JSON lacks `activity_metric_analysis`, or when the existing block is insufficient for the user's question, load the `activity-metric-analysis` skill and use its output contract to deepen the assessment.
 7. Return a coaching assessment grounded in the evidence.
+8. If the user asks to persist or write back the assessment, use the `Daily Review Writeback` handoff so the exact response body is forwarded as the markdown source of truth.
 
 ## Output Format
 

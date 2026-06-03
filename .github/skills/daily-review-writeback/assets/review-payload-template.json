@@ -10,5 +10,6 @@
   "perceived_recovery": null,
   "motivation": null,
   "observations": null,
-  "next_day_decision": null
+  "next_day_decision": null,
+  "detailed_assessment_markdown": null
 }

@@ -12,6 +12,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
+DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 REVIEW_FIELDS = (
     "planned_summary",
     "actual_summary",
@@ -22,6 +23,51 @@ REVIEW_FIELDS = (
     "observations",
     "next_day_decision",
 )
+
+
+def build_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
+    season_root = REPO_ROOT / str(season_id) / DAILY_ASSESSMENT_ROOT_NAME
+    suffix = f"ps-{planned_session_id}" if planned_session_id is not None else "general"
+    return season_root / f"{review_date}-{suffix}.md"
+
+
+def build_default_markdown_document(row: dict[str, Any], payload: dict[str, Any]) -> str:
+    detailed_assessment = str(payload.get("detailed_assessment_markdown") or "").strip()
+    appendix_lines = [
+        "## Assessment Metadata",
+        f"- season_id: {row['season_id']}",
+        f"- review_date: {row['review_date']}",
+        f"- planned_session_id: {row['planned_session_id'] if row['planned_session_id'] is not None else 'general'}",
+        f"- week_id: {row['week_id'] if row['week_id'] is not None else 'unknown'}",
+        f"- block_id: {row['block_id'] if row['block_id'] is not None else 'unknown'}",
+        "",
+        "## Structured Review Snapshot",
+        f"- Planned Summary: {row.get('planned_summary') or '-'}",
+        f"- Actual Summary: {row.get('actual_summary') or '-'}",
+        f"- Compliance Status: {row.get('compliance_status') or '-'}",
+        f"- General Feeling: {row.get('general_feeling') or '-'}",
+        f"- Perceived Recovery: {row.get('perceived_recovery') or '-'}",
+        f"- Motivation: {row.get('motivation') or '-'}",
+        f"- Observations: {row.get('observations') or '-'}",
+        f"- Next Day Decision: {row.get('next_day_decision') or '-'}",
+    ]
+    if detailed_assessment:
+        return detailed_assessment.rstrip() + "\n\n---\n\n" + "\n".join(appendix_lines) + "\n"
+
+    title = f"# Daily Assessment {row['review_date']}"
+    lines = [
+        title,
+        "",
+        *appendix_lines,
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_assessment_markdown(row: dict[str, Any], payload: dict[str, Any]) -> Path:
+    path = build_assessment_markdown_path(row["season_id"], row["review_date"], row["planned_session_id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(build_default_markdown_document(row, payload), encoding="utf-8")
+    return path
 
 
 def parse_args() -> argparse.Namespace:
@@ -261,8 +307,14 @@ def main() -> int:
 
     action = "dry-run"
     stored_row = resolved_row
+    assessment_markdown_path = build_assessment_markdown_path(
+        resolved_row["season_id"],
+        resolved_row["review_date"],
+        resolved_row["planned_session_id"],
+    )
     if args.write:
         stored_row = upsert_row(connection, resolved_row) or resolved_row
+        assessment_markdown_path = write_assessment_markdown(stored_row, payload)
         action = "updated" if existing_row is not None else "inserted"
 
     result = {
@@ -276,6 +328,8 @@ def main() -> int:
         },
         "existing_row": existing_row,
         "stored_row": stored_row,
+        "assessment_markdown_path": str(assessment_markdown_path),
+        "assessment_markdown_exists": assessment_markdown_path.exists(),
         "warnings": warnings,
     }
     print(json.dumps(result, indent=2, ensure_ascii=True))
