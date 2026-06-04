@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from app import load_engine
+from app.main import get_activity
 
 
 class LoadEngineTests(unittest.TestCase):
@@ -78,6 +79,69 @@ class LoadEngineTests(unittest.TestCase):
 
         self.assertEqual(result["load_source"], "garmin_training_load")
         self.assertEqual(result["load_value"], 0.9)
+
+    def test_activity_detail_exposes_computed_load_used_by_load_model(self) -> None:
+        original_fetch = load_engine._fetch_anchor_profile
+        try:
+            def fake_fetch(*, metric_basis: str, **_: object):
+                if metric_basis == "heart_rate":
+                    return {"resting_hr": 50.0, "max_hr": 174.0}
+                return None
+
+            load_engine._fetch_anchor_profile = fake_fetch
+            with patch("app.main.fetch_one") as fetch_one_mock:
+                fetch_one_mock.return_value = {
+                    "activity_id": 900243,
+                    "season_id": 2026,
+                    "source_system": "garmin",
+                    "external_activity_id": "abc",
+                    "activity_date": "2026-06-03",
+                    "started_at": "2026-06-03 23:18:44",
+                    "discipline": "strength_training",
+                    "activity_type": "Fuerza",
+                    "duration_seconds": 2035,
+                    "distance_meters": 0.0,
+                    "ascent_meters": None,
+                    "calories": 194.0,
+                    "avg_hr": 92.61,
+                    "max_hr": 114.0,
+                    "avg_respiration_rate": None,
+                    "max_respiration_rate": None,
+                    "avg_power": None,
+                    "normalized_power": None,
+                    "training_load": 1.3,
+                    "avg_pace_seconds_per_km": None,
+                    "perceived_exertion": None,
+                    "subjective_feeling": None,
+                    "stress_avg": 37.0,
+                    "stress_max": 99.0,
+                    "spo2_sleep_avg": 93.0,
+                    "spo2_avg": 93.0,
+                    "spo2_7d_avg": 90.8,
+                    "spo2_lowest": 85.0,
+                    "source_file": None,
+                    "raw_payload_path": None,
+                    "notes": None,
+                    "quality_status": "clean",
+                    "quality_checked_at": None,
+                    "quality_rule_version": None,
+                    "quality_decision_count": 0,
+                    "quality_limited_metric_count": 0,
+                    "planned_session_id": 10503,
+                    "compliance_status": "completed",
+                    "rationale": None,
+                    "actual_summary": None,
+                    "general_feeling": None,
+                    "next_day_decision": None,
+                }
+
+                activity = get_activity(900243)
+        finally:
+            load_engine._fetch_anchor_profile = original_fetch
+
+        self.assertEqual(activity["training_load"], 1.3)
+        self.assertEqual(activity["calculated_training_load_source"], "hr_trimp")
+        self.assertGreater(activity["calculated_training_load"], activity["training_load"])
 
     def test_compute_activity_load_prefers_hr_trimp_for_yoga(self) -> None:
         original_fetch = load_engine._fetch_anchor_profile

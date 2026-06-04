@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
-from .load_engine import get_load_model_snapshot
+from .load_engine import compute_activity_load, get_load_model_snapshot
 from .segments import get_segment_history, list_segments
 from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
@@ -698,6 +698,9 @@ def get_activity(activity_id: int) -> dict[str, Any]:
     )
     if activity is None:
         raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
+    calculated_load = compute_activity_load(activity, season_id=int(activity["season_id"]))
+    activity["calculated_training_load"] = round(float(calculated_load["load_value"]), 2)
+    activity["calculated_training_load_source"] = calculated_load["load_source"]
     return activity
 
 
@@ -729,6 +732,9 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
     rows = ensure_entity_exists(rows, f"No se encontraron actividades para la temporada {season_id}.")
     zone_summaries = list_activity_zone_summaries([int(row["activity_id"]) for row in rows])
     for row in rows:
+        calculated_load = compute_activity_load(row, season_id=int(row["season_id"]))
+        row["calculated_training_load"] = round(float(calculated_load["load_value"]), 2)
+        row["calculated_training_load_source"] = calculated_load["load_source"]
         row["zone_summary"] = zone_summaries.get(int(row["activity_id"]), {})
     return rows
 

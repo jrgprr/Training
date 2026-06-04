@@ -318,6 +318,8 @@ type ActivityDetail = {
   avg_power: number | null;
   normalized_power: number | null;
   training_load: number | null;
+  calculated_training_load: number;
+  calculated_training_load_source: string;
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
   subjective_feeling: string | null;
@@ -399,6 +401,8 @@ type ActivityListItem = {
   avg_power: number | null;
   normalized_power: number | null;
   training_load: number | null;
+  calculated_training_load: number;
+  calculated_training_load_source: string;
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
   subjective_feeling: string | null;
@@ -1506,8 +1510,33 @@ function toPowerSummary(activity: ActivityDetail) {
   return parts.length > 0 ? parts.join(" · ") : "-";
 }
 
-function toTrainingLoadHeading(activity: ActivityDetail) {
-  return activity.source_system === "garmin" ? "Carga Garmin" : "Carga";
+function toTrainingLoadHeading(_activity: Pick<ActivityDetail, "source_system" | "calculated_training_load_source">) {
+  return "Carga usada en modelo";
+}
+
+function toTrainingLoadSourceLabel(source: string | null | undefined) {
+  if (source === "power_tss") {
+    return "Fuente: Power TSS";
+  }
+  if (source === "hr_trimp") {
+    return "Fuente: HR TRIMP";
+  }
+  if (source === "respiration_rate_heuristic") {
+    return "Fuente: heuristica por respiracion";
+  }
+  if (source === "strength_duration_heuristic") {
+    return "Fuente: heuristica por duracion de fuerza";
+  }
+  if (source === "mobility_duration_heuristic") {
+    return "Fuente: heuristica por duracion de movilidad";
+  }
+  if (source === "garmin_training_load") {
+    return "Fuente: fallback Garmin";
+  }
+  if (source === "no_load_signal") {
+    return "Fuente: sin senal util de carga";
+  }
+  return "Fuente: calculo interno";
 }
 
 function isPaceDiscipline(discipline: string | null) {
@@ -3057,7 +3086,7 @@ export default function App() {
                   {activity.distance_meters != null ? <span>{toMetricLabel(activity.distance_meters / 1000, " km")}</span> : null}
                   {activity.avg_hr != null ? <span>FC: {toMetricLabel(activity.avg_hr, " ppm")}</span> : null}
                   {activity.avg_power != null ? <span>Potencia: {toMetricLabel(activity.avg_power, " W")}</span> : null}
-                  {activity.training_load != null ? <span>{toTrainingLoadHeading(activity as ActivityDetail)}: {toMetricLabel(activity.training_load)}</span> : null}
+                  {activity.calculated_training_load != null ? <span>{toTrainingLoadHeading(activity)}: {toMetricLabel(activity.calculated_training_load)} · {toTrainingLoadSourceLabel(activity.calculated_training_load_source)}</span> : null}
                   <span>Actividad #{activity.activity_id}</span>
                 </div>
 
@@ -3290,7 +3319,7 @@ export default function App() {
                 <article className="dashboard-card">
                   <span className="dashboard-label">Desviacion de carga</span>
                   <strong>
-                    {volumeDeltaMinutes === 0 ? "En linea" : `${volumeDeltaMinutes > 0 ? "+" : "-"}${Math.abs(volumeDeltaMinutes)} min`}
+                    {volumeDeltaMinutes === 0 ? "En linea" : `${volumeDeltaMinutes > 0 ? "+" : "-"}${toHoursLabel(Math.abs(volumeDeltaMinutes))}`}
                   </strong>
                   <p>{weeklySummary.actualMinutes === 0 ? "Sin ejecucion registrada aun." : `Contra una referencia media de ${toHoursLabel(plannedReferenceMinutes)}.`}</p>
                 </article>
@@ -3712,7 +3741,7 @@ export default function App() {
                 {isHeartRateRelevant(selectedActivity) ? <article><span>FC media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_hr, " bpm")} / ${toMetricLabel(selectedActivity.max_hr, " bpm")}`}</strong></article> : null}
                 {selectedActivity.avg_respiration_rate != null || selectedActivity.max_respiration_rate != null ? <article><span>Resp media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_respiration_rate, " rpm resp")} / ${toMetricLabel(selectedActivity.max_respiration_rate, " rpm resp")}`}</strong></article> : null}
                 {isPowerRelevant(selectedActivity) ? <article><span>Potencia</span><strong>{toPowerSummary(selectedActivity)}</strong></article> : null}
-                {selectedActivity.training_load != null ? <article><span>{toTrainingLoadHeading(selectedActivity)}</span><strong>{toMetricLabel(selectedActivity.training_load)}</strong></article> : null}
+                {selectedActivity.calculated_training_load != null ? <article><span>{toTrainingLoadHeading(selectedActivity)}</span><strong>{toMetricLabel(selectedActivity.calculated_training_load)}</strong><small>{toTrainingLoadSourceLabel(selectedActivity.calculated_training_load_source)}</small></article> : null}
                 {selectedActivity.avg_pace_seconds_per_km != null && isPaceDiscipline(selectedActivity.discipline) ? <article><span>Ritmo medio</span><strong>{toPaceLabel(selectedActivity.avg_pace_seconds_per_km)}</strong></article> : null}
                 <article><span>RPE</span><strong>{toMetricLabel(selectedActivity.perceived_exertion)}</strong></article>
                 <article><span>Sesion planificada</span><strong>{selectedActivity.planned_session_id ?? "-"}</strong></article>

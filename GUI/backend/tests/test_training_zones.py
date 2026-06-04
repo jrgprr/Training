@@ -561,6 +561,8 @@ class TrainingZoneSchemaTests(unittest.TestCase):
                 payload = get_season_activities(2026)
 
         self.assertEqual(len(payload), 1)
+        self.assertIn("calculated_training_load", payload[0])
+        self.assertIn("calculated_training_load_source", payload[0])
         self.assertIn("zone_summary", payload[0])
         self.assertEqual(payload[0]["zone_summary"]["heart_rate"]["dominant_zone_code"], "Z2")
         self.assertEqual(payload[0]["zone_summary"]["heart_rate"]["zone_profile_id"], 12)

@@ -106,9 +106,27 @@ class GarminImportStorage:
         return discipline
 
     @staticmethod
-    def _planned_session_families(planned_type: str | None, primary_session: str | None) -> set[str]:
+    def _infer_families_from_text(*texts: str | None) -> set[str]:
+        normalized_text = " ".join((text or "").strip().lower() for text in texts if text)
+        if not normalized_text:
+            return set()
+
+        families: set[str] = set()
+        if "fuerza" in normalized_text or "core" in normalized_text:
+            families.add("strength_training")
+        if "bicicleta" in normalized_text:
+            families.add("cycling")
+        if "monte" in normalized_text or "sender" in normalized_text:
+            families.add("hiking")
+        if "paseo" in normalized_text or "caminar" in normalized_text:
+            families.add("walking")
+        if "correr" in normalized_text or "running" in normalized_text:
+            families.add("running")
+        return families
+
+    @classmethod
+    def _planned_session_families(cls, planned_type: str | None, primary_session: str | None) -> set[str]:
         normalized_planned_type = (planned_type or "").strip().lower()
-        normalized_primary_session = (primary_session or "").strip().lower()
 
         families_by_planned_type = {
             "bicicleta-z2": {"cycling"},
@@ -119,19 +137,26 @@ class GarminImportStorage:
             "recuperacion": {"walking", "cycling"},
             "complementaria": {"walking", "cycling", "hiking"},
         }
-        if normalized_planned_type in families_by_planned_type:
-            return families_by_planned_type[normalized_planned_type]
+        inferred_families = cls._infer_families_from_text(primary_session)
+        if inferred_families:
+            return inferred_families
+        return families_by_planned_type.get(normalized_planned_type, set())
 
-        inferred_families: set[str] = set()
-        if "fuerza" in normalized_primary_session:
-            inferred_families.add("strength_training")
-        if "bicicleta" in normalized_primary_session:
-            inferred_families.add("cycling")
-        if "monte" in normalized_primary_session or "sender" in normalized_primary_session:
-            inferred_families.add("hiking")
-        if "paseo" in normalized_primary_session or "caminar" in normalized_primary_session:
-            inferred_families.add("walking")
-        return inferred_families
+    @classmethod
+    def _planned_session_support_families(
+        cls,
+        planned_type: str | None,
+        objective: str | None,
+        complementary_session: str | None,
+    ) -> set[str]:
+        normalized_planned_type = (planned_type or "").strip().lower()
+        if normalized_planned_type == "fuerza":
+            return set()
+
+        support_families = cls._infer_families_from_text(complementary_session, objective)
+        if "strength_training" in support_families:
+            return {"strength_training"}
+        return set()
 
     @staticmethod
     def _pick_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -185,7 +210,8 @@ class GarminImportStorage:
 
         unlinked_sessions = connection.execute(
             f"""
-            SELECT ps.planned_session_id, ps.session_date, ps.planned_type, ps.primary_session
+            SELECT ps.planned_session_id, ps.session_date, ps.planned_type, ps.objective,
+                   ps.primary_session, ps.complementary_session
             FROM plan_planned_sessions ps
             JOIN plan_micro_weeks w ON w.week_id = ps.week_id
             JOIN plan_meso_blocks b ON b.block_id = w.block_id
@@ -256,35 +282,46 @@ class GarminImportStorage:
             inserted += 1
 
         for planned_session in unlinked_sessions:
-            target_families = self._planned_session_families(
-                planned_session["planned_type"],
-                planned_session["primary_session"],
-            )
-            if not target_families:
-                continue
-
-            compatible_candidates = [
-                candidate
-                for candidate in candidates_by_date.get(planned_session["session_date"], [])
-                if self._discipline_family(candidate.get("discipline")) in target_families
-            ]
-            candidate = self._pick_preferred_candidate(compatible_candidates)
-            if candidate is None:
-                continue
-
-            connection.execute(
-                """
-                INSERT INTO link_plan_execution (
-                    planned_session_id, activity_id, link_type, compliance_status, rationale
-                ) VALUES (?, ?, 'garmin_auto', 'completed', ?)
-                """,
-                (
-                    planned_session["planned_session_id"],
-                    candidate["activity_id"],
-                    "Autoenlace Garmin por fecha y familia de disciplina.",
+            target_groups = [
+                self._planned_session_families(
+                    planned_session["planned_type"],
+                    planned_session["primary_session"],
                 ),
-            )
-            inserted += 1
+                self._planned_session_support_families(
+                    planned_session["planned_type"],
+                    planned_session["objective"],
+                    planned_session["complementary_session"],
+                ),
+            ]
+            used_activity_ids: set[int] = set()
+            for target_families in target_groups:
+                if not target_families:
+                    continue
+
+                compatible_candidates = [
+                    candidate
+                    for candidate in candidates_by_date.get(planned_session["session_date"], [])
+                    if self._discipline_family(candidate.get("discipline")) in target_families
+                    and candidate.get("activity_id") not in used_activity_ids
+                ]
+                candidate = self._pick_preferred_candidate(compatible_candidates)
+                if candidate is None:
+                    continue
+
+                connection.execute(
+                    """
+                    INSERT INTO link_plan_execution (
+                        planned_session_id, activity_id, link_type, compliance_status, rationale
+                    ) VALUES (?, ?, 'garmin_auto', 'completed', ?)
+                    """,
+                    (
+                        planned_session["planned_session_id"],
+                        candidate["activity_id"],
+                        "Autoenlace Garmin por fecha y familia de disciplina.",
+                    ),
+                )
+                used_activity_ids.add(candidate["activity_id"])
+                inserted += 1
 
         return (inserted, retained)
 
