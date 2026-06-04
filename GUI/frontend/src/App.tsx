@@ -724,6 +724,8 @@ if (false) {
     avg_power: 250,
     normalized_power: 265,
     training_load: 90,
+    calculated_training_load: 95,
+    calculated_training_load_source: "power_tss",
     avg_pace_seconds_per_km: null,
     perceived_exertion: 7,
     subjective_feeling: null,
@@ -1356,6 +1358,23 @@ function toDisciplineLabel(discipline: string | null) {
   return labels[discipline] ?? discipline;
 }
 
+function toPlannedTypeLabel(plannedType: string | null) {
+  if (!plannedType) {
+    return "-";
+  }
+
+  const labels: Record<string, string> = {
+    activacion: "Fuerza",
+    "bicicleta-z2": "Bicicleta Z2",
+    complementaria: "Complementaria",
+    fuerza: "Fuerza",
+    recuperacion: "Recuperacion",
+    "referencia-aerobica": "Referencia aerobica",
+    "salida-larga": "Salida larga",
+  };
+  return labels[plannedType] ?? plannedType;
+}
+
 function toSourceLabel(sourceSystem: string) {
   if (sourceSystem === "garmin") {
     return "Garmin Connect";
@@ -1449,7 +1468,7 @@ function getOtherDailyActivities(row: PlanVsRealRow): DailyUnlinkedActivity[] {
 
 function toOptionalDailyLabel(activity: OptionalDailyActivity) {
   if (activity.actual_discipline === "strength_training") {
-    return "Activacion opcional";
+    return "Fuerza opcional";
   }
   if (activity.actual_discipline === "yoga") {
     return "Flexibilidad opcional";
@@ -2456,7 +2475,7 @@ export default function App() {
     actualMinutes: Math.round(planVsRealRows.reduce((total, row) => total + (row.actual_duration_min ?? 0), 0)),
   };
   const optionalDailyActivities = planVsRealRows.flatMap((row) => row.optional_daily_activities ?? []);
-  const optionalActivationCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "strength_training").length;
+  const optionalStrengthCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "strength_training").length;
   const optionalFlexibilityCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "yoga").length;
   const optionalDailyMinutes = Math.round(optionalDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const otherDailyActivities = planVsRealRows.flatMap((row) => row.other_daily_activities ?? []);
@@ -2523,7 +2542,7 @@ export default function App() {
     `Volumen real ${volumeStatus}: ${toHoursLabel(weeklySummary.actualMinutes)} frente a una referencia de ${toHoursLabel(plannedReferenceMinutes)}.`,
     `Carga total registrada: ${toHoursLabel(totalLoadMinutes)} (${toHoursLabel(weeklySummary.actualMinutes)} del plan + ${toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} en actividades no planificadas).`,
     optionalDailyActivities.length > 0
-      ? `Extras diarios: ${optionalActivationCount} activaciones y ${optionalFlexibilityCount} sesiones de flexibilidad (${toHoursLabel(optionalDailyMinutes)}).`
+      ? `Extras diarios: ${optionalStrengthCount} sesiones de fuerza y ${optionalFlexibilityCount} sesiones de flexibilidad (${toHoursLabel(optionalDailyMinutes)}).`
       : "Sin extras diarios opcionales registrados en la semana.",
     otherDailyActivities.length > 0
       ? `Otras actividades ejecutadas: ${otherDailyActivities.length} (${toHoursLabel(otherDailyMinutes)}).`
@@ -3195,7 +3214,7 @@ export default function App() {
                         <strong>{session.day_name}</strong>
                         <small>{session.session_date}</small>
                       </td>
-                      <td>{session.planned_type}</td>
+                      <td>{toPlannedTypeLabel(session.planned_type)}</td>
                       <td>{session.objective}</td>
                       <td>{session.primary_session}</td>
                       <td>
@@ -3282,7 +3301,7 @@ export default function App() {
                 <article>
                   <strong>{optionalDailyActivities.length}</strong>
                   <span>Extras diarios</span>
-                  <small>{optionalActivationCount} activacion · {optionalFlexibilityCount} flexibilidad</small>
+                  <small>{optionalStrengthCount} fuerza · {optionalFlexibilityCount} flexibilidad</small>
                 </article>
                 <article>
                   <strong>{weeklyReview?.zone_comparison_summary?.items.length ?? 0}</strong>
@@ -3391,7 +3410,7 @@ export default function App() {
                           <small>{row.session_date}</small>
                         </td>
                         <td>
-                          <strong>{row.planned_type}</strong>
+                          <strong>{toPlannedTypeLabel(row.planned_type)}</strong>
                           <small>{row.planned_session}</small>
                           {row.zone_comparison && row.zone_comparison.length > 0 ? (
                             <div className="zone-chip-list">
@@ -3520,7 +3539,7 @@ export default function App() {
                 Carga total registrada: {toHoursLabel(totalLoadMinutes)}. De ese total, {toHoursLabel(weeklySummary.actualMinutes)} corresponden a sesiones del plan y {toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} a actividades fuera del plan.
               </p>
               <p>
-                Opcionales diarios: {optionalDailyActivities.length === 0 ? 'sin registro adicional.' : `${optionalActivationCount} activaciones y ${optionalFlexibilityCount} sesiones de flexibilidad, con ${optionalDailyMinutes} minutos acumulados.`}
+                Opcionales diarios: {optionalDailyActivities.length === 0 ? 'sin registro adicional.' : `${optionalStrengthCount} sesiones de fuerza y ${optionalFlexibilityCount} sesiones de flexibilidad, con ${optionalDailyMinutes} minutos acumulados.`}
               </p>
               <p>
                 Otras actividades ejecutadas: {otherDailyActivities.length === 0 ? 'sin actividad extra registrada.' : `${otherDailyActivities.length} actividades no enlazadas, con ${otherDailyMinutes} minutos acumulados.`}

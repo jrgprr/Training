@@ -156,6 +156,92 @@ class GarminConnectCliTests(unittest.TestCase):
 
 
 class GarminImportStorageAutoLinkTests(unittest.TestCase):
+    def test_auto_link_treats_activation_support_as_strength(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ):
+                initialize_database()
+                storage = GarminImportStorage()
+
+                with storage_module_connection(database_path) as connection:
+                    create_minimal_exec_tables(connection)
+                    connection.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS plan_meso_blocks (
+                            block_id INTEGER PRIMARY KEY,
+                            season_id INTEGER NOT NULL
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_micro_weeks (
+                            week_id INTEGER PRIMARY KEY,
+                            block_id INTEGER NOT NULL,
+                            start_date TEXT,
+                            end_date TEXT
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_planned_sessions (
+                            planned_session_id INTEGER PRIMARY KEY,
+                            week_id INTEGER NOT NULL,
+                            session_date TEXT NOT NULL,
+                            planned_type TEXT,
+                            objective TEXT,
+                            primary_session TEXT,
+                            complementary_session TEXT
+                        );
+                        CREATE TABLE IF NOT EXISTS link_plan_execution (
+                            link_id INTEGER PRIMARY KEY,
+                            planned_session_id INTEGER NOT NULL,
+                            activity_id INTEGER NOT NULL,
+                            link_type TEXT NOT NULL,
+                            compliance_status TEXT,
+                            rationale TEXT
+                        );
+                        """
+                    )
+                    connection.execute("INSERT INTO plan_meso_blocks (block_id, season_id) VALUES (?, ?)", (1, 2026))
+                    connection.execute(
+                        "INSERT INTO plan_micro_weeks (week_id, block_id, start_date, end_date) VALUES (?, ?, ?, ?)",
+                        (101, 1, "2026-05-04", "2026-05-10"),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO plan_planned_sessions (
+                            planned_session_id, week_id, session_date, planned_type, objective, primary_session, complementary_session
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            10101,
+                            101,
+                            "2026-05-04",
+                            "activacion",
+                            "Abrir la semana con fuerza ligera y sin fatiga.",
+                            "Paseo 45-60 minutos o descanso activo.",
+                            "Pecho, triceps y hombro 15-20 minutos.",
+                        ),
+                    )
+                    connection.executemany(
+                        """
+                        INSERT INTO exec_activities (
+                            activity_id, season_id, source_system, external_activity_id, activity_date, started_at, discipline,
+                            activity_type, duration_seconds
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            (1, 2026, "garmin", "walk-1", "2026-05-04", "2026-05-04 08:00:00", "walking", "Caminar", 3200),
+                            (2, 2026, "garmin", "strength-1", "2026-05-04", "2026-05-04 09:00:00", "strength_training", "Fuerza", 1200),
+                        ],
+                    )
+
+                    inserted, retained = storage._auto_link_garmin_activities(connection, 2026, ["2026-05-04"])
+
+                    self.assertEqual((inserted, retained), (2, 0))
+                    rows = connection.execute(
+                        "SELECT activity_id FROM link_plan_execution WHERE planned_session_id = ? ORDER BY activity_id",
+                        (10101,),
+                    ).fetchall()
+
+                self.assertEqual([row["activity_id"] for row in rows], [1, 2])
+
     def test_auto_link_treats_planned_core_as_strength_support(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "training.sqlite"

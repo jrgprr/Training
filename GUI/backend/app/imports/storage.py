@@ -112,8 +112,26 @@ class GarminImportStorage:
             return set()
 
         families: set[str] = set()
-        if "fuerza" in normalized_text or "core" in normalized_text:
+        strength_keywords = {
+            "fuerza",
+            "core",
+            "pecho",
+            "triceps",
+            "hombro",
+            "espalda",
+            "biceps",
+            "pierna",
+            "piernas",
+            "gluteo",
+            "gluteos",
+            "torso",
+        }
+        flexibility_keywords = {"yoga", "flexibilidad", "elasticidad"}
+
+        if any(keyword in normalized_text for keyword in strength_keywords):
             families.add("strength_training")
+        if any(keyword in normalized_text for keyword in flexibility_keywords):
+            families.add("yoga")
         if "bicicleta" in normalized_text:
             families.add("cycling")
         if "monte" in normalized_text or "sender" in normalized_text:
@@ -154,9 +172,7 @@ class GarminImportStorage:
             return set()
 
         support_families = cls._infer_families_from_text(complementary_session, objective)
-        if "strength_training" in support_families:
-            return {"strength_training"}
-        return set()
+        return {family for family in support_families if family in {"strength_training", "yoga"}}
 
     @staticmethod
     def _pick_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
