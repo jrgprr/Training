@@ -465,6 +465,26 @@ type ActivityQualityDetail = {
   metrics: ActivityQualityMetric[];
 };
 
+type RunningDynamicsHistoryItem = {
+  activity_id: number;
+  activity_date: string;
+  started_at: string | null;
+  discipline: string | null;
+  activity_type: string | null;
+  duration_seconds: number | null;
+  avg_pace_seconds_per_km: number | null;
+  avg_hr: number | null;
+  metrics: Record<string, number>;
+};
+
+type RunningDynamicsHistoryResponse = {
+  activity_id: number;
+  discipline: string | null;
+  compared_activity_count: number;
+  baseline_metrics: Record<string, number>;
+  history: RunningDynamicsHistoryItem[];
+};
+
 type ActivityQualityReplayResponse = {
   activity_id: number;
   quality_status: string | null;
@@ -1584,9 +1604,23 @@ function isRunningDynamicsMetric(metricName: string) {
   return RUNNING_DYNAMICS_METRIC_ORDER.includes(metricName as (typeof RUNNING_DYNAMICS_METRIC_ORDER)[number]);
 }
 
+function normalizeRunningDynamicsMetricValue(metricName: string, value: number | null) {
+  if (value == null) {
+    return null;
+  }
+  if (metricName === "stride_length" && value > 10) {
+    return value / 100;
+  }
+  return value;
+}
+
 function getQualitySummaryValue(metric: ActivityQualityMetric, summaryKind = "average") {
   const summary = metric.summary_impacts.find((item) => item.summary_kind === summaryKind);
-  return summary?.trusted_value ?? null;
+  return normalizeRunningDynamicsMetricValue(metric.metric_name, summary?.trusted_value ?? null);
+}
+
+function getRunningDynamicsBaselineValue(history: RunningDynamicsHistoryResponse | null, metricName: string) {
+  return normalizeRunningDynamicsMetricValue(metricName, history?.baseline_metrics[metricName] ?? null);
 }
 
 function getRunningDynamicsMetrics(detail: ActivityQualityDetail | null) {
@@ -1695,6 +1729,59 @@ function buildRunningDynamicsInsights(activity: ActivityDetail, detail: Activity
   }
 
   return insights;
+}
+
+function buildRunningDynamicsHistoryInsights(detail: ActivityQualityDetail | null, history: RunningDynamicsHistoryResponse | null) {
+  if (!detail || !history || history.compared_activity_count === 0) {
+    return [];
+  }
+
+  const metricMap = new Map(getRunningDynamicsMetrics(detail).map((metric) => [metric.metric_name, metric]));
+  const current = (metricName: string) => {
+    const metric = metricMap.get(metricName);
+    return metric ? getQualitySummaryValue(metric) : null;
+  };
+  const baseline = (metricName: string) => getRunningDynamicsBaselineValue(history, metricName);
+
+  const insights: string[] = [];
+
+  const cadenceDelta = (current("cadence_double") ?? 0) - (baseline("cadence_double") ?? 0);
+  if (current("cadence_double") != null && baseline("cadence_double") != null && Math.abs(cadenceDelta) >= 4) {
+    insights.push(
+      cadenceDelta > 0
+        ? `Cadencia total ${formatQualityMetricValue("cadence_double", Math.abs(cadenceDelta))} por encima de tu base reciente.`
+        : `Cadencia total ${formatQualityMetricValue("cadence_double", Math.abs(cadenceDelta))} por debajo de tu base reciente.`,
+    );
+  }
+
+  const contactDelta = (current("ground_contact_time") ?? 0) - (baseline("ground_contact_time") ?? 0);
+  if (current("ground_contact_time") != null && baseline("ground_contact_time") != null && Math.abs(contactDelta) >= 10) {
+    insights.push(
+      contactDelta > 0
+        ? `Tiempo de contacto ${formatQualityMetricValue("ground_contact_time", Math.abs(contactDelta))} por encima de tu base reciente.`
+        : `Tiempo de contacto ${formatQualityMetricValue("ground_contact_time", Math.abs(contactDelta))} por debajo de tu base reciente.`,
+    );
+  }
+
+  const verticalRatioDelta = (current("vertical_ratio") ?? 0) - (baseline("vertical_ratio") ?? 0);
+  if (current("vertical_ratio") != null && baseline("vertical_ratio") != null && Math.abs(verticalRatioDelta) >= 0.5) {
+    insights.push(
+      verticalRatioDelta > 0
+        ? `Ratio vertical ${formatQualityMetricValue("vertical_ratio", Math.abs(verticalRatioDelta))} por encima de tu base reciente.`
+        : `Ratio vertical ${formatQualityMetricValue("vertical_ratio", Math.abs(verticalRatioDelta))} por debajo de tu base reciente.`,
+    );
+  }
+
+  const strideDelta = (current("stride_length") ?? 0) - (baseline("stride_length") ?? 0);
+  if (current("stride_length") != null && baseline("stride_length") != null && Math.abs(strideDelta) >= 0.05) {
+    insights.push(
+      strideDelta > 0
+        ? `Longitud de zancada ${formatQualityMetricValue("stride_length", Math.abs(strideDelta))} por encima de tu base reciente.`
+        : `Longitud de zancada ${formatQualityMetricValue("stride_length", Math.abs(strideDelta))} por debajo de tu base reciente.`,
+    );
+  }
+
+  return insights.slice(0, 3);
 }
 
 function isDistanceRelevant(activity: ActivityDetail) {
@@ -1900,49 +1987,50 @@ function formatZoneBoundaryLabel(boundary: ZoneProfileBoundary) {
 }
 
 function formatQualityMetricValue(metricName: string, value: number | null) {
+  const normalizedValue = normalizeRunningDynamicsMetricValue(metricName, value);
   if (metricName === "heart_rate") {
-    return toMetricLabel(value, " bpm");
+    return toMetricLabel(normalizedValue, " bpm");
   }
   if (metricName === "respiration_rate") {
-    return toMetricLabel(value, " rpm resp");
+    return toMetricLabel(normalizedValue, " rpm resp");
   }
   if (metricName === "power") {
-    return toMetricLabel(value, " W");
+    return toMetricLabel(normalizedValue, " W");
   }
   if (metricName === "bike_cadence") {
-    return toMetricLabel(value, " rpm");
+    return toMetricLabel(normalizedValue, " rpm");
   }
   if (metricName === "run_cadence") {
-    return toMetricLabel(value, " rpm");
+    return toMetricLabel(normalizedValue, " rpm");
   }
   if (metricName === "cadence_double") {
-    return toMetricLabel(value, " spm");
+    return toMetricLabel(normalizedValue, " spm");
   }
   if (metricName === "cadence_fractional") {
-    return toMetricLabel(value);
+    return toMetricLabel(normalizedValue);
   }
   if (metricName === "vertical_ratio") {
-    return toMetricLabel(value, "%");
+    return toMetricLabel(normalizedValue, "%");
   }
   if (metricName === "ground_contact_time") {
-    return toMetricLabel(value, " ms");
+    return toMetricLabel(normalizedValue, " ms");
   }
   if (metricName === "ground_contact_balance_left") {
-    return toMetricLabel(value, "% izq");
+    return toMetricLabel(normalizedValue, "% izq");
   }
   if (metricName === "vertical_oscillation") {
-    return toMetricLabel(value, " cm");
+    return toMetricLabel(normalizedValue, " cm");
   }
   if (metricName === "stride_length") {
-    return toMetricLabel(value, " m");
+    return toMetricLabel(normalizedValue, " m");
   }
   if (metricName === "air_temperature") {
-    return toMetricLabel(value, " C");
+    return toMetricLabel(normalizedValue, " C");
   }
   if (metricName === "speed" || metricName === "vertical_speed") {
-    return toMetricLabel(value, " m/s");
+    return toMetricLabel(normalizedValue, " m/s");
   }
-  return toMetricLabel(value);
+  return toMetricLabel(normalizedValue);
 }
 
 function formatMetricProfileModelLabel(modelKey: string | null | undefined) {
@@ -2108,6 +2196,7 @@ export default function App() {
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityDetail | null>(null);
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
+  const [selectedActivityRunningDynamicsHistory, setSelectedActivityRunningDynamicsHistory] = useState<RunningDynamicsHistoryResponse | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
   const [zoneProposals, setZoneProposals] = useState<ZoneProposalItem[]>([]);
   const [currentZoneProfiles, setCurrentZoneProfiles] = useState<CurrentZoneProfilesResponse | null>(null);
@@ -2333,6 +2422,7 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
+      setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
       setSelectedDailyMetric(null);
@@ -2435,6 +2525,7 @@ export default function App() {
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
+      setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
       setWeeks([]);
@@ -2467,6 +2558,7 @@ export default function App() {
       setSelectedWeek(week);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
+      setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
       const [sessionData, comparisonData, reviewData] = await Promise.all([
@@ -2619,9 +2711,15 @@ export default function App() {
       setLoadingActivity(true);
       setLoadingActivityQuality(true);
       setError(null);
-      const [activity, quality] = await Promise.all([
+      const [activity, quality, runningDynamicsHistory] = await Promise.all([
         fetchJson<ActivityDetail>(`/api/activities/${activityId}`),
         fetchJson<ActivityQualityDetail>(`/api/activities/${activityId}/quality`).catch((requestError) => {
+          if (isNotFoundError(requestError)) {
+            return null;
+          }
+          throw requestError;
+        }),
+        fetchJson<RunningDynamicsHistoryResponse>(`/api/activities/${activityId}/running-dynamics-history`).catch((requestError) => {
           if (isNotFoundError(requestError)) {
             return null;
           }
@@ -2630,6 +2728,7 @@ export default function App() {
       ]);
       setSelectedActivity(activity);
       setSelectedActivityQuality(quality);
+      setSelectedActivityRunningDynamicsHistory(runningDynamicsHistory);
       setSelectedDailyMetricDate(activity.activity_date);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
@@ -3973,6 +4072,7 @@ export default function App() {
               {(() => {
                 const runningDynamicsMetrics = getRunningDynamicsMetrics(selectedActivityQuality);
                 const runningDynamicsInsights = buildRunningDynamicsInsights(selectedActivity, selectedActivityQuality);
+                const runningDynamicsHistoryInsights = buildRunningDynamicsHistoryInsights(selectedActivityQuality, selectedActivityRunningDynamicsHistory);
                 return runningDynamicsMetrics.length > 0 ? (
                   <div className="activity-dynamics-card panel-subcard">
                     <div className="activity-dynamics-head">
@@ -3980,21 +4080,40 @@ export default function App() {
                         <strong>Running dynamics</strong>
                         <p className="activity-dynamics-copy">Metricas tecnicas expuestas por Garmin para esta actividad, usando los valores limpios persistidos en SQLite.</p>
                       </div>
+                      {selectedActivityRunningDynamicsHistory?.compared_activity_count ? <span className="status-pill status-pill-ready">Base {selectedActivityRunningDynamicsHistory.compared_activity_count} sesiones</span> : null}
                     </div>
 
                     <div className="activity-dynamics-grid">
-                      {runningDynamicsMetrics.map((metric) => (
-                        <article key={`running-dynamics-${metric.metric_name}`}>
-                          <span>{formatMetricNameLabel(metric.metric_name)}</span>
-                          <strong>{formatQualityMetricValue(metric.metric_name, getQualitySummaryValue(metric))}</strong>
-                        </article>
-                      ))}
+                      {runningDynamicsMetrics.map((metric) => {
+                        const baselineValue = getRunningDynamicsBaselineValue(selectedActivityRunningDynamicsHistory, metric.metric_name);
+                        return (
+                          <article key={`running-dynamics-${metric.metric_name}`}>
+                            <span>{formatMetricNameLabel(metric.metric_name)}</span>
+                            <strong>{formatQualityMetricValue(metric.metric_name, getQualitySummaryValue(metric))}</strong>
+                            {baselineValue != null && selectedActivityRunningDynamicsHistory?.compared_activity_count ? (
+                              <small className="activity-dynamics-baseline">Base reciente ({selectedActivityRunningDynamicsHistory.compared_activity_count}): {formatQualityMetricValue(metric.metric_name, baselineValue)}</small>
+                            ) : null}
+                          </article>
+                        );
+                      })}
                     </div>
+
+                    {selectedActivityRunningDynamicsHistory?.compared_activity_count ? (
+                      <p className="activity-dynamics-history-note">Comparativa construida con carreras previas comparables de la misma temporada.</p>
+                    ) : null}
 
                     {runningDynamicsInsights.length > 0 ? (
                       <div className="activity-dynamics-insights">
                         {runningDynamicsInsights.map((insight, index) => (
                           <p key={`running-dynamics-insight-${index}`}>{insight}</p>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {runningDynamicsHistoryInsights.length > 0 ? (
+                      <div className="activity-dynamics-insights">
+                        {runningDynamicsHistoryInsights.map((insight, index) => (
+                          <p key={`running-dynamics-history-insight-${index}`}>{insight}</p>
                         ))}
                       </div>
                     ) : null}

@@ -113,6 +113,118 @@ def load_metric_readings(connection: sqlite3.Connection, activity_id: int, metri
     )
 
 
+RUNNING_DYNAMICS_METRICS = (
+    "cadence_double",
+    "run_cadence",
+    "ground_contact_time",
+    "ground_contact_balance_left",
+    "vertical_oscillation",
+    "vertical_ratio",
+    "stride_length",
+    "performance_condition",
+)
+
+
+def get_summary_value(
+    summaries: dict[tuple[str, str], dict[str, Any]], metric_name: str, summary_kind: str = "average"
+) -> float | None:
+    row = summaries.get((metric_name, summary_kind))
+    if not row:
+        return None
+    trusted_value = row.get("trusted_value")
+    if trusted_value in (None, 0):
+        return None
+    normalized_value = float(trusted_value)
+    if metric_name == "stride_length" and normalized_value > 10:
+        normalized_value /= 100.0
+    return normalized_value
+
+
+def build_running_dynamics_summary(
+    activity: dict[str, Any], summaries: dict[tuple[str, str], dict[str, Any]]
+) -> dict[str, Any] | None:
+    discipline = str(activity.get("discipline") or "").lower()
+    if discipline not in RUNNING_DISCIPLINES:
+        return None
+
+    values = {metric_name: get_summary_value(summaries, metric_name) for metric_name in RUNNING_DYNAMICS_METRICS}
+    available = {metric_name: value for metric_name, value in values.items() if value is not None}
+    if not available:
+        return None
+
+    cadence_double = values.get("cadence_double")
+    run_cadence = values.get("run_cadence")
+    total_cadence = cadence_double if cadence_double is not None else (run_cadence * 2 if run_cadence is not None else None)
+    ground_contact_time = values.get("ground_contact_time")
+    balance_left = values.get("ground_contact_balance_left")
+    vertical_ratio = values.get("vertical_ratio")
+    stride_length = values.get("stride_length")
+    performance_condition = values.get("performance_condition")
+
+    notes: list[str] = []
+    flags: list[str] = []
+
+    if total_cadence is not None:
+        if total_cadence < 160:
+            notes.append(f"Cadence {total_cadence:.1f} spm suggests a relatively slow turnover for running.")
+        elif total_cadence <= 180:
+            notes.append(f"Cadence {total_cadence:.1f} spm sits in a functional aerobic range.")
+        else:
+            notes.append(f"Cadence {total_cadence:.1f} spm is high and compatible with quick support.")
+
+    if ground_contact_time is not None:
+        if ground_contact_time > 300:
+            flags.append("contact_long")
+            notes.append(f"Ground contact time {ground_contact_time:.0f} ms looks long and may reflect heavier support.")
+        elif ground_contact_time < 250:
+            notes.append(f"Ground contact time {ground_contact_time:.0f} ms stays short.")
+
+    if balance_left is not None:
+        asymmetry = abs(balance_left - 50)
+        if asymmetry > 2:
+            flags.append("contact_asymmetry")
+            notes.append(f"Ground contact balance shows {asymmetry:.1f}% left-right asymmetry.")
+        elif asymmetry <= 1:
+            notes.append("Ground contact balance is very even.")
+
+    if vertical_ratio is not None:
+        if vertical_ratio > 10:
+            flags.append("bounce_high")
+            notes.append(f"Vertical ratio {vertical_ratio:.1f}% is relatively high for the forward speed generated.")
+        elif vertical_ratio < 8.5:
+            notes.append(f"Vertical ratio {vertical_ratio:.1f}% keeps bounce contained.")
+
+    if stride_length is not None:
+        notes.append(f"Stride length averaged {stride_length:.2f} m.")
+
+    if performance_condition is not None:
+        if performance_condition <= -3:
+            flags.append("performance_condition_low")
+            notes.append(f"Performance condition {performance_condition:.1f} points to a negative freshness signal.")
+        elif performance_condition >= 2:
+            notes.append(f"Performance condition {performance_condition:.1f} points to a positive freshness signal.")
+
+    full_block_metrics = (
+        "ground_contact_time",
+        "ground_contact_balance_left",
+        "vertical_oscillation",
+        "vertical_ratio",
+        "stride_length",
+    )
+    full_block_available = sum(1 for metric_name in full_block_metrics if values.get(metric_name) is not None)
+    status = "partial" if full_block_available < len(full_block_metrics) else "available"
+    if status == "partial":
+        notes.append("Garmin did not expose the full running dynamics block for this activity.")
+
+    return {
+        "status": status,
+        "available_metric_count": len(available),
+        "metrics": available,
+        "flags": flags,
+        "notes": notes,
+    }
+
+
 def load_zone_results(connection: sqlite3.Connection, activity_id: int) -> list[dict[str, Any]]:
     return fetch_all(
         connection,
@@ -342,6 +454,9 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         metric_sources.append("respiration_rate")
     if zone_results:
         metric_sources.append("zones")
+    running_dynamics = build_running_dynamics_summary(activity, summaries)
+    if running_dynamics is not None:
+        metric_sources.append("running_dynamics")
 
     quality_status = str(activity.get("quality_status") or "unavailable")
     quality_notes = []
@@ -395,6 +510,7 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         "dominant_hr_zone": dominant_hr_zone,
         "dominant_power_zone": dominant_power_zone,
         "zone_execution_notes": zone_execution_notes,
+        "running_dynamics": running_dynamics,
         "efficiency_flags": efficiency_flags,
         "metric_verdict": build_metric_verdict(execution_vs_plan, intensity_execution, aerobic_status, pacing_status, late_session_fade),
         "coaching_implication": build_coaching_implication(execution_vs_plan, aerobic_status, efficiency_flags),

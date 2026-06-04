@@ -803,6 +803,13 @@ textarea {
   font-size: 0.84rem;
 }
 
+.activity-dynamics-baseline,
+.activity-dynamics-history-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .activity-dynamics-insights {
   display: grid;
   gap: 8px;

@@ -20,6 +20,17 @@ app = FastAPI(title="Training System GUI API", version="0.2.0")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 WEEKLY_ASSESSMENT_ROOT_NAME = "Weekly-Assessment-Logbook"
+RUNNING_DISCIPLINES = {"running", "trail_running", "track_running", "treadmill_running"}
+RUNNING_DYNAMICS_METRIC_NAMES = (
+    "cadence_double",
+    "run_cadence",
+    "ground_contact_time",
+    "ground_contact_balance_left",
+    "vertical_oscillation",
+    "vertical_ratio",
+    "stride_length",
+    "performance_condition",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,6 +62,127 @@ def ensure_entity_exists(rows: list[dict[str, Any]], message: str) -> list[dict[
     if not rows:
         raise HTTPException(status_code=404, detail=message)
     return rows
+
+
+def normalize_running_dynamics_metric_value(metric_name: str, value: float) -> float:
+    if metric_name == "stride_length" and value > 10:
+        return value / 100.0
+    return value
+
+
+def get_activity_running_dynamics_history(activity_id: int, limit: int = 5) -> dict[str, Any] | None:
+    activity = fetch_one(
+        """
+        SELECT activity_id, season_id, activity_date, started_at, discipline
+        FROM exec_activities
+        WHERE activity_id = ?
+        """,
+        (activity_id,),
+    )
+    if activity is None:
+        return None
+
+    discipline = str(activity.get("discipline") or "").lower()
+    if discipline not in RUNNING_DISCIPLINES:
+        return {
+            "activity_id": activity_id,
+            "discipline": activity.get("discipline"),
+            "compared_activity_count": 0,
+            "baseline_metrics": {},
+            "history": [],
+        }
+
+    discipline_placeholders = ",".join("?" for _ in RUNNING_DISCIPLINES)
+    candidates = fetch_all(
+        f"""
+        SELECT ea.activity_id, ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
+               ea.duration_seconds, ea.avg_pace_seconds_per_km, ea.avg_hr
+        FROM exec_activities ea
+        WHERE ea.season_id = ?
+          AND ea.activity_id != ?
+          AND ea.discipline IN ({discipline_placeholders})
+          AND (
+            ea.activity_date < ?
+            OR (ea.activity_date = ? AND COALESCE(ea.started_at, '') < COALESCE(?, ''))
+          )
+        ORDER BY ea.activity_date DESC, COALESCE(ea.started_at, ea.activity_date) DESC, ea.activity_id DESC
+        LIMIT ?
+        """,
+        (
+            int(activity["season_id"]),
+            activity_id,
+            *sorted(RUNNING_DISCIPLINES),
+            str(activity["activity_date"]),
+            str(activity["activity_date"]),
+            activity.get("started_at"),
+            max(limit * 3, limit),
+        ),
+    )
+    if not candidates:
+        return {
+            "activity_id": activity_id,
+            "discipline": activity.get("discipline"),
+            "compared_activity_count": 0,
+            "baseline_metrics": {},
+            "history": [],
+        }
+
+    candidate_ids = [int(row["activity_id"]) for row in candidates]
+    metric_placeholders = ",".join("?" for _ in RUNNING_DYNAMICS_METRIC_NAMES)
+    id_placeholders = ",".join("?" for _ in candidate_ids)
+    summary_rows = fetch_all(
+        f"""
+        SELECT activity_id, metric_name, trusted_value
+        FROM exec_activity_metric_summaries
+        WHERE activity_id IN ({id_placeholders})
+          AND summary_kind = 'average'
+          AND metric_name IN ({metric_placeholders})
+          AND trusted_value IS NOT NULL
+        """,
+        tuple(candidate_ids) + RUNNING_DYNAMICS_METRIC_NAMES,
+    )
+
+    summaries_by_activity: dict[int, dict[str, float]] = {}
+    for row in summary_rows:
+        activity_metrics = summaries_by_activity.setdefault(int(row["activity_id"]), {})
+        activity_metrics[str(row["metric_name"])] = normalize_running_dynamics_metric_value(
+            str(row["metric_name"]), float(row["trusted_value"])
+        )
+
+    history: list[dict[str, Any]] = []
+    for row in candidates:
+        metrics = summaries_by_activity.get(int(row["activity_id"]), {})
+        if not metrics:
+            continue
+        history.append(
+            {
+                "activity_id": int(row["activity_id"]),
+                "activity_date": row["activity_date"],
+                "started_at": row["started_at"],
+                "discipline": row["discipline"],
+                "activity_type": row["activity_type"],
+                "duration_seconds": row["duration_seconds"],
+                "avg_pace_seconds_per_km": row["avg_pace_seconds_per_km"],
+                "avg_hr": row["avg_hr"],
+                "metrics": metrics,
+            }
+        )
+        if len(history) >= limit:
+            break
+
+    baseline_metrics: dict[str, float] = {}
+    for metric_name in RUNNING_DYNAMICS_METRIC_NAMES:
+        values = [float(item["metrics"][metric_name]) for item in history if metric_name in item["metrics"]]
+        if values:
+            baseline_metrics[metric_name] = round(sum(values) / len(values), 4)
+
+    return {
+        "activity_id": activity_id,
+        "discipline": activity.get("discipline"),
+        "compared_activity_count": len(history),
+        "baseline_metrics": baseline_metrics,
+        "history": history,
+    }
 
 
 def get_daily_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
@@ -851,6 +983,18 @@ def get_activity_quality_endpoint(activity_id: int) -> dict[str, Any]:
     if quality is None:
         raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
     return quality
+
+
+@app.get("/api/activities/{activity_id}/running-dynamics-history")
+def get_activity_running_dynamics_history_endpoint(activity_id: int, limit: int = 5) -> dict[str, Any]:
+    if limit <= 0:
+        raise HTTPException(status_code=400, detail="limit debe ser mayor que 0.")
+    if limit > 20:
+        raise HTTPException(status_code=400, detail="limit no puede ser mayor que 20.")
+    history = get_activity_running_dynamics_history(activity_id, limit=limit)
+    if history is None:
+        raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
+    return history
 
 
 @app.post("/api/activities/{activity_id}/quality/replay")

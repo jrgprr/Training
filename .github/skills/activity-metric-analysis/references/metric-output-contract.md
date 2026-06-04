@@ -13,7 +13,7 @@ Return a compact JSON-like analysis block conceptually shaped as follows.
 
 - `quality_status`: clean, limited, unreliable, or unavailable
 - `quality_notes`: key caveats
-- `metric_sources`: heart_rate, power, pace, respiration_rate, zones, segments
+- `metric_sources`: heart_rate, power, pace, respiration_rate, zones, segments, running_dynamics
 
 ## Execution Versus Plan
 
@@ -71,6 +71,22 @@ Suggested labels:
 - `hr_suppressed`
 - `hr_elevated`
 - `durability_good`
+
+## Optional Running Dynamics
+
+When the activity is a running session and Garmin exposed the metrics credibly, you may add:
+
+- `running_dynamics.status`: available, partial, or unavailable
+- `running_dynamics.available_metric_count`
+- `running_dynamics.metrics`: compact metric dictionary using stored average values
+- `running_dynamics.flags`: short labels for notable mechanical signals
+- `running_dynamics.notes`: concise observed facts, not long prose
+
+Interpretation guidance:
+
+- Prefer cadence, ground contact time, vertical ratio, stride length, and performance condition first.
+- Mark the block as `partial` when Garmin omitted the full mechanical set.
+- Keep the notes observational and let the coaching summary decide overall significance.
 
 ## Coaching Summary
 

@@ -16,6 +16,12 @@ RULE_SET_VERSION = "bad_reading_filter/v1"
 HEART_RATE_HARD_CAP = 235.0
 
 
+def _normalize_descriptor_metric_value(metric_name: str, raw_value: float) -> float:
+    if metric_name == "stride_length" and raw_value > 10:
+        return raw_value / 100.0
+    return raw_value
+
+
 @dataclass(slots=True)
 class ActivityQualityDecision:
     metric_name: str
@@ -174,11 +180,12 @@ def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | Non
             raw_value = metrics[metric_index]
             if not isinstance(raw_value, (int, float)) or isinstance(raw_value, bool):
                 continue
+            normalized_value = _normalize_descriptor_metric_value(metric_name, float(raw_value))
             readings.append(
                 NormalizedMetricReading(
                     metric_name=metric_name,
                     sample_index=sample_index_by_metric[metric_name],
-                    raw_value=float(raw_value),
+                    raw_value=normalized_value,
                     recorded_at=recorded_at,
                     elapsed_seconds=elapsed_seconds,
                 )

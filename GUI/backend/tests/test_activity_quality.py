@@ -7,15 +7,33 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from app.activity_quality import RULE_SET_VERSION, get_activity_quality
+from app.activity_quality import RULE_SET_VERSION, get_activity_quality, normalize_metric_readings_from_activity_detail
 from app.db import initialize_database
 from app.imports.contracts import GarminImportBatch, GarminImportRequest, ImportFetchMetadata, NormalizedActivity, NormalizedMetricReading
 from app.imports.garmin_connect import GarminConnectAdapter
 from app.imports.storage import GarminImportStorage
-from app.main import ActivityQualityReplayPayload, replay_activity_quality_endpoint
+from app.main import ActivityQualityReplayPayload, get_activity_running_dynamics_history_endpoint, replay_activity_quality_endpoint
 
 
 class ActivityQualityAdapterTests(unittest.TestCase):
+    def test_normalize_activity_detail_converts_stride_length_to_meters(self) -> None:
+        readings = normalize_metric_readings_from_activity_detail(
+            {
+                "metricDescriptors": [
+                    {"metricsIndex": 0, "key": "directTimestamp"},
+                    {"metricsIndex": 1, "key": "sumElapsedDuration"},
+                    {"metricsIndex": 2, "key": "directStrideLength"},
+                ],
+                "activityDetailMetrics": [
+                    {"metrics": [0, 0, 112]},
+                ],
+            }
+        )
+
+        self.assertEqual(len(readings), 1)
+        self.assertEqual(readings[0].metric_name, "stride_length")
+        self.assertAlmostEqual(readings[0].raw_value, 1.12, places=2)
+
     def test_fetch_activities_extracts_running_dynamics_metric_readings(self) -> None:
         adapter = GarminConnectAdapter()
         request = GarminImportRequest(
@@ -179,6 +197,69 @@ class ActivityQualityAdapterTests(unittest.TestCase):
 
 
 class ActivityQualityStorageTests(unittest.TestCase):
+    def test_running_dynamics_history_endpoint_returns_normalized_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ):
+                initialize_database()
+                create_minimal_exec_tables(database_path)
+                with storage_connection(database_path) as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activities (
+                            activity_id, season_id, source_system, external_activity_id, activity_date, started_at,
+                            discipline, activity_type, duration_seconds, avg_hr, avg_pace_seconds_per_km
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (1, 2026, "garmin", "a1", "2026-05-30", "2026-05-30T08:00:00", "running", "Run A", 3600, 145, 360),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activities (
+                            activity_id, season_id, source_system, external_activity_id, activity_date, started_at,
+                            discipline, activity_type, duration_seconds, avg_hr, avg_pace_seconds_per_km
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (2, 2026, "garmin", "a2", "2026-05-29", "2026-05-29T08:00:00", "running", "Run B", 3500, 142, 370),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activity_quality_runs (
+                            quality_run_id, activity_id, rule_set_key, rule_set_version, source_reading_fingerprint,
+                            evaluated_metric_names, skipped_metric_names, evaluated_reading_count, excluded_reading_count,
+                            limited_metric_count, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (1, 2, "bad_reading_filter", RULE_SET_VERSION, "fingerprint-2", "[]", "[]", 10, 0, 0, "clean"),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activity_metric_summaries (
+                            activity_id, quality_run_id, metric_name, summary_kind, source_value, trusted_value, summary_status,
+                            evaluated_reading_count, accepted_reading_count, excluded_reading_count, changed_by_filter
+                        ) VALUES (?, ?, ?, 'average', ?, ?, 'clean', 10, 10, 0, 0)
+                        """,
+                        (2, 1, "stride_length", 104.0, 104.0),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO exec_activity_metric_summaries (
+                            activity_id, quality_run_id, metric_name, summary_kind, source_value, trusted_value, summary_status,
+                            evaluated_reading_count, accepted_reading_count, excluded_reading_count, changed_by_filter
+                        ) VALUES (?, ?, ?, 'average', ?, ?, 'clean', 10, 10, 0, 0)
+                        """,
+                        (2, 1, "ground_contact_time", 278.0, 278.0),
+                    )
+                    connection.commit()
+
+                payload = get_activity_running_dynamics_history_endpoint(1, limit=5)
+
+                self.assertEqual(payload["compared_activity_count"], 1)
+                self.assertAlmostEqual(payload["baseline_metrics"]["stride_length"], 1.04, places=2)
+                self.assertAlmostEqual(payload["history"][0]["metrics"]["stride_length"], 1.04, places=2)
+
     def test_persist_batch_stores_running_dynamics_metric_names(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "training.sqlite"
