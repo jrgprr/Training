@@ -31,6 +31,13 @@ RUNNING_DISCIPLINES = {
     "treadmill_running",
 }
 
+WALKING_DISCIPLINES = {
+    "walking",
+    "hiking",
+    "trail_walking",
+    "nordic_walking",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute a compact activity-metric analysis block from stored activity data.")
@@ -219,6 +226,7 @@ def classify_duration_vs_plan(activity: dict[str, Any]) -> tuple[str, int | None
 def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], dict[str, Any]], hr_readings: list[dict[str, Any]], power_readings: list[dict[str, Any]], zone_results: list[dict[str, Any]]) -> dict[str, Any]:
     discipline = str(activity.get("discipline") or "").lower()
     is_running = discipline in RUNNING_DISCIPLINES
+    is_pace_endurance = discipline in RUNNING_DISCIPLINES or discipline in WALKING_DISCIPLINES
     avg_hr = float(activity["avg_hr"]) if activity.get("avg_hr") not in (None, 0) else None
     max_hr = float(activity["max_hr"]) if activity.get("max_hr") not in (None, 0) else None
     avg_power = float(activity["avg_power"]) if activity.get("avg_power") not in (None, 0) else None
@@ -301,7 +309,7 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         else:
             power_hr_relationship = "decoupled"
         relationship_notes = f"Based on HR-power decoupling of {hr_power_decoupling_percent:.2f}%."
-    elif is_running and avg_pace_formatted and hr_drift_percent is not None:
+    elif is_pace_endurance and avg_pace_formatted and hr_drift_percent is not None:
         absolute_drift = abs(hr_drift_percent)
         if absolute_drift < 5:
             power_hr_relationship = "aligned"
@@ -345,11 +353,11 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         quality_notes.append("Stored quality status indicates clean usable data.")
 
     analysis_scope = "power_plus_hr" if hr_values and power_values else "hr_only" if hr_values else "summary_only"
-    if is_running and hr_values and avg_pace_formatted:
+    if is_pace_endurance and hr_values and avg_pace_formatted:
         analysis_scope = "pace_plus_hr"
 
     plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; planned text: {activity.get('primary_session') or 'n/a'}." if activity.get("planned_session_id") else "No linked planned session."
-    if is_running and avg_pace_formatted:
+    if is_pace_endurance and avg_pace_formatted:
         if activity.get("planned_session_id"):
             plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; planned text: {activity.get('primary_session') or 'n/a'}; observed average pace {avg_pace_formatted}."
         else:

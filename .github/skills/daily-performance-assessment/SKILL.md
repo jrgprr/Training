@@ -26,7 +26,7 @@ This skill packages the workflow, script, and reference material needed to asses
 4. Apply the sport-specific interpretation rules in:
    [sport-specific-rules.md](./references/sport-specific-rules.md)
 5. If the evidence bundle already includes `activity_metric_analysis`, treat that as the default structured technical read for the dominant endurance session.
-6. When the dominant session is cycling or running but `activity_metric_analysis` is absent, or when execution quality is still unclear, load the `activity-metric-analysis` skill and incorporate its structured outputs.
+6. When the dominant endurance session is cycling, running, or a meaningful walking-like session but `activity_metric_analysis` is absent, or when execution quality is still unclear, load the `activity-metric-analysis` skill and incorporate its structured outputs.
 7. Format the answer using:
    [day-assessment-template.md](./assets/day-assessment-template.md)
 
@@ -39,7 +39,8 @@ This skill packages the workflow, script, and reference material needed to asses
 - Acute and chronic load context.
 - Weekly context when available.
 - Quality and zone evidence when available.
-- Activity-level metric interpretation, preferring `activity_metric_analysis` from the day context when available and falling back to the support skill when a deeper cycling or running read is justified.
+- Activity-level metric interpretation, preferring `activity_metric_analysis` from the day context when available and falling back to the support skill when a deeper endurance read is justified.
+- Treat `walking`, `hiking`, `trail_walking`, and `nordic_walking` as eligible only when they exceed 45 minutes or 50 modeled load.
 
 ## Decision Rules
 

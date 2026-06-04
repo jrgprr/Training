@@ -1,6 +1,6 @@
 ---
 name: activity-metric-analysis
-description: 'Analyze activity-level metrics for cycling or running sessions. Use for heart-rate and power review, pacing stability, decoupling, execution-vs-plan analysis, efficiency flags, and deeper ride or run interpretation inside a daily assessment.'
+description: 'Analyze activity-level metrics for endurance sessions. Use for heart-rate and power review, pacing stability, decoupling, execution-vs-plan analysis, efficiency flags, and deeper ride, run, or meaningful walk interpretation inside a daily assessment.'
 user-invocable: false
 ---
 
@@ -10,7 +10,8 @@ This skill defines when and how to deepen a daily assessment with activity-level
 
 ## When To Use
 
-- The main session is cycling or running.
+- The main session is cycling, running, or a walking-like session with meaningful duration or modeled load.
+- Walking-like Garmin labels include `walking`, `hiking`, `trail_walking`, and `nordic_walking`.
 - The session was long enough or important enough to drive the day meaningfully.
 - The planned intent and observed execution may not match.
 - There are signs of pacing drift, excessive effort, unusual restraint, or durability issues.
@@ -18,7 +19,8 @@ This skill defines when and how to deepen a daily assessment with activity-level
 
 ## When Not To Use
 
-- The day was dominated by walking, yoga, or short strength work.
+- The day was dominated by yoga or short strength work.
+- The walking-like session stayed below the explicit trigger threshold: under 45 minutes and under 50 modeled load.
 - The available metrics are too sparse or low-quality to support interpretation.
 - The daily decision is already obvious from plan, physiology, and load alone.
 

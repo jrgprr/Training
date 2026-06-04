@@ -508,6 +508,7 @@ DISCIPLINE_ALIASES = {
     "bicicleta": "road_biking",
     "caminar": "walking",
     "fuerza": "strength_training",
+    "marcha nordica": "nordic_walking",
     "paseo": "walking",
     "senderismo": "hiking",
 }
@@ -540,13 +541,14 @@ def normalize_existing_manual_activity_disciplines(connection: sqlite3.Connectio
             WHEN 'bicicleta' THEN 'road_biking'
             WHEN 'caminar' THEN 'walking'
             WHEN 'fuerza' THEN 'strength_training'
+                        WHEN 'marcha nordica' THEN 'nordic_walking'
             WHEN 'paseo' THEN 'walking'
             WHEN 'senderismo' THEN 'hiking'
             ELSE lower(trim(discipline))
         END
         WHERE source_system LIKE 'manual%'
           AND discipline IS NOT NULL
-          AND lower(trim(discipline)) IN ('bicicleta', 'caminar', 'fuerza', 'paseo', 'senderismo')
+                    AND lower(trim(discipline)) IN ('bicicleta', 'caminar', 'fuerza', 'marcha nordica', 'paseo', 'senderismo')
         """
     )
 

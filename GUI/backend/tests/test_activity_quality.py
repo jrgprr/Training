@@ -16,6 +16,28 @@ from app.main import ActivityQualityReplayPayload, replay_activity_quality_endpo
 
 
 class ActivityQualityAdapterTests(unittest.TestCase):
+    def test_normalize_activity_derives_pace_for_trail_walking(self) -> None:
+        adapter = GarminConnectAdapter()
+
+        activity = adapter._normalize_activity(
+            {
+                "activityId": 456,
+                "startTimeLocal": "2026-05-06T08:00:00",
+                "activityName": "Trail Walking",
+                "activityTypeDTO": {"typeKey": "trail_walking"},
+                "summaryDTO": {
+                    "duration": 3600,
+                    "distance": 6500,
+                    "averageSpeed": 1.8,
+                    "averageHR": 118,
+                    "maxHR": 132,
+                },
+            }
+        )
+
+        self.assertEqual(activity.discipline, "trail_walking")
+        self.assertAlmostEqual(activity.avg_pace_seconds_per_km, 555.56, places=2)
+
     def test_fetch_activities_extracts_metric_readings_from_activity_detail_stream(self) -> None:
         adapter = GarminConnectAdapter()
         request = GarminImportRequest(

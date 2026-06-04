@@ -338,6 +338,36 @@ class LoadEngineTests(unittest.TestCase):
         self.assertEqual(result["load_source"], "hr_trimp")
         self.assertAlmostEqual(result["load_value"], 145.67, places=2)
 
+    def test_compute_activity_load_uses_hr_trimp_for_trail_walking(self) -> None:
+        original_fetch = load_engine._fetch_anchor_profile
+        try:
+            def fake_fetch(*, metric_basis: str, **_: object):
+                if metric_basis == "heart_rate":
+                    return {"resting_hr": 50.0, "max_hr": 174.0}
+                return None
+
+            load_engine._fetch_anchor_profile = fake_fetch
+            result = load_engine.compute_activity_load(
+                {
+                    "activity_date": "2026-06-02",
+                    "started_at": None,
+                    "discipline": "trail_walking",
+                    "activity_type": "Trail Walking",
+                    "duration_seconds": 3600,
+                    "avg_hr": 135,
+                    "avg_power": None,
+                    "normalized_power": None,
+                    "training_load": 1.5,
+                    "perceived_exertion": None,
+                },
+                season_id=2026,
+            )
+        finally:
+            load_engine._fetch_anchor_profile = original_fetch
+
+        self.assertEqual(result["load_source"], "hr_trimp")
+        self.assertGreater(result["load_value"], 0)
+
     def test_load_model_snapshot_reports_tsb_from_same_day_atl_ctl(self) -> None:
         snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-03")
 

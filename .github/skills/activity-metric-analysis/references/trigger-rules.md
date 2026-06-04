@@ -4,7 +4,8 @@ Run deeper activity-metric analysis only when one or more of these conditions ho
 
 ## Mandatory Triggers
 
-- The day contains a cycling or running session that was the main training stimulus.
+- The day contains a cycling, running, or meaningfully long walking-like session that was the main training stimulus.
+- Walking-like sessions (`walking`, `hiking`, `trail_walking`, `nordic_walking`) qualify only when they last at least 45 minutes or reach at least 50 modeled load.
 - The user explicitly asks for technical analysis of HR, power, pacing, or execution quality.
 
 ## Strong Triggers

@@ -9,7 +9,7 @@ from .db import get_connection
 
 
 CYCLING_DISCIPLINES = {"cycling", "road_biking", "indoor_cycling", "mountain_biking"}
-WALKING_DISCIPLINES = {"walking", "hiking"}
+WALKING_DISCIPLINES = {"walking", "hiking", "trail_walking", "nordic_walking"}
 ENDURANCE_DISCIPLINES = CYCLING_DISCIPLINES | {"running", "treadmill_running"} | WALKING_DISCIPLINES
 STRENGTH_DISCIPLINES = {"strength_training"}
 MOBILITY_DISCIPLINES = {"yoga"}

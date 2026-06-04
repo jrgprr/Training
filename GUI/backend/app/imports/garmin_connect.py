@@ -134,7 +134,9 @@ class GarminConnectConfiguration:
 class GarminConnectAdapter:
     PACE_DISCIPLINES = {
         "hiking",
+        "nordic_walking",
         "running",
+        "trail_walking",
         "trail_running",
         "walking",
     }

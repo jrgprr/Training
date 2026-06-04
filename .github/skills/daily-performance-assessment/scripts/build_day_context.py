@@ -25,7 +25,13 @@ ENDURANCE_DISCIPLINES = {
     "trail_running",
     "track_running",
     "treadmill_running",
+    "walking",
+    "hiking",
+    "trail_walking",
+    "nordic_walking",
 }
+
+WALKING_LIKE_DISCIPLINES = {"walking", "hiking", "trail_walking", "nordic_walking"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -146,20 +152,24 @@ def select_metric_analysis_activity(day_activities: list[dict[str, Any]], linked
     candidates.sort(
         key=lambda activity: (
             int(activity["activity_id"]) in linked_activity_ids,
-            float(activity.get("training_load") or 0),
+            float(activity.get("modeled_load_value") or 0),
             float(activity.get("duration_seconds") or 0),
         ),
         reverse=True,
     )
     selected = candidates[0]
+    selected_discipline = str(selected.get("discipline") or "").lower()
 
     reasons: list[str] = ["dominant_endurance_session"]
     if int(selected["activity_id"]) in linked_activity_ids:
         reasons.append("linked_to_planned_session")
     if float(selected.get("duration_seconds") or 0) >= 45 * 60:
         reasons.append("meaningful_duration")
-    if float(selected.get("training_load") or 0) >= 50:
-        reasons.append("meaningful_load")
+    if float(selected.get("modeled_load_value") or 0) >= 50:
+        reasons.append("meaningful_modeled_load")
+
+    if selected_discipline in WALKING_LIKE_DISCIPLINES and len(reasons) == 1:
+        return None, []
 
     if len(reasons) == 1:
         return None, []
@@ -178,6 +188,23 @@ def load_activity_metric_analysis(connection: sqlite3.Connection, activity_id: i
     finally:
         if scripts_path in sys.path:
             sys.path.remove(scripts_path)
+
+
+def load_activity_modeled_load(connection: sqlite3.Connection, activity_id: int, season_id: int) -> dict[str, Any] | None:
+    backend_path = str(REPO_ROOT / "GUI" / "backend")
+    try:
+        sys.path.insert(0, backend_path)
+        from app.load_engine import compute_activity_load  # type: ignore
+
+        activity_row = connection.execute("SELECT * FROM exec_activities WHERE activity_id = ?", (activity_id,)).fetchone()
+        if activity_row is None:
+            return None
+        return compute_activity_load(dict(activity_row), season_id=season_id)
+    except Exception:  # pragma: no cover - defensive fallback for runtime environments
+        return None
+    finally:
+        if backend_path in sys.path:
+            sys.path.remove(backend_path)
 
 
 def main() -> int:
@@ -325,6 +352,10 @@ def main() -> int:
 
     for activity in day_activities:
         activity["zone_summaries"] = zone_summaries.get(int(activity["activity_id"]), [])
+        modeled_load = load_activity_modeled_load(connection, int(activity["activity_id"]), season_id)
+        if modeled_load is not None:
+            activity["modeled_load_value"] = modeled_load.get("load_value")
+            activity["modeled_load_source"] = modeled_load.get("load_source")
     for activity in recent_activities:
         activity["zone_summaries"] = zone_summaries.get(int(activity["activity_id"]), [])
 
