@@ -16,6 +16,83 @@ from app.main import ActivityQualityReplayPayload, replay_activity_quality_endpo
 
 
 class ActivityQualityAdapterTests(unittest.TestCase):
+    def test_fetch_activities_extracts_running_dynamics_metric_readings(self) -> None:
+        adapter = GarminConnectAdapter()
+        request = GarminImportRequest(
+            season_id=2026,
+            date_from="2026-05-30",
+            date_to="2026-05-30",
+            include_daily_metrics=False,
+        )
+
+        class FakeClient:
+            def get_activities_by_date(self, date_from, date_to, sortorder="asc"):
+                return [
+                    {
+                        "activityId": 23065909925,
+                        "startTimeLocal": "2026-05-30T08:00:00",
+                        "activityName": "Elorrio Carrera",
+                        "activityTypeDTO": {"typeKey": "running"},
+                        "summaryDTO": {"duration": 3600, "distance": 10000, "averageHR": 150, "maxHR": 165},
+                    }
+                ]
+
+            def connectapi(self, path):
+                if path == "/segment-service/segment/list/23065909925":
+                    return []
+                if path == "/activity-service/activity/23065909925/details":
+                    return {
+                        "metricDescriptors": [
+                            {"metricsIndex": 0, "key": "directTimestamp"},
+                            {"metricsIndex": 1, "key": "sumElapsedDuration"},
+                            {"metricsIndex": 2, "key": "directHeartRate"},
+                            {"metricsIndex": 3, "key": "directRunCadence"},
+                            {"metricsIndex": 4, "key": "directDoubleCadence"},
+                            {"metricsIndex": 5, "key": "directFractionalCadence"},
+                            {"metricsIndex": 6, "key": "directVerticalRatio"},
+                            {"metricsIndex": 7, "key": "directGroundContactTime"},
+                            {"metricsIndex": 8, "key": "directGroundContactBalanceLeft"},
+                            {"metricsIndex": 9, "key": "directVerticalOscillation"},
+                            {"metricsIndex": 10, "key": "directStrideLength"},
+                            {"metricsIndex": 11, "key": "directPerformanceCondition"},
+                        ],
+                        "activityDetailMetrics": [
+                            {"metrics": [0, 0, 145, 86, 172, 0.3, 6.8, 248, 49.7, 8.7, 1.12, -2]},
+                            {"metrics": [1_000, 1, 147, 87, 174, 0.5, 6.9, 246, 50.1, 8.8, 1.14, -1]},
+                        ],
+                    }
+                raise AssertionError(f"unexpected path: {path}")
+
+            def get_activity_details(self, activity_id):
+                return {}
+
+            def download_activity(self, activity_id, _format):
+                return b"fake-tcx"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            adapter.configuration.artifacts_path = temp_dir
+            activities, artifact_paths, artifact_failures = adapter._fetch_activities(FakeClient(), request)
+
+        self.assertEqual(len(activities), 1)
+        self.assertEqual(len(artifact_paths), 1)
+        self.assertEqual(artifact_failures, 0)
+
+        metric_names = {reading.metric_name for reading in activities[0].metric_readings}
+        self.assertTrue(
+            {
+                "heart_rate",
+                "run_cadence",
+                "cadence_double",
+                "cadence_fractional",
+                "vertical_ratio",
+                "ground_contact_time",
+                "ground_contact_balance_left",
+                "vertical_oscillation",
+                "stride_length",
+                "performance_condition",
+            }.issubset(metric_names)
+        )
+
     def test_normalize_activity_derives_pace_for_trail_walking(self) -> None:
         adapter = GarminConnectAdapter()
 
@@ -102,6 +179,87 @@ class ActivityQualityAdapterTests(unittest.TestCase):
 
 
 class ActivityQualityStorageTests(unittest.TestCase):
+    def test_persist_batch_stores_running_dynamics_metric_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.object(GarminImportStorage, "_auto_link_garmin_activities", return_value=(0, 0)):
+                initialize_database()
+                create_minimal_exec_tables(database_path)
+                storage = GarminImportStorage()
+
+                batch = GarminImportBatch(
+                    request=GarminImportRequest(
+                        season_id=2026,
+                        date_from="2026-05-30",
+                        date_to="2026-05-30",
+                        include_daily_metrics=False,
+                    ),
+                    metadata=ImportFetchMetadata(
+                        source_system="garmin",
+                        source_label="garminconnect",
+                        date_from="2026-05-30",
+                        date_to="2026-05-30",
+                        notes=["running dynamics batch"],
+                    ),
+                    activities=[
+                        NormalizedActivity(
+                            external_activity_id="23065909925",
+                            activity_date="2026-05-30",
+                            started_at="2026-05-30T08:00:00",
+                            discipline="running",
+                            activity_type="Elorrio Carrera",
+                            duration_seconds=3600,
+                            distance_meters=10000,
+                            ascent_meters=120,
+                            calories=650,
+                            avg_hr=150,
+                            max_hr=165,
+                            avg_power=None,
+                            normalized_power=None,
+                            training_load=60,
+                            avg_pace_seconds_per_km=330,
+                            metric_readings=[
+                                NormalizedMetricReading(metric_name="run_cadence", sample_index=0, raw_value=86),
+                                NormalizedMetricReading(metric_name="cadence_double", sample_index=0, raw_value=172),
+                                NormalizedMetricReading(metric_name="cadence_fractional", sample_index=0, raw_value=0.3),
+                                NormalizedMetricReading(metric_name="vertical_ratio", sample_index=0, raw_value=6.8),
+                                NormalizedMetricReading(metric_name="ground_contact_time", sample_index=0, raw_value=248),
+                                NormalizedMetricReading(metric_name="ground_contact_balance_left", sample_index=0, raw_value=49.7),
+                                NormalizedMetricReading(metric_name="vertical_oscillation", sample_index=0, raw_value=8.7),
+                                NormalizedMetricReading(metric_name="stride_length", sample_index=0, raw_value=1.12),
+                                NormalizedMetricReading(metric_name="performance_condition", sample_index=0, raw_value=-2),
+                            ],
+                        )
+                    ],
+                    daily_metrics=[],
+                )
+
+                storage.persist_batch(batch)
+
+                with storage_connection(database_path) as connection:
+                    metric_names = {
+                        row["metric_name"]
+                        for row in connection.execute(
+                            "SELECT DISTINCT metric_name FROM exec_activity_metric_readings WHERE activity_id = 1"
+                        ).fetchall()
+                    }
+
+                self.assertTrue(
+                    {
+                        "run_cadence",
+                        "cadence_double",
+                        "cadence_fractional",
+                        "vertical_ratio",
+                        "ground_contact_time",
+                        "ground_contact_balance_left",
+                        "vertical_oscillation",
+                        "stride_length",
+                        "performance_condition",
+                    }.issubset(metric_names)
+                )
+
     def test_persist_batch_filters_hr_spike_and_reuses_quality_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "training.sqlite"

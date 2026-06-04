@@ -127,7 +127,20 @@ def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | Non
         "directHeartRate": "heart_rate",
         "directPower": "power",
         "directBikeCadence": "bike_cadence",
+        "directRunCadence": "run_cadence",
+        "directDoubleCadence": "cadence_double",
+        "directFractionalCadence": "cadence_fractional",
         "directRespirationRate": "respiration_rate",
+        "directVerticalRatio": "vertical_ratio",
+        "directGroundContactTime": "ground_contact_time",
+        "directGroundContactBalanceLeft": "ground_contact_balance_left",
+        "directVerticalOscillation": "vertical_oscillation",
+        "directStrideLength": "stride_length",
+        "directPerformanceCondition": "performance_condition",
+        "directAirTemperature": "air_temperature",
+        "directSpeed": "speed",
+        "directElevation": "elevation",
+        "directVerticalSpeed": "vertical_speed",
     }
     sample_index_by_metric: dict[str, int] = {metric_name: 0 for metric_name in metric_keys.values()}
     readings: list[NormalizedMetricReading] = []

@@ -555,7 +555,8 @@ class GarminConnectAdapter:
 
         optional_keys = {
             "directPower": "power",
-            "directBikeCadence": "bike_cadence",
+            "directBikeCadence": "cadence",
+            "directRunCadence": "cadence",
             "directHeartRate": "heart_rate",
         }
 
@@ -719,7 +720,7 @@ class GarminConnectAdapter:
                     started_at=started_at,
                     elapsed_time_seconds=cls._normalize_integer(duration_seconds),
                     avg_power=average("power"),
-                    avg_cadence=average("bike_cadence"),
+                    avg_cadence=average("cadence"),
                     avg_heart_rate=average("heart_rate"),
                     max_heart_rate=max((point["heart_rate"] for point in window if "heart_rate" in point), default=None),
                     notes="reconstructed_from_activity_detail_stream" if occurrence_index >= 1 else None,

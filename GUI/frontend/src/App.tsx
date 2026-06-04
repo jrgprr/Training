@@ -1559,7 +1559,142 @@ function toTrainingLoadSourceLabel(source: string | null | undefined) {
 }
 
 function isPaceDiscipline(discipline: string | null) {
-  return discipline != null && ["running", "trail_running", "walking", "hiking"].includes(discipline);
+  return discipline != null && ["running", "trail_running", "treadmill_running", "walking", "hiking", "trail_walking", "nordic_walking"].includes(discipline);
+}
+
+const RUNNING_DYNAMICS_METRIC_ORDER = [
+  "cadence_double",
+  "run_cadence",
+  "ground_contact_time",
+  "ground_contact_balance_left",
+  "vertical_oscillation",
+  "vertical_ratio",
+  "stride_length",
+  "performance_condition",
+  "speed",
+  "vertical_speed",
+  "air_temperature",
+] as const;
+
+function isRunningDiscipline(discipline: string | null) {
+  return discipline != null && ["running", "trail_running", "treadmill_running"].includes(discipline);
+}
+
+function isRunningDynamicsMetric(metricName: string) {
+  return RUNNING_DYNAMICS_METRIC_ORDER.includes(metricName as (typeof RUNNING_DYNAMICS_METRIC_ORDER)[number]);
+}
+
+function getQualitySummaryValue(metric: ActivityQualityMetric, summaryKind = "average") {
+  const summary = metric.summary_impacts.find((item) => item.summary_kind === summaryKind);
+  return summary?.trusted_value ?? null;
+}
+
+function getRunningDynamicsMetrics(detail: ActivityQualityDetail | null) {
+  if (!detail) {
+    return [];
+  }
+  const metrics = detail.metrics.filter((metric) => isRunningDynamicsMetric(metric.metric_name));
+  metrics.sort((left, right) => {
+    const leftIndex = RUNNING_DYNAMICS_METRIC_ORDER.indexOf(left.metric_name as (typeof RUNNING_DYNAMICS_METRIC_ORDER)[number]);
+    const rightIndex = RUNNING_DYNAMICS_METRIC_ORDER.indexOf(right.metric_name as (typeof RUNNING_DYNAMICS_METRIC_ORDER)[number]);
+    return leftIndex - rightIndex;
+  });
+  return metrics;
+}
+
+function buildRunningDynamicsInsights(activity: ActivityDetail, detail: ActivityQualityDetail | null) {
+  const metrics = getRunningDynamicsMetrics(detail);
+  if (metrics.length === 0) {
+    return [];
+  }
+
+  const metricMap = new Map(metrics.map((metric) => [metric.metric_name, metric]));
+  const average = (metricName: string) => {
+    const metric = metricMap.get(metricName);
+    return metric ? getQualitySummaryValue(metric) : null;
+  };
+
+  const insights: string[] = [];
+  const cadenceDouble = average("cadence_double");
+  const runCadence = average("run_cadence");
+  const totalCadence = cadenceDouble ?? (runCadence != null ? runCadence * 2 : null);
+  if (totalCadence != null) {
+    if (isRunningDiscipline(activity.discipline)) {
+      if (totalCadence < 160) {
+        insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: apoyo relativamente pausado para carrera.`);
+      } else if (totalCadence <= 180) {
+        insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: rango funcional y estable para carrera aeróbica.`);
+      } else {
+        insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: frecuencia alta, compatible con apoyo rápido.`);
+      }
+    } else if (totalCadence < 110) {
+      insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: caminata relajada, más de paseo que de activación viva.`);
+    } else if (totalCadence <= 130) {
+      insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: caminata ágil y útil como locomoción aeróbica suave.`);
+    } else {
+      insights.push(`Cadencia total ${toMetricLabel(totalCadence, " spm")}: caminata muy viva, cercana a marcha rápida.`);
+    }
+  }
+
+  const groundContactTime = average("ground_contact_time");
+  if (groundContactTime != null) {
+    if (groundContactTime < 250) {
+      insights.push(`Tiempo de contacto ${toMetricLabel(groundContactTime, " ms")}: apoyo breve.`);
+    } else if (groundContactTime <= 300) {
+      insights.push(`Tiempo de contacto ${toMetricLabel(groundContactTime, " ms")}: apoyo intermedio, sin señal clara de pesadez.`);
+    } else {
+      insights.push(`Tiempo de contacto ${toMetricLabel(groundContactTime, " ms")}: apoyo largo, compatible con fatiga o gesto pesado.`);
+    }
+  }
+
+  const balanceLeft = average("ground_contact_balance_left");
+  if (balanceLeft != null) {
+    const asymmetry = Math.abs(balanceLeft - 50);
+    if (asymmetry <= 1) {
+      insights.push(`Balance de contacto ${toMetricLabel(balanceLeft, "% izq")}: reparto muy equilibrado.`);
+    } else if (asymmetry <= 2) {
+      insights.push(`Balance de contacto ${toMetricLabel(balanceLeft, "% izq")}: ligera asimetría, vigilable pero no alarmante.`);
+    } else {
+      insights.push(`Balance de contacto ${toMetricLabel(balanceLeft, "% izq")}: asimetría visible que conviene seguir.`);
+    }
+  }
+
+  const verticalRatio = average("vertical_ratio");
+  if (verticalRatio != null) {
+    if (verticalRatio < 8.5) {
+      insights.push(`Ratio vertical ${toMetricLabel(verticalRatio, "%")}: rebote contenido para la velocidad observada.`);
+    } else if (verticalRatio <= 10) {
+      insights.push(`Ratio vertical ${toMetricLabel(verticalRatio, "%")}: economía media, sin penalización clara.`);
+    } else {
+      insights.push(`Ratio vertical ${toMetricLabel(verticalRatio, "%")}: rebote relativamente alto para el avance generado.`);
+    }
+  }
+
+  const performanceCondition = average("performance_condition");
+  if (performanceCondition != null) {
+    if (performanceCondition >= 2) {
+      insights.push(`Performance condition ${toMetricLabel(performanceCondition)}: señal positiva de frescura.`);
+    } else if (performanceCondition <= -3) {
+      insights.push(`Performance condition ${toMetricLabel(performanceCondition)}: señal negativa, compatible con fatiga o mal día.`);
+    }
+  }
+
+  if (insights.length === 0) {
+    insights.push("Garmin ha entregado métricas de dinámica, pero en esta actividad solo aportan contexto descriptivo y no una señal técnica fuerte.");
+  }
+
+  const missingFullDynamics = [
+    "ground_contact_time",
+    "ground_contact_balance_left",
+    "vertical_oscillation",
+    "vertical_ratio",
+    "stride_length",
+  ].every((metricName) => average(metricName) == null);
+  if (missingFullDynamics) {
+    insights.push("En esta actividad Garmin no expone el bloque completo de running dynamics; aquí solo se muestran las señales parciales realmente disponibles.");
+  }
+
+  return insights;
 }
 
 function isDistanceRelevant(activity: ActivityDetail) {
@@ -1631,6 +1766,45 @@ function formatMetricNameLabel(metricName: string) {
   }
   if (metricName === "bike_cadence") {
     return "Cadencia";
+  }
+  if (metricName === "run_cadence") {
+    return "Cadencia carrera";
+  }
+  if (metricName === "cadence_double") {
+    return "Cadencia total";
+  }
+  if (metricName === "cadence_fractional") {
+    return "Cadencia fraccional";
+  }
+  if (metricName === "vertical_ratio") {
+    return "Ratio vertical";
+  }
+  if (metricName === "ground_contact_time") {
+    return "Tiempo de contacto";
+  }
+  if (metricName === "ground_contact_balance_left") {
+    return "Balance contacto izq";
+  }
+  if (metricName === "vertical_oscillation") {
+    return "Oscilacion vertical";
+  }
+  if (metricName === "stride_length") {
+    return "Longitud de zancada";
+  }
+  if (metricName === "performance_condition") {
+    return "Performance condition";
+  }
+  if (metricName === "air_temperature") {
+    return "Temperatura";
+  }
+  if (metricName === "speed") {
+    return "Velocidad";
+  }
+  if (metricName === "elevation") {
+    return "Altitud";
+  }
+  if (metricName === "vertical_speed") {
+    return "Velocidad vertical";
   }
   return metricName;
 }
@@ -1725,6 +1899,52 @@ function formatZoneBoundaryLabel(boundary: ZoneProfileBoundary) {
   return zoneLabel;
 }
 
+function formatQualityMetricValue(metricName: string, value: number | null) {
+  if (metricName === "heart_rate") {
+    return toMetricLabel(value, " bpm");
+  }
+  if (metricName === "respiration_rate") {
+    return toMetricLabel(value, " rpm resp");
+  }
+  if (metricName === "power") {
+    return toMetricLabel(value, " W");
+  }
+  if (metricName === "bike_cadence") {
+    return toMetricLabel(value, " rpm");
+  }
+  if (metricName === "run_cadence") {
+    return toMetricLabel(value, " rpm");
+  }
+  if (metricName === "cadence_double") {
+    return toMetricLabel(value, " spm");
+  }
+  if (metricName === "cadence_fractional") {
+    return toMetricLabel(value);
+  }
+  if (metricName === "vertical_ratio") {
+    return toMetricLabel(value, "%");
+  }
+  if (metricName === "ground_contact_time") {
+    return toMetricLabel(value, " ms");
+  }
+  if (metricName === "ground_contact_balance_left") {
+    return toMetricLabel(value, "% izq");
+  }
+  if (metricName === "vertical_oscillation") {
+    return toMetricLabel(value, " cm");
+  }
+  if (metricName === "stride_length") {
+    return toMetricLabel(value, " m");
+  }
+  if (metricName === "air_temperature") {
+    return toMetricLabel(value, " C");
+  }
+  if (metricName === "speed" || metricName === "vertical_speed") {
+    return toMetricLabel(value, " m/s");
+  }
+  return toMetricLabel(value);
+}
+
 function formatMetricProfileModelLabel(modelKey: string | null | undefined) {
   if (modelKey === "heart_rate_reserve_5_zone") {
     return "FC por reserva cardiaca";
@@ -1778,22 +1998,6 @@ function formatActivityZoneSummaryLabel(zoneSummary: ActivityZoneSummary | null 
     return null;
   }
   return `Zonas: ${parts.join(" · ")}`;
-}
-
-function formatQualityMetricValue(metricName: string, value: number | null) {
-  if (metricName === "heart_rate") {
-    return toMetricLabel(value, " bpm");
-  }
-  if (metricName === "respiration_rate") {
-    return toMetricLabel(value, " rpm resp");
-  }
-  if (metricName === "power") {
-    return toMetricLabel(value, " W");
-  }
-  if (metricName === "bike_cadence") {
-    return toMetricLabel(value, " rpm");
-  }
-  return toMetricLabel(value);
 }
 
 function formatQualityDecisionReason(reasonCode: string) {
@@ -3765,6 +3969,38 @@ export default function App() {
                 <article><span>RPE</span><strong>{toMetricLabel(selectedActivity.perceived_exertion)}</strong></article>
                 <article><span>Sesion planificada</span><strong>{selectedActivity.planned_session_id ?? "-"}</strong></article>
               </div>
+
+              {(() => {
+                const runningDynamicsMetrics = getRunningDynamicsMetrics(selectedActivityQuality);
+                const runningDynamicsInsights = buildRunningDynamicsInsights(selectedActivity, selectedActivityQuality);
+                return runningDynamicsMetrics.length > 0 ? (
+                  <div className="activity-dynamics-card panel-subcard">
+                    <div className="activity-dynamics-head">
+                      <div>
+                        <strong>Running dynamics</strong>
+                        <p className="activity-dynamics-copy">Metricas tecnicas expuestas por Garmin para esta actividad, usando los valores limpios persistidos en SQLite.</p>
+                      </div>
+                    </div>
+
+                    <div className="activity-dynamics-grid">
+                      {runningDynamicsMetrics.map((metric) => (
+                        <article key={`running-dynamics-${metric.metric_name}`}>
+                          <span>{formatMetricNameLabel(metric.metric_name)}</span>
+                          <strong>{formatQualityMetricValue(metric.metric_name, getQualitySummaryValue(metric))}</strong>
+                        </article>
+                      ))}
+                    </div>
+
+                    {runningDynamicsInsights.length > 0 ? (
+                      <div className="activity-dynamics-insights">
+                        {runningDynamicsInsights.map((insight, index) => (
+                          <p key={`running-dynamics-insight-${index}`}>{insight}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null;
+              })()}
 
               <div className="activity-quality-card panel-subcard">
                 <div className="activity-quality-head">
