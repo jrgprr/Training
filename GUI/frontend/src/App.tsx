@@ -41,6 +41,7 @@ type Session = {
   objective: string;
   primary_session: string;
   complementary_session: string | null;
+  planned_support_routine?: string | null;
   intensity_class: string | null;
   duration_min: number | null;
   duration_max: number | null;
@@ -91,6 +92,7 @@ type PlanVsRealRow = {
   planned_type: string;
   planned_objective: string;
   planned_session: string;
+  planned_support_routine?: string | null;
   duration_min: number | null;
   duration_max: number | null;
   is_key_session: number;
@@ -176,6 +178,24 @@ type WeeklyReview = {
   weekly_assessment_available?: boolean;
   weekly_assessment_url?: string | null;
   zone_comparison_summary?: WeekZoneComparisonSummary;
+};
+
+type WeightReview = {
+  season_id: number;
+  weight_review_id: number | null;
+  review_date: string | null;
+  classification: string | null;
+  recommendation_text: string | null;
+  summary_text: string | null;
+  latest_weight_kg?: number | null;
+  latest_7d_avg_kg?: number | null;
+  delta_7d_avg_kg?: number | null;
+  latest_14d_avg_kg?: number | null;
+  delta_14d_avg_kg?: number | null;
+  volatility_7d_kg?: number | null;
+  gap_to_target_kg?: number | null;
+  weight_assessment_available: boolean;
+  weight_assessment_url: string | null;
 };
 
 type ZoneProposalItem = {
@@ -278,6 +298,14 @@ type DailyMetricDetail = {
     }>;
   } | null;
   weight_kg: number | null;
+  body_fat_pct: number | null;
+  body_water_pct: number | null;
+  bone_mass_kg: number | null;
+  muscle_mass_kg: number | null;
+  bmi: number | null;
+  visceral_fat: number | null;
+  metabolic_age: number | null;
+  physique_rating: number | null;
   sleep_hours: number | null;
   sleep_quality: string | null;
   resting_hr: number | null;
@@ -357,6 +385,40 @@ type ActivityZoneSummary = Partial<Record<"heart_rate" | "power", ActivityZoneSu
 
 function getTodayIsoDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysToIsoDate(date: string, days: number) {
+  const nextDate = new Date(`${date}T00:00:00Z`);
+  nextDate.setUTCDate(nextDate.getUTCDate() + days);
+  return nextDate.toISOString().slice(0, 10);
+}
+
+function hasBodyCompositionMetrics(metric: DailyMetricDetail) {
+  return [
+    metric.body_fat_pct,
+    metric.body_water_pct,
+    metric.bone_mass_kg,
+    metric.muscle_mass_kg,
+    metric.bmi,
+    metric.visceral_fat,
+    metric.metabolic_age,
+    metric.physique_rating,
+  ].some((value) => value != null);
+}
+
+function getSeasonImportDateRange(season: Season, activities: ActivityListItem[] = []): Pick<GarminImportFormState, "date_from" | "date_to"> {
+  const today = getTodayIsoDate();
+  const dateTo = season.end_date < today ? season.end_date : today;
+  const latestImportedActivityDate = activities[0]?.activity_date ?? null;
+  const fallbackDateFrom = addDaysToIsoDate(dateTo, -1);
+  const overlapDateFrom = latestImportedActivityDate ? addDaysToIsoDate(latestImportedActivityDate, -1) : null;
+  const unclampedDateFrom = overlapDateFrom ?? fallbackDateFrom;
+  const dateFrom = unclampedDateFrom < season.start_date ? season.start_date : unclampedDateFrom;
+
+  return {
+    date_from: dateFrom > dateTo ? dateTo : dateFrom,
+    date_to: dateTo,
+  };
 }
 
 function isDateWithinRange(date: string, startDate: string | null, endDate: string | null) {
@@ -894,8 +956,8 @@ function getImportJobScope(job: ImportJob) {
 }
 
 const emptyGarminImportForm = (): GarminImportFormState => ({
-  date_from: "2026-05-04",
-  date_to: "2026-05-10",
+  date_from: addDaysToIsoDate(getTodayIsoDate(), -1),
+  date_to: getTodayIsoDate(),
   include_daily_metrics: true,
 });
 
@@ -1340,8 +1402,20 @@ function toMetricLabel(value: number | null, suffix = "") {
   return `${Number.isInteger(value) ? value : value.toFixed(1)}${suffix}`;
 }
 
+function getOptionalDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
+  return (row.optional_daily_activities ?? []).filter((activity) => activity.actual_discipline !== "yoga");
+}
+
+function getSupportDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
+  return (row.optional_daily_activities ?? []).filter((activity) => activity.actual_discipline === "yoga");
+}
+
 function getOptionalDailyLoadMinutes(row: PlanVsRealRow) {
-  return Math.round((row.optional_daily_activities ?? []).reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+  return Math.round(getOptionalDailyActivities(row).reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+}
+
+function getSupportDailyLoadMinutes(row: PlanVsRealRow) {
+  return Math.round(getSupportDailyActivities(row).reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
 }
 
 function getOtherDailyLoadMinutes(row: PlanVsRealRow) {
@@ -1349,7 +1423,7 @@ function getOtherDailyLoadMinutes(row: PlanVsRealRow) {
 }
 
 function getDailyTotalLoadMinutes(row: PlanVsRealRow) {
-  return Math.round((row.actual_duration_min ?? 0) + getOptionalDailyLoadMinutes(row) + getOtherDailyLoadMinutes(row));
+  return Math.round((row.actual_duration_min ?? 0) + getOptionalDailyLoadMinutes(row) + getSupportDailyLoadMinutes(row) + getOtherDailyLoadMinutes(row));
 }
 
 function isManualSource(sourceSystem: string) {
@@ -1478,10 +1552,6 @@ function toPlanVsRealResolutionLabel(activity: PlanVsRealActivity) {
   return null;
 }
 
-function getOptionalDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
-  return row.optional_daily_activities ?? [];
-}
-
 function getOtherDailyActivities(row: PlanVsRealRow): DailyUnlinkedActivity[] {
   return row.other_daily_activities ?? [];
 }
@@ -1490,10 +1560,14 @@ function toOptionalDailyLabel(activity: OptionalDailyActivity) {
   if (activity.actual_discipline === "strength_training") {
     return "Fuerza opcional";
   }
-  if (activity.actual_discipline === "yoga") {
-    return "Flexibilidad opcional";
-  }
   return "Opcional del dia";
+}
+
+function toSupportDailyLabel(activity: OptionalDailyActivity) {
+  if (activity.actual_discipline === "yoga") {
+    return "Flexibilidad de soporte";
+  }
+  return "Soporte del dia";
 }
 
 function toOptionalDailyMetaLabel(activity: OptionalDailyActivity) {
@@ -2194,6 +2268,7 @@ export default function App() {
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null);
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
+  const [weightReview, setWeightReview] = useState<WeightReview | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityDetail | null>(null);
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
   const [selectedActivityRunningDynamicsHistory, setSelectedActivityRunningDynamicsHistory] = useState<RunningDynamicsHistoryResponse | null>(null);
@@ -2205,6 +2280,7 @@ export default function App() {
   const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
   const [selectedDailyAssessment, setSelectedDailyAssessment] = useState<DailyAssessmentView | null>(null);
   const [selectedWeeklyAssessmentMarkdown, setSelectedWeeklyAssessmentMarkdown] = useState<string | null>(null);
+  const [selectedWeightAssessmentMarkdown, setSelectedWeightAssessmentMarkdown] = useState<string | null>(null);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2226,6 +2302,7 @@ export default function App() {
   const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
   const [loadingDailyAssessment, setLoadingDailyAssessment] = useState(false);
   const [loadingWeeklyAssessment, setLoadingWeeklyAssessment] = useState(false);
+  const [loadingWeightAssessment, setLoadingWeightAssessment] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
@@ -2340,10 +2417,11 @@ export default function App() {
       setLoadingSeasonActivities(true);
       const data = await fetchJson<ActivityListItem[]>(`/api/seasons/${seasonId}/activities`);
       setSeasonActivities(data);
+      return data;
     } catch (requestError) {
       if (isNotFoundError(requestError)) {
         setSeasonActivities([]);
-        return;
+        return [];
       }
       throw requestError;
     } finally {
@@ -2412,19 +2490,16 @@ export default function App() {
       setInfoMessage(null);
       setSubmissionMessage(null);
       setSelectedSeason(season);
-      setImportForm((current) => ({
-        ...current,
-        date_from: season.start_date,
-        date_to: season.end_date,
-      }));
       setSelectedBlock(null);
       setSelectedWeek(null);
       setWeeklyReview(null);
+      setWeightReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
       setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
+      setSelectedWeightAssessmentMarkdown(null);
       setSelectedDailyMetric(null);
       setSelectedDailyMetricDate(null);
       setZoneProposals([]);
@@ -2437,14 +2512,19 @@ export default function App() {
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
-      const [data] = await Promise.all([
+      const [data, activities] = await Promise.all([
         fetchJson<Block[]>(`/api/seasons/${season.season_id}/blocks`),
         loadSeasonActivities(season.season_id),
         loadSegments(season.season_id),
         loadZoneProposals(season.season_id),
         loadCurrentZoneProfiles(season.season_id),
+        loadWeightReview(season.season_id),
       ]);
       setBlocks(data);
+      setImportForm((current) => ({
+        ...current,
+        ...getSeasonImportDateRange(season, activities),
+      }));
       const preferredBlock = pickPreferredBlock(data, getTodayIsoDate());
       if (preferredBlock) {
         await handleBlockSelect(preferredBlock);
@@ -2528,6 +2608,7 @@ export default function App() {
       setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
+      setSelectedWeightAssessmentMarkdown(null);
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
@@ -2561,6 +2642,7 @@ export default function App() {
       setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
       setSelectedWeeklyAssessmentMarkdown(null);
+      setSelectedWeightAssessmentMarkdown(null);
       const [sessionData, comparisonData, reviewData] = await Promise.all([
         fetchJson<Session[]>(`/api/weeks/${week.week_id}/sessions`),
         fetchJson<PlanVsRealRow[]>(`/api/weeks/${week.week_id}/plan-vs-real`),
@@ -2613,6 +2695,35 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoadingWeeklyAssessment(false);
+    }
+  }
+
+  async function loadWeightReview(seasonId: number) {
+    try {
+      const review = await fetchJson<WeightReview>(`/api/seasons/${seasonId}/weight-review/latest`);
+      setWeightReview(review);
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setWeightReview(null);
+        return;
+      }
+      throw requestError;
+    }
+  }
+
+  async function loadWeightAssessment() {
+    if (!weightReview?.weight_assessment_url) {
+      return;
+    }
+    try {
+      setLoadingWeightAssessment(true);
+      setError(null);
+      const markdown = await fetchText(weightReview.weight_assessment_url);
+      setSelectedWeightAssessmentMarkdown(markdown);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setLoadingWeightAssessment(false);
     }
   }
 
@@ -2693,9 +2804,16 @@ export default function App() {
       setSubmissionMessage(
         `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas y ${result.counts.segment_efforts_loaded} esfuerzos de segmento normalizados. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.`,
       );
+      const activities = await loadSeasonActivities(selectedSeason.season_id);
+      setImportForm((current) => ({
+        ...current,
+        ...getSeasonImportDateRange(selectedSeason, activities),
+      }));
       await loadImportJobs();
-      await loadSeasonActivities(selectedSeason.season_id);
       await loadSegments(selectedSeason.season_id, selectedSegmentId);
+      if (selectedDailyMetricDate) {
+        await loadDailyMetric(selectedSeason.season_id, selectedDailyMetricDate);
+      }
       if (selectedWeek) {
         await handleWeekSelect(selectedWeek);
       }
@@ -2777,14 +2895,16 @@ export default function App() {
     other: planVsRealRows.filter((row) => !["completed", "partial", "pending"].includes(row.compliance_status)).length,
     actualMinutes: Math.round(planVsRealRows.reduce((total, row) => total + (row.actual_duration_min ?? 0), 0)),
   };
-  const optionalDailyActivities = planVsRealRows.flatMap((row) => row.optional_daily_activities ?? []);
+  const optionalDailyActivities = planVsRealRows.flatMap((row) => getOptionalDailyActivities(row));
+  const supportDailyActivities = planVsRealRows.flatMap((row) => getSupportDailyActivities(row));
   const optionalStrengthCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "strength_training").length;
-  const optionalFlexibilityCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "yoga").length;
+  const supportFlexibilityCount = supportDailyActivities.length;
   const optionalDailyMinutes = Math.round(optionalDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+  const supportDailyMinutes = Math.round(supportDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const otherDailyActivities = planVsRealRows.flatMap((row) => row.other_daily_activities ?? []);
   const otherDailyMinutes = Math.round(otherDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const dailyMetricDates = Array.from(new Set([...sessions.map((session) => session.session_date), ...planVsRealRows.map((row) => row.session_date)])).sort();
-  const totalLoadMinutes = weeklySummary.actualMinutes + optionalDailyMinutes + otherDailyMinutes;
+  const totalLoadMinutes = weeklySummary.actualMinutes + optionalDailyMinutes + supportDailyMinutes + otherDailyMinutes;
   const skippedCount = planVsRealRows.filter((row) => row.compliance_status === "skipped").length;
   const replacedCount = planVsRealRows.filter((row) => row.compliance_status === "replaced").length;
   const trackedCount = weeklySummary.total - weeklySummary.pending;
@@ -2843,10 +2963,13 @@ export default function App() {
   const dashboardSignals = [
     `${selectedWeek?.week_role ?? "Semana activa"} con objetivo "${selectedWeek?.objective_primary ?? "sin objetivo definido"}".`,
     `Volumen real ${volumeStatus}: ${toHoursLabel(weeklySummary.actualMinutes)} frente a una referencia de ${toHoursLabel(plannedReferenceMinutes)}.`,
-    `Carga total registrada: ${toHoursLabel(totalLoadMinutes)} (${toHoursLabel(weeklySummary.actualMinutes)} del plan + ${toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} en actividades no planificadas).`,
+    `Carga total registrada: ${toHoursLabel(totalLoadMinutes)} (${toHoursLabel(weeklySummary.actualMinutes)} del plan + ${toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} en actividades no planificadas + ${toHoursLabel(supportDailyMinutes)} de flexibilidad de soporte).`,
     optionalDailyActivities.length > 0
-      ? `Extras diarios: ${optionalStrengthCount} sesiones de fuerza y ${optionalFlexibilityCount} sesiones de flexibilidad (${toHoursLabel(optionalDailyMinutes)}).`
+      ? `Extras diarios: ${optionalStrengthCount} sesiones de fuerza (${toHoursLabel(optionalDailyMinutes)}).`
       : "Sin extras diarios opcionales registrados en la semana.",
+    supportDailyActivities.length > 0
+      ? `Flexibilidad de soporte: ${supportFlexibilityCount} sesiones de yoga (${toHoursLabel(supportDailyMinutes)}).`
+      : "Sin sesiones de flexibilidad de soporte registradas en la semana.",
     otherDailyActivities.length > 0
       ? `Otras actividades ejecutadas: ${otherDailyActivities.length} (${toHoursLabel(otherDailyMinutes)}).`
       : "Sin otras actividades no enlazadas en la semana.",
@@ -3527,7 +3650,12 @@ export default function App() {
                           '-'
                         )}
                       </td>
-                      <td>{session.complementary_session ?? '-'}</td>
+                      <td>
+                        <div>
+                          <div>{session.complementary_session ?? '-'}</div>
+                          {session.planned_support_routine ? <small>Soporte diario: {session.planned_support_routine}</small> : null}
+                        </div>
+                      </td>
                       <td>{toDurationLabel(session.duration_min, session.duration_max)}</td>
                     </tr>
                   ))}
@@ -3592,7 +3720,7 @@ export default function App() {
                 <article>
                   <strong>{toHoursLabel(totalLoadMinutes)}</strong>
                   <span>Carga total</span>
-                  <small>{toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} fuera del plan</small>
+                  <small>{toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} fuera del plan · {toHoursLabel(supportDailyMinutes)} soporte movilidad</small>
                 </article>
                 <article>
                   <strong>
@@ -3604,7 +3732,7 @@ export default function App() {
                 <article>
                   <strong>{optionalDailyActivities.length}</strong>
                   <span>Extras diarios</span>
-                  <small>{optionalStrengthCount} fuerza · {optionalFlexibilityCount} flexibilidad</small>
+                  <small>{optionalStrengthCount} fuerza</small>
                 </article>
                 <article>
                   <strong>{weeklyReview?.zone_comparison_summary?.items.length ?? 0}</strong>
@@ -3695,8 +3823,10 @@ export default function App() {
                   {planVsRealRows.map((row) => {
                     const rowActivities = getPlanVsRealActivities(row);
                     const optionalDailyActivities = getOptionalDailyActivities(row);
+                    const supportDailyActivities = getSupportDailyActivities(row);
                     const otherDailyActivities = getOtherDailyActivities(row);
                     const optionalDailyLoadMinutes = getOptionalDailyLoadMinutes(row);
+                    const supportDailyLoadMinutes = getSupportDailyLoadMinutes(row);
                     const otherDailyLoadMinutes = getOtherDailyLoadMinutes(row);
                     const dailyTotalLoadMinutes = getDailyTotalLoadMinutes(row);
                     const isRowClickable = rowActivities.length === 1;
@@ -3715,6 +3845,7 @@ export default function App() {
                         <td>
                           <strong>{toPlannedTypeLabel(row.planned_type)}</strong>
                           <small>{row.planned_session}</small>
+                          {row.planned_support_routine ? <small>Soporte diario planificado: {row.planned_support_routine}</small> : null}
                           {row.zone_comparison && row.zone_comparison.length > 0 ? (
                             <div className="zone-chip-list">
                               {row.zone_comparison.map((item, index) => (
@@ -3774,6 +3905,28 @@ export default function App() {
                               ))}
                             </div>
                           ) : null}
+                          {supportDailyActivities.length > 0 ? (
+                            <div className="plan-real-optional-list">
+                              <small className="plan-real-optional-title">Soporte de flexibilidad</small>
+                              {supportDailyActivities.map((activity) => (
+                                <div key={activity.activity_id} className="plan-real-optional-item">
+                                  <strong>{toSupportDailyLabel(activity)}</strong>
+                                  <small>{toPlanVsRealActivityLabel(activity)}</small>
+                                  {toOptionalDailyMetaLabel(activity) ? <small>{toOptionalDailyMetaLabel(activity)}</small> : null}
+                                  <button
+                                    className="table-link-button"
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void loadActivityDetail(activity.activity_id);
+                                    }}
+                                  >
+                                    Ver actividad #{activity.activity_id}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                           {otherDailyActivities.length > 0 ? (
                             <div className="plan-real-optional-list">
                               <small className="plan-real-optional-title">Otras actividades del dia</small>
@@ -3798,8 +3951,8 @@ export default function App() {
                           ) : null}
                           <small>
                             Carga total del dia: {toHoursLabel(dailyTotalLoadMinutes)}
-                            {optionalDailyLoadMinutes > 0 || otherDailyLoadMinutes > 0
-                              ? ` (${toHoursLabel(row.actual_duration_min ?? 0)} plan + ${toHoursLabel(optionalDailyLoadMinutes + otherDailyLoadMinutes)} fuera del plan)`
+                            {optionalDailyLoadMinutes > 0 || supportDailyLoadMinutes > 0 || otherDailyLoadMinutes > 0
+                              ? ` (${toHoursLabel(row.actual_duration_min ?? 0)} plan + ${toHoursLabel(optionalDailyLoadMinutes + otherDailyLoadMinutes)} fuera del plan + ${toHoursLabel(supportDailyLoadMinutes)} soporte movilidad)`
                               : ''}
                           </small>
                           <small>{row.actual_summary ?? 'Sin revision diaria'}</small>
@@ -3839,10 +3992,13 @@ export default function App() {
                 {persistedSummary ?? `${selectedWeek?.week_code ?? 'Esta semana'}: ${weeklySummary.completed} completadas, ${weeklySummary.partial} parciales, ${weeklySummary.pending} pendientes y ${weeklySummary.other} con otro estado. La semana acumula ${weeklySummary.actualMinutes} minutos reales.`}
               </p>
               <p>
-                Carga total registrada: {toHoursLabel(totalLoadMinutes)}. De ese total, {toHoursLabel(weeklySummary.actualMinutes)} corresponden a sesiones del plan y {toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} a actividades fuera del plan.
+                Carga total registrada: {toHoursLabel(totalLoadMinutes)}. De ese total, {toHoursLabel(weeklySummary.actualMinutes)} corresponden a sesiones del plan, {toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} a actividades fuera del plan y {toHoursLabel(supportDailyMinutes)} a flexibilidad de soporte.
               </p>
               <p>
-                Opcionales diarios: {optionalDailyActivities.length === 0 ? 'sin registro adicional.' : `${optionalStrengthCount} sesiones de fuerza y ${optionalFlexibilityCount} sesiones de flexibilidad, con ${optionalDailyMinutes} minutos acumulados.`}
+                Opcionales diarios: {optionalDailyActivities.length === 0 ? 'sin registro adicional.' : `${optionalStrengthCount} sesiones de fuerza, con ${optionalDailyMinutes} minutos acumulados.`}
+              </p>
+              <p>
+                Soporte de flexibilidad: {supportDailyActivities.length === 0 ? 'sin registro adicional.' : `${supportFlexibilityCount} sesiones de yoga, con ${supportDailyMinutes} minutos acumulados.`}
               </p>
               <p>
                 Otras actividades ejecutadas: {otherDailyActivities.length === 0 ? 'sin actividad extra registrada.' : `${otherDailyActivities.length} actividades no enlazadas, con ${otherDailyMinutes} minutos acumulados.`}
@@ -3866,6 +4022,55 @@ export default function App() {
                   </button>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {selectedSeason ? (
+            <div className="week-review-card daily-assessment-card">
+              <div className="daily-assessment-card-head">
+                <div>
+                  <h3>Assessment peso</h3>
+                  <p className="daily-assessment-subtitle">Ultima valoracion de peso persistida para la temporada seleccionada.</p>
+                </div>
+                {selectedWeightAssessmentMarkdown ? (
+                  <button className="ghost-button" type="button" onClick={() => setSelectedWeightAssessmentMarkdown(null)}>
+                    Cerrar assessment peso
+                  </button>
+                ) : null}
+              </div>
+
+              {weightReview?.review_date ? (
+                <p>
+                  {weightReview.review_date} · {weightReview.classification ?? "Sin clasificacion"}
+                </p>
+              ) : null}
+
+              {weightReview?.summary_text ? <p>{weightReview.summary_text}</p> : null}
+
+              {weightReview?.weight_assessment_available && weightReview.weight_assessment_url ? (
+                <div className="review-actions">
+                  <button className="ghost-button" type="button" onClick={() => void loadWeightAssessment()} disabled={loadingWeightAssessment}>
+                    {loadingWeightAssessment ? "Cargando assessment peso..." : "Ver assessment peso"}
+                  </button>
+                </div>
+              ) : null}
+
+              {loadingWeightAssessment ? (
+                <p>Cargando assessment peso...</p>
+              ) : selectedWeightAssessmentMarkdown ? (
+                <article className="daily-assessment-markdown" aria-label="assessment peso renderizado">
+                  <ReactMarkdown>{selectedWeightAssessmentMarkdown}</ReactMarkdown>
+                </article>
+              ) : (
+                <div className="empty-state-card">
+                  <strong>{weightReview?.review_date ? "Assessment peso disponible sin abrir" : "Sin assessment peso persistido"}</strong>
+                  <p>
+                    {weightReview?.review_date
+                      ? "Pulsa en \"Ver assessment peso\" para abrir la ultima valoracion de peso en esta misma vista."
+                      : "Cuando exista una valoracion de peso persistida para la temporada, podras abrirla aqui."}
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -3981,6 +4186,14 @@ export default function App() {
                     {selectedDailyMetric.load_model ? <article><span>CTL</span><strong>{toMetricLabel(selectedDailyMetric.load_model.ctl)}</strong></article> : null}
                     {selectedDailyMetric.load_model ? <article><span>TSB</span><strong>{toMetricLabel(selectedDailyMetric.load_model.tsb)}</strong></article> : null}
                     {selectedDailyMetric.weight_kg != null ? <article><span>Peso</span><strong>{toMetricLabel(selectedDailyMetric.weight_kg, " kg")}</strong></article> : null}
+                    {selectedDailyMetric.body_fat_pct != null ? <article><span>Grasa corporal</span><strong>{toMetricLabel(selectedDailyMetric.body_fat_pct, "%")}</strong></article> : null}
+                    {selectedDailyMetric.body_water_pct != null ? <article><span>Agua corporal</span><strong>{toMetricLabel(selectedDailyMetric.body_water_pct, "%")}</strong></article> : null}
+                    {selectedDailyMetric.muscle_mass_kg != null ? <article><span>Masa muscular</span><strong>{toMetricLabel(selectedDailyMetric.muscle_mass_kg, " kg")}</strong></article> : null}
+                    {selectedDailyMetric.bone_mass_kg != null ? <article><span>Masa osea</span><strong>{toMetricLabel(selectedDailyMetric.bone_mass_kg, " kg")}</strong></article> : null}
+                    {selectedDailyMetric.bmi != null ? <article><span>IMC Garmin</span><strong>{toMetricLabel(selectedDailyMetric.bmi)}</strong></article> : null}
+                    {selectedDailyMetric.visceral_fat != null ? <article><span>Grasa visceral</span><strong>{toMetricLabel(selectedDailyMetric.visceral_fat)}</strong></article> : null}
+                    {selectedDailyMetric.metabolic_age != null ? <article><span>Edad metabolica</span><strong>{toMetricLabel(selectedDailyMetric.metabolic_age)}</strong></article> : null}
+                    {selectedDailyMetric.physique_rating != null ? <article><span>Physique rating</span><strong>{toMetricLabel(selectedDailyMetric.physique_rating)}</strong></article> : null}
                     {selectedDailyMetric.sleep_hours != null ? <article><span>Sueno</span><strong>{toMetricLabel(selectedDailyMetric.sleep_hours, " h")}</strong></article> : null}
                     {selectedDailyMetric.sleep_quality != null ? <article><span>Calidad sueno</span><strong>{selectedDailyMetric.sleep_quality}</strong></article> : null}
                     {selectedDailyMetric.resting_hr != null ? <article><span>FC reposo</span><strong>{toMetricLabel(selectedDailyMetric.resting_hr, " bpm")}</strong></article> : null}
@@ -3999,6 +4212,12 @@ export default function App() {
                     {selectedDailyMetric.subjective_fatigue != null ? <article><span>Fatiga subjetiva</span><strong>{toMetricLabel(selectedDailyMetric.subjective_fatigue)}</strong></article> : null}
                     {selectedDailyMetric.soreness != null ? <article><span>Molestias</span><strong>{selectedDailyMetric.soreness}</strong></article> : null}
                   </div>
+
+                  {hasBodyCompositionMetrics(selectedDailyMetric) ? (
+                    <div className="activity-detail-notes">
+                      <p><strong>Composicion corporal Garmin:</strong> estos campos vienen del pesaje/escala Garmin del dia y ayudan a distinguir si el cambio de peso parece venir de grasa, agua o tejido magro.</p>
+                    </div>
+                  ) : null}
 
                   {selectedDailyMetric.notes ? (
                     <div className="activity-detail-notes">

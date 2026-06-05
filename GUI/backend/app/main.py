@@ -20,6 +20,7 @@ app = FastAPI(title="Training System GUI API", version="0.2.0")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 WEEKLY_ASSESSMENT_ROOT_NAME = "Weekly-Assessment-Logbook"
+WEIGHT_ASSESSMENT_ROOT_NAME = "Weight-Assessment-Logbook"
 RUNNING_DISCIPLINES = {"running", "trail_running", "track_running", "treadmill_running"}
 RUNNING_DYNAMICS_METRIC_NAMES = (
     "cadence_double",
@@ -194,6 +195,10 @@ def get_weekly_assessment_markdown_path(season_id: int, week_code: str, week_id:
     return REPO_ROOT / str(season_id) / WEEKLY_ASSESSMENT_ROOT_NAME / f"{week_code}-week-{week_id}.md"
 
 
+def get_weight_assessment_markdown_path(season_id: int, review_date: str) -> Path:
+    return REPO_ROOT / str(season_id) / WEIGHT_ASSESSMENT_ROOT_NAME / f"{review_date}.md"
+
+
 class WeeklyReviewPayload(BaseModel):
     summary_text: str | None = None
     recommendation_text: str | None = None
@@ -234,7 +239,9 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     metric = fetch_one(
         """
         SELECT daily_metric_id, season_id, metric_date, source_system,
-             weight_kg, sleep_hours, sleep_quality, resting_hr,
+                         weight_kg, body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
+                         bmi, visceral_fat, metabolic_age, physique_rating,
+                         sleep_hours, sleep_quality, resting_hr,
              vo2max_cycling, vo2max_running, lactate_threshold_hr,
              hrv, body_battery,
                stress_avg, stress_max,
@@ -287,7 +294,8 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         )
         SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type,
                ps.objective AS planned_objective, ps.primary_session AS planned_session,
-               ps.duration_min, ps.duration_max, ps.is_key_session,
+             ps.duration_min, ps.duration_max, ps.is_key_session,
+             up.support_routine AS planned_support_routine,
              rr.daily_review_id, rr.season_id AS review_season_id,
                CASE
                    WHEN COALESCE(rr.compliance_status, rl.compliance_status, 'pending') = 'skipped' THEN NULL
@@ -344,6 +352,9 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
                    )
                END AS compatible_garmin_count
         FROM plan_planned_sessions ps
+        JOIN plan_micro_weeks mw ON mw.week_id = ps.week_id
+        JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
+        LEFT JOIN plan_user_profiles up ON up.season_id = mb.season_id
         LEFT JOIN ranked_links rl ON rl.planned_session_id = ps.planned_session_id AND rl.link_rank = 1
         LEFT JOIN review_daily_reviews rr ON rr.planned_session_id = ps.planned_session_id
         WHERE ps.week_id = ?
@@ -1067,13 +1078,17 @@ def get_weeks(block_id: int) -> list[dict[str, Any]]:
 def get_sessions(week_id: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         """
-        SELECT planned_session_id, session_date, day_name, planned_type, objective,
-             primary_session, complementary_session, intensity_class,
-             duration_min, duration_max, is_key_session
+       SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type, ps.objective,
+           ps.primary_session, ps.complementary_session, ps.intensity_class,
+             up.support_routine AS planned_support_routine,
+           ps.duration_min, ps.duration_max, ps.is_key_session
         FROM plan_planned_sessions
         AS ps
-        WHERE week_id = ?
-        ORDER BY sequence_in_week
+        JOIN plan_micro_weeks mw ON mw.week_id = ps.week_id
+        JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
+        LEFT JOIN plan_user_profiles up ON up.season_id = mb.season_id
+       WHERE ps.week_id = ?
+       ORDER BY ps.sequence_in_week
         """,
         (week_id,),
     )
@@ -1159,6 +1174,80 @@ def get_weekly_assessment_markdown(week_id: int) -> FileResponse:
     markdown_path = get_weekly_assessment_markdown_path(int(row["season_id"]), str(week["week_code"]), int(week_id))
     if not markdown_path.exists():
         raise HTTPException(status_code=404, detail="No existe markdown para esta revision semanal.")
+    return FileResponse(markdown_path, media_type="text/markdown")
+
+
+@app.get("/api/seasons/{season_id}/weight-review/latest")
+def get_latest_weight_review(season_id: int) -> dict[str, Any]:
+    season = fetch_one(
+        """
+        SELECT season_id
+        FROM plan_seasons
+        WHERE season_id = ?
+        """,
+        (season_id,),
+    )
+    if season is None:
+        raise HTTPException(status_code=404, detail=f"No se encontro la temporada {season_id}.")
+
+    row = fetch_one(
+        """
+        SELECT weight_review_id, season_id, review_date, block_id, week_id,
+               reference_weight_kg, target_weight_kg,
+               latest_weight_kg, latest_7d_avg_kg, delta_7d_avg_kg,
+               latest_14d_avg_kg, delta_14d_avg_kg, volatility_7d_kg,
+               gap_to_target_kg, classification, recommendation_text, summary_text,
+               created_at, updated_at
+        FROM review_weight_reviews
+        WHERE season_id = ?
+        ORDER BY review_date DESC, weight_review_id DESC
+        LIMIT 1
+        """,
+        (season_id,),
+    )
+    if row is None:
+        return {
+            "season_id": season_id,
+            "weight_review_id": None,
+            "review_date": None,
+            "classification": None,
+            "recommendation_text": None,
+            "summary_text": None,
+            "latest_weight_kg": None,
+            "latest_7d_avg_kg": None,
+            "delta_7d_avg_kg": None,
+            "latest_14d_avg_kg": None,
+            "delta_14d_avg_kg": None,
+            "volatility_7d_kg": None,
+            "gap_to_target_kg": None,
+            "weight_assessment_available": False,
+            "weight_assessment_url": None,
+        }
+
+    markdown_path = get_weight_assessment_markdown_path(int(row["season_id"]), str(row["review_date"]))
+    row["weight_assessment_available"] = markdown_path.exists()
+    row["weight_assessment_url"] = (
+        f"/api/weight-reviews/{row['weight_review_id']}/assessment-markdown" if markdown_path.exists() else None
+    )
+    return row
+
+
+@app.get("/api/weight-reviews/{weight_review_id}/assessment-markdown")
+def get_weight_assessment_markdown(weight_review_id: int) -> FileResponse:
+    row = fetch_one(
+        """
+        SELECT weight_review_id, season_id, review_date
+        FROM review_weight_reviews
+        WHERE weight_review_id = ?
+        """,
+        (weight_review_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No se encontro la revision de peso {weight_review_id}.")
+
+    markdown_path = get_weight_assessment_markdown_path(int(row["season_id"]), str(row["review_date"]))
+    if not markdown_path.exists():
+        raise HTTPException(status_code=404, detail="No existe markdown para esta revision de peso.")
     return FileResponse(markdown_path, media_type="text/markdown")
 
 

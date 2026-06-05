@@ -237,6 +237,14 @@ CREATE TABLE IF NOT EXISTS exec_daily_metrics (
     metric_date TEXT NOT NULL,
     source_system TEXT NOT NULL,
     weight_kg REAL,
+    body_fat_pct REAL,
+    body_water_pct REAL,
+    bone_mass_kg REAL,
+    muscle_mass_kg REAL,
+    bmi REAL,
+    visceral_fat REAL,
+    metabolic_age REAL,
+    physique_rating REAL,
     sleep_hours REAL,
     sleep_quality TEXT,
     resting_hr REAL,
@@ -603,6 +611,30 @@ CREATE TABLE IF NOT EXISTS review_weekly_reviews (
     FOREIGN KEY (week_id) REFERENCES plan_micro_weeks (week_id)
 );
 
+CREATE TABLE IF NOT EXISTS review_weight_reviews (
+    weight_review_id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL,
+    review_date TEXT NOT NULL,
+    block_id INTEGER,
+    week_id INTEGER,
+    weight_kg REAL,
+    weight_7d_avg_kg REAL,
+    delta_7d_avg_kg REAL,
+    weight_14d_avg_kg REAL,
+    delta_14d_avg_kg REAL,
+    volatility_7d_kg REAL,
+    gap_to_target_kg REAL,
+    classification TEXT,
+    recommendation_text TEXT,
+    summary_text TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (season_id, review_date),
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id),
+    FOREIGN KEY (block_id) REFERENCES plan_meso_blocks (block_id),
+    FOREIGN KEY (week_id) REFERENCES plan_micro_weeks (week_id)
+);
+
 CREATE TABLE IF NOT EXISTS meta_import_jobs (
     import_job_id INTEGER PRIMARY KEY,
     season_id INTEGER NOT NULL,
@@ -667,6 +699,14 @@ CREATE TABLE IF NOT EXISTS staging_garmin_daily_metrics (
     source_system TEXT NOT NULL,
     metric_date TEXT NOT NULL,
     weight_kg REAL,
+    body_fat_pct REAL,
+    body_water_pct REAL,
+    bone_mass_kg REAL,
+    muscle_mass_kg REAL,
+    bmi REAL,
+    visceral_fat REAL,
+    metabolic_age REAL,
+    physique_rating REAL,
     sleep_hours REAL,
     sleep_quality TEXT,
     resting_hr REAL,
@@ -709,6 +749,7 @@ CREATE INDEX IF NOT EXISTS idx_exec_activities_date ON exec_activities (season_i
 CREATE INDEX IF NOT EXISTS idx_exec_metrics_date ON exec_daily_metrics (season_id, metric_date);
 CREATE INDEX IF NOT EXISTS idx_reviews_date ON review_daily_reviews (season_id, review_date);
 CREATE INDEX IF NOT EXISTS idx_weekly_reviews_status ON review_weekly_reviews (season_id, review_status);
+CREATE INDEX IF NOT EXISTS idx_weight_reviews_date ON review_weight_reviews (season_id, review_date);
 CREATE INDEX IF NOT EXISTS idx_import_jobs_season_date ON meta_import_jobs (season_id, imported_at DESC);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_activities_job ON staging_garmin_activities (import_job_id);
 CREATE INDEX IF NOT EXISTS idx_staging_garmin_metrics_job ON staging_garmin_daily_metrics (import_job_id);

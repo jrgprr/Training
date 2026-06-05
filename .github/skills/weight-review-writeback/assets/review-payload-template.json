@@ -1,0 +1,15 @@
+{
+  "review_date": "2026-06-06",
+  "season_id": 2026,
+  "weight_kg": null,
+  "weight_7d_avg_kg": null,
+  "delta_7d_avg_kg": null,
+  "weight_14d_avg_kg": null,
+  "delta_14d_avg_kg": null,
+  "volatility_7d_kg": null,
+  "gap_to_target_kg": null,
+  "classification": null,
+  "recommendation_text": null,
+  "summary_text": null,
+  "detailed_assessment_markdown": null
+}

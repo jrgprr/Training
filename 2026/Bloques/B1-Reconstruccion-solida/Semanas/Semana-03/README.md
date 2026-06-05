@@ -35,37 +35,37 @@
 ### Lunes
 - Objetivo: abrir la semana con soltura.
 - Sesion principal: paseo 45-60 minutos.
-- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: si la fatiga es nula, mantener igualmente el dia facil.
 
 ### Martes
 - Objetivo: obtener una referencia aerobica comparable.
 - Sesion principal: bicicleta Z2 estable 60-90 minutos en recorrido o formato repetible.
-- Complementario: espalda y biceps 15-20 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.
+- Complementario: espalda y biceps 30-35 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.
 - Observaciones: evitar viento, terreno o decisiones que distorsionen demasiado la comparacion.
 
 ### Miercoles
 - Objetivo: mantener fuerza estructurada ligera y soporte general con foco en core.
 - Sesion principal: paseo suave 20-45 minutos o descanso activo.
-- Complementario: core 15-20 minutos.
+- Complementario: core 30-35 minutos.
 - Observaciones: dia ligero de soporte general; el core no debe restar calidad al jueves.
 
 ### Jueves
 - Objetivo: sumar otro dia aerobico util.
 - Sesion principal: bicicleta Z2 90 minutos.
-- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: dia de construccion tranquila, no de buscar ritmo.
 
 ### Viernes
 - Objetivo: llegar al fin de semana con margen.
 - Sesion principal: bicicleta muy facil 45-60 minutos o paseo.
-- Complementario: espalda y biceps 15-20 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: el objetivo es soltar, no acumular.
 
 ### Sabado
 - Objetivo: consolidar la salida larga base del bloque.
 - Sesion principal: bicicleta 2 horas 45 minutos a 3 horas en Z2 controlada.
-- Complementario: core 15-20 minutos y alimentacion e hidratacion estables.
+- Complementario: core 30-35 minutos y alimentacion e hidratacion estables.
 - Observaciones: esta salida debe parecer sostenible, no heroica.
 
 ### Domingo

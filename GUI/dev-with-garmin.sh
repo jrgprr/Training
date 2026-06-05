@@ -68,4 +68,16 @@ echo "Backend:  http://127.0.0.1:8000"
 echo "Frontend: http://127.0.0.1:5173"
 echo "Pulsa Ctrl+C para detener ambos procesos."
 
-wait -n "$BACKEND_PID" "$FRONTEND_PID"
+while true; do
+  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    wait "$BACKEND_PID" 2>/dev/null || true
+    break
+  fi
+
+  if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+    wait "$FRONTEND_PID" 2>/dev/null || true
+    break
+  fi
+
+  sleep 1
+done

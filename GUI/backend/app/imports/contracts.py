@@ -74,6 +74,14 @@ class NormalizedActivity:
 class NormalizedDailyMetric:
     metric_date: str
     weight_kg: float | None = None
+    body_fat_pct: float | None = None
+    body_water_pct: float | None = None
+    bone_mass_kg: float | None = None
+    muscle_mass_kg: float | None = None
+    bmi: float | None = None
+    visceral_fat: float | None = None
+    metabolic_age: float | None = None
+    physique_rating: float | None = None
     sleep_hours: float | None = None
     sleep_quality: str | None = None
     resting_hr: float | None = None

@@ -36,37 +36,37 @@
 ### Lunes
 - Objetivo: abrir con soltura y margen.
 - Sesion principal: paseo 45-60 minutos o descanso activo.
-- Complementario: pecho, triceps y hombro 12-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: si la semana 05 dejo fatiga, convertir en descanso total.
 
 ### Martes
 - Objetivo: repetir la referencia aerobica y comparar sensaciones.
 - Sesion principal: bicicleta Z2 estable 60-90 minutos en formato comparable al de la semana 03.
-- Complementario: espalda y biceps 12-20 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.
+- Complementario: espalda y biceps 30-35 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.
 - Observaciones: no buscar mejor dato a la fuerza; importa la estabilidad.
 
 ### Miercoles
 - Objetivo: sostener el trabajo de core dentro del patron semanal sin generar fatiga residual.
 - Sesion principal: paseo 20-45 minutos o descanso activo.
-- Complementario: core 12-20 minutos.
+- Complementario: core 30-35 minutos.
 - Observaciones: debe sentirse ligero y no comprometer jueves.
 
 ### Jueves
 - Objetivo: sumar un segundo dia aerobico util y comodo.
 - Sesion principal: bicicleta Z2 75-90 minutos.
-- Complementario: pecho, triceps y hombro 12-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: dia pensado para confirmar normalidad, no crecimiento.
 
 ### Viernes
 - Objetivo: llegar fresco al ultimo dia clave del bloque.
 - Sesion principal: bicicleta muy facil 45 minutos o paseo.
-- Complementario: espalda y biceps 12-20 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: dia muy facil sin excepciones.
 
 ### Sabado
 - Objetivo: cerrar la semana con actividad suave sin comprometer el ultimo dia clave.
 - Sesion principal: paseo largo, monte suave o bicicleta facil 60-75 minutos.
-- Complementario: core 12-20 minutos y revision parcial de sensaciones antes del cierre del bloque.
+- Complementario: core 30-35 minutos y revision parcial de sensaciones antes del cierre del bloque.
 - Observaciones: debe dejar ganas de entrenar al dia siguiente, no fatiga residual.
 
 ### Domingo

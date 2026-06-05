@@ -1343,12 +1343,15 @@ class GarminImportStorage:
                     connection.execute(
                         """
                         INSERT INTO staging_garmin_daily_metrics (
-                            import_job_id, season_id, source_system, metric_date, weight_kg, sleep_hours,
+                            import_job_id, season_id, source_system, metric_date, weight_kg,
+                            body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
+                            bmi, visceral_fat, metabolic_age, physique_rating,
+                            sleep_hours,
                             sleep_quality, resting_hr, vo2max_cycling, vo2max_running, lactate_threshold_hr,
                             hrv, body_battery, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes, raw_payload_path
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             import_job_id,
@@ -1356,6 +1359,14 @@ class GarminImportStorage:
                             batch.metadata.source_system,
                             metric.metric_date,
                             metric.weight_kg,
+                            metric.body_fat_pct,
+                            metric.body_water_pct,
+                            metric.bone_mass_kg,
+                            metric.muscle_mass_kg,
+                            metric.bmi,
+                            metric.visceral_fat,
+                            metric.metabolic_age,
+                            metric.physique_rating,
                             metric.sleep_hours,
                             metric.sleep_quality,
                             metric.resting_hr,
@@ -1379,14 +1390,25 @@ class GarminImportStorage:
                     connection.execute(
                         """
                         INSERT INTO exec_daily_metrics (
-                            season_id, metric_date, source_system, weight_kg, sleep_hours, sleep_quality,
+                            season_id, metric_date, source_system, weight_kg,
+                            body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
+                            bmi, visceral_fat, metabolic_age, physique_rating,
+                            sleep_hours, sleep_quality,
                             resting_hr, vo2max_cycling, vo2max_running, lactate_threshold_hr,
                             hrv, body_battery, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
                             weight_kg = excluded.weight_kg,
+                            body_fat_pct = excluded.body_fat_pct,
+                            body_water_pct = excluded.body_water_pct,
+                            bone_mass_kg = excluded.bone_mass_kg,
+                            muscle_mass_kg = excluded.muscle_mass_kg,
+                            bmi = excluded.bmi,
+                            visceral_fat = excluded.visceral_fat,
+                            metabolic_age = excluded.metabolic_age,
+                            physique_rating = excluded.physique_rating,
                             sleep_hours = excluded.sleep_hours,
                             sleep_quality = excluded.sleep_quality,
                             resting_hr = excluded.resting_hr,
@@ -1410,6 +1432,14 @@ class GarminImportStorage:
                             metric.metric_date,
                             batch.metadata.source_system,
                             metric.weight_kg,
+                            metric.body_fat_pct,
+                            metric.body_water_pct,
+                            metric.bone_mass_kg,
+                            metric.muscle_mass_kg,
+                            metric.bmi,
+                            metric.visceral_fat,
+                            metric.metabolic_age,
+                            metric.physique_rating,
                             metric.sleep_hours,
                             metric.sleep_quality,
                             metric.resting_hr,

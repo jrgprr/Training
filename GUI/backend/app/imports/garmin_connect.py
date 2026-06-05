@@ -940,6 +940,72 @@ class GarminConnectAdapter:
         return normalize_weight(cls._pick_first(body_payload, "weight", "weightInKg"))
 
     @classmethod
+    def _first_body_composition_entry(cls, body_payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not body_payload:
+            return None
+        if isinstance(body_payload.get("dateWeightList"), list):
+            for item in body_payload["dateWeightList"]:
+                if isinstance(item, dict):
+                    return item
+        return body_payload
+
+    @classmethod
+    def _normalize_mass_kg(cls, value: Any) -> float | None:
+        numeric_value = cls._normalize_numeric(value)
+        if numeric_value is None:
+            return None
+        if numeric_value > 500:
+            numeric_value = numeric_value / 1000
+        return round(numeric_value, 2)
+
+    @classmethod
+    def _normalize_percentage(cls, value: Any) -> float | None:
+        numeric_value = cls._normalize_numeric(value)
+        if numeric_value is None:
+            return None
+        return round(numeric_value, 2)
+
+    @classmethod
+    def _extract_body_fat_pct(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "bodyFat"))
+
+    @classmethod
+    def _extract_body_water_pct(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "bodyWater"))
+
+    @classmethod
+    def _extract_bone_mass_kg(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_mass_kg(cls._pick_first(entry or {}, "boneMass"))
+
+    @classmethod
+    def _extract_muscle_mass_kg(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_mass_kg(cls._pick_first(entry or {}, "muscleMass"))
+
+    @classmethod
+    def _extract_bmi(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "bmi"))
+
+    @classmethod
+    def _extract_visceral_fat(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "visceralFat"))
+
+    @classmethod
+    def _extract_metabolic_age(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "metabolicAge"))
+
+    @classmethod
+    def _extract_physique_rating(cls, body_payload: dict[str, Any] | None) -> float | None:
+        entry = cls._first_body_composition_entry(body_payload)
+        return cls._normalize_percentage(cls._pick_first(entry or {}, "physiqueRating"))
+
+    @classmethod
     def _normalize_daily_metric(
         cls,
         metric_date: str,
@@ -956,6 +1022,14 @@ class GarminConnectAdapter:
         return NormalizedDailyMetric(
             metric_date=metric_date,
             weight_kg=cls._extract_weight(body_payload),
+            body_fat_pct=cls._extract_body_fat_pct(body_payload),
+            body_water_pct=cls._extract_body_water_pct(body_payload),
+            bone_mass_kg=cls._extract_bone_mass_kg(body_payload),
+            muscle_mass_kg=cls._extract_muscle_mass_kg(body_payload),
+            bmi=cls._extract_bmi(body_payload),
+            visceral_fat=cls._extract_visceral_fat(body_payload),
+            metabolic_age=cls._extract_metabolic_age(body_payload),
+            physique_rating=cls._extract_physique_rating(body_payload),
             sleep_hours=cls._extract_sleep_hours(sleep_payload),
             sleep_quality=cls._extract_sleep_quality(sleep_payload),
             resting_hr=cls._extract_resting_hr(heart_rates_payload),

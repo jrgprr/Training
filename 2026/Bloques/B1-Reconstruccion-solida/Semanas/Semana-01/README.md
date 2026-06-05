@@ -35,37 +35,37 @@
 ### Lunes
 - Objetivo: abrir la semana con activacion suave y sin fatiga.
 - Sesion principal: paseo de 45-60 minutos o descanso activo.
-- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: si hay sensacion de pesadez, convertir el dia en descanso completo.
 
 ### Martes
 - Objetivo: recuperar sensacion de trabajo aerobico estructurado.
 - Sesion principal: bicicleta Z2 75-90 minutos, estable y sin apretar.
-- Complementario: espalda y biceps 15-20 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: evitar convertir la sesion en tempo o series encubiertas.
 
 ### Miercoles
 - Objetivo: introducir el trabajo de core sin interferencia.
 - Sesion principal: paseo suave 20-45 minutos o descanso activo.
-- Complementario: core 15-20 minutos.
+- Complementario: core 30-35 minutos.
 - Observaciones: debe sentirse ligero y no comprometer el jueves.
 
 ### Jueves
 - Objetivo: sumar otro dia aerobico util con control.
 - Sesion principal: bicicleta Z2 60-75 minutos.
-- Complementario: pecho, triceps y hombro 15-20 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: dia deliberadamente facil; mejor quedarse corto que dejar deuda.
 
 ### Viernes
 - Objetivo: llegar fresco al fin de semana.
 - Sesion principal: descanso activo o paseo de 45 minutos.
-- Complementario: espalda y biceps 15-20 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: si la semana viene muy facil, no usar este dia para anadir carga.
 
 ### Sabado
 - Objetivo: completar la primera salida larga controlada del bloque.
 - Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2 comoda.
-- Complementario: core 15-20 minutos y nutricion e hidratacion ordenadas durante la salida.
+- Complementario: core 30-35 minutos y nutricion e hidratacion ordenadas durante la salida.
 - Observaciones: debe terminar con sensacion de que aun quedaba margen.
 
 ### Domingo

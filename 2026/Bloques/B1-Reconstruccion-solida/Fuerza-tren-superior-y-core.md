@@ -5,7 +5,7 @@
 - Temporada: 2026.
 - Bloque: B1 - Reconstruccion solida.
 - Uso previsto: 6 micro-sesiones complementarias ligeras por semana de lunes a sabado.
-- Duracion orientativa por micro-sesion complementaria: 12-20 minutos.
+- Duracion orientativa por micro-sesion complementaria: 30-35 minutos.
 - Material disponible: mancuernas, banco, barra, bandas y maquina de dominadas.
 - Enfoque: fuerza complementaria estructurada centrada en tren superior y core, con interferencia baja sobre la bicicleta.
 
@@ -43,7 +43,7 @@ Distribucion recomendada en B1:
 
 ## 5. Plantillas de trabajo
 
-### A. Espalda y biceps - 12 a 20 min
+### A. Espalda y biceps - 30 a 35 min
 
 Elegir 2-3 ejercicios:
 - remo con mancuerna: 2-3 x 8-12 por lado,
@@ -51,7 +51,7 @@ Elegir 2-3 ejercicios:
 - curl con mancuerna o banda: 2 x 10-12,
 - face pulls o band pull-aparts: 2 x 12-15.
 
-### B. Pecho, triceps y hombro - 12 a 20 min
+### B. Pecho, triceps y hombro - 30 a 35 min
 
 Elegir 2-3 ejercicios:
 - press banca con mancuernas o flexiones: 2-3 x 8-12,
@@ -59,7 +59,7 @@ Elegir 2-3 ejercicios:
 - extensiones de triceps con banda o mancuerna: 2 x 10-12,
 - elevaciones laterales ligeras: 2 x 10-12.
 
-### C. Core - 10 a 20 min
+### C. Core - 30 a 35 min
 
 Elegir 2-3 ejercicios:
 - pallof press: 2-3 x 10 por lado,

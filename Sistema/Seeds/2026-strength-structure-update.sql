@@ -59,35 +59,35 @@ SET key_days = '1 referencia aerobica y 1 salida larga controlada.',
 WHERE week_id = 106;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10101;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10102;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Introducir el trabajo de core sin interferencia.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
-    complementary_session = 'Core 15-20 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Dia ligero de soporte; el core no debe comprometer el jueves.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 45,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Reducir a solo core corto o descanso completo si aparece fatiga.'
 WHERE planned_session_id = 10103;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10104;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10105;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 15-20 minutos y nutricion ordenada durante la salida.'
+SET complementary_session = 'Core 30-35 minutos y nutricion ordenada durante la salida.'
 WHERE planned_session_id = 10106;
 
 UPDATE plan_planned_sessions
@@ -95,35 +95,35 @@ SET complementary_session = 'Revision rapida de sensaciones, peso y fatiga, sin 
 WHERE planned_session_id = 10107;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10201;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10202;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Sostener el patron semanal con un dia ligero de core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
-    complementary_session = 'Core 15-20 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Dia ligero; el core no debe condicionar jueves o sabado.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 45,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Reducir a solo core corto o descanso si la semana llega cargada.'
 WHERE planned_session_id = 10203;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10204;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10205;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 15-20 minutos y nutricion e hidratacion desde el inicio.'
+SET complementary_session = 'Core 30-35 minutos y nutricion e hidratacion desde el inicio.'
 WHERE planned_session_id = 10206;
 
 UPDATE plan_planned_sessions
@@ -131,35 +131,35 @@ SET complementary_session = 'Revision de sensaciones y peso, sin fuerza.'
 WHERE planned_session_id = 10207;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10301;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos y registro de potencia media, frecuencia cardiaca media y sensacion.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos y registro de potencia media, frecuencia cardiaca media y sensacion.'
 WHERE planned_session_id = 10302;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera y soporte general con foco en core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
-    complementary_session = 'Core 15-20 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Dia ligero de soporte general; el core no debe restar calidad al jueves.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 45,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Reducir a un bloque corto de core si la semana llega cargada.'
 WHERE planned_session_id = 10303;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10304;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10305;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 15-20 minutos y alimentacion e hidratacion estables.'
+SET complementary_session = 'Core 30-35 minutos y alimentacion e hidratacion estables.'
 WHERE planned_session_id = 10306;
 
 UPDATE plan_planned_sessions
@@ -167,35 +167,35 @@ SET complementary_session = 'Revision de datos de la semana, sin fuerza.'
 WHERE planned_session_id = 10307;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 10-15 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10401;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 10-15 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10402;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera con menos carga y foco en core.',
     primary_session = 'Paseo suave 20-40 minutos o descanso activo.',
-    complementary_session = 'Core 10-15 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Version muy controlada para absorber; no comprometer jueves.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 40,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Si hay fatiga, dejar solo un bloque corto de core o descanso.'
 WHERE planned_session_id = 10403;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 10-15 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10404;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 10-15 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10405;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 10-15 minutos y nutricion e hidratacion normales.'
+SET complementary_session = 'Core 30-35 minutos y nutricion e hidratacion normales.'
 WHERE planned_session_id = 10406;
 
 UPDATE plan_planned_sessions
@@ -203,35 +203,35 @@ SET complementary_session = 'Revision de sensaciones generales, sin fuerza.'
 WHERE planned_session_id = 10407;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10501;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10502;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera con foco en core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
-    complementary_session = 'Core 15-20 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Dia ligero; no buscar progresos agresivos y proteger jueves y domingo.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 45,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Reducir a solo core si la semana ya tiene carga alta.'
 WHERE planned_session_id = 10503;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 15-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10504;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 15-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10505;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 15-20 minutos y revision de peso, sensacion y carga.'
+SET complementary_session = 'Core 30-35 minutos y revision de peso, sensacion y carga.'
 WHERE planned_session_id = 10506;
 
 UPDATE plan_planned_sessions
@@ -239,35 +239,35 @@ SET complementary_session = 'Alimentacion, bebida y ritmo bien ordenados, sin fu
 WHERE planned_session_id = 10507;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 12-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10601;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 12-20 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos y registrar potencia media, frecuencia cardiaca media y sensacion.'
 WHERE planned_session_id = 10602;
 
 UPDATE plan_planned_sessions
 SET planned_type = 'complementaria',
     objective = 'Sostener el trabajo de core dentro del patron semanal sin generar fatiga residual.',
     primary_session = 'Paseo 20-45 minutos o descanso activo.',
-    complementary_session = 'Core 12-20 minutos.',
+    complementary_session = 'Core 30-35 minutos.',
     notes = 'Debe sentirse ligero y no comprometer jueves.',
     intensity_class = 'muy suave',
-    duration_min = 20,
-    duration_max = 45,
+    duration_min = 30,
+    duration_max = 35,
     adjustment_rule = 'Reducir a solo core corto o descanso activo si aparece fatiga.'
 WHERE planned_session_id = 10603;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Pecho, triceps y hombro 12-20 minutos.'
+SET complementary_session = 'Pecho, triceps y hombro 30-35 minutos.'
 WHERE planned_session_id = 10604;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Espalda y biceps 12-20 minutos.'
+SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10605;
 
 UPDATE plan_planned_sessions
-SET complementary_session = 'Core 12-20 minutos y revision parcial de sensaciones antes del cierre del bloque.'
+SET complementary_session = 'Core 30-35 minutos y revision parcial de sensaciones antes del cierre del bloque.'
 WHERE planned_session_id = 10606;
 
 UPDATE plan_planned_sessions

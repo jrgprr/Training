@@ -35,37 +35,37 @@
 ### Lunes
 - Objetivo: descanso util y absorcion.
 - Sesion principal: paseo 45-60 minutos o descanso activo.
-- Complementario: pecho, triceps y hombro 10-15 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: dia de descarga real.
 
 ### Martes
 - Objetivo: sostener el gesto aerobico sin exigir.
 - Sesion principal: bicicleta Z2 75 minutos.
-- Complementario: espalda y biceps 10-15 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: sensacion de facilidad como criterio principal.
 
 ### Miercoles
 - Objetivo: mantener fuerza estructurada ligera con menos carga y foco en core.
 - Sesion principal: paseo suave 20-40 minutos o descanso activo.
-- Complementario: core 10-15 minutos.
+- Complementario: core 30-35 minutos.
 - Observaciones: version muy controlada para absorber; no comprometer jueves.
 
 ### Jueves
 - Objetivo: repetir un dia aerobico estable y corto.
 - Sesion principal: bicicleta Z2 60-75 minutos.
-- Complementario: pecho, triceps y hombro 10-15 minutos.
+- Complementario: pecho, triceps y hombro 30-35 minutos.
 - Observaciones: si hay molestias o cansancio, recortar sin problema.
 
 ### Viernes
 - Objetivo: despejar antes del fin de semana.
 - Sesion principal: descanso activo o paseo 45 minutos.
-- Complementario: espalda y biceps 10-15 minutos.
+- Complementario: espalda y biceps 30-35 minutos.
 - Observaciones: dia deliberadamente facil.
 
 ### Sabado
 - Objetivo: mantener la salida larga, pero con menor coste.
 - Sesion principal: bicicleta 2 horas 15 minutos a 2 horas 30 minutos en Z2.
-- Complementario: core 10-15 minutos y nutricion e hidratacion normales.
+- Complementario: core 30-35 minutos y nutricion e hidratacion normales.
 - Observaciones: debe dejar mejores sensaciones que la semana 03.
 
 ### Domingo
