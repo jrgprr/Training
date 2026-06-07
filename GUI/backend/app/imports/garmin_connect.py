@@ -1006,6 +1006,27 @@ class GarminConnectAdapter:
         return cls._normalize_percentage(cls._pick_first(entry or {}, "physiqueRating"))
 
     @classmethod
+    def _extract_total_steps(cls, steps_payload: dict[str, Any] | None) -> int | None:
+        numeric_value = cls._normalize_numeric(cls._pick_first(steps_payload or {}, "totalSteps", "steps"))
+        if numeric_value is None:
+            return None
+        return int(round(numeric_value))
+
+    @classmethod
+    def _extract_total_distance_m(cls, steps_payload: dict[str, Any] | None) -> float | None:
+        numeric_value = cls._normalize_numeric(cls._pick_first(steps_payload or {}, "totalDistance", "distance"))
+        if numeric_value is None:
+            return None
+        return round(numeric_value, 2)
+
+    @classmethod
+    def _extract_step_goal(cls, steps_payload: dict[str, Any] | None) -> int | None:
+        numeric_value = cls._normalize_numeric(cls._pick_first(steps_payload or {}, "stepGoal", "dailyStepGoal"))
+        if numeric_value is None:
+            return None
+        return int(round(numeric_value))
+
+    @classmethod
     def _normalize_daily_metric(
         cls,
         metric_date: str,
@@ -1018,6 +1039,7 @@ class GarminConnectAdapter:
         stress_payload: dict[str, Any] | None,
         spo2_payload: dict[str, Any] | None,
         body_payload: dict[str, Any] | None,
+        steps_payload: dict[str, Any] | None,
     ) -> NormalizedDailyMetric:
         return NormalizedDailyMetric(
             metric_date=metric_date,
@@ -1042,6 +1064,9 @@ class GarminConnectAdapter:
             ),
             hrv=cls._extract_hrv(hrv_payload),
             body_battery=cls._extract_body_battery(body_battery_payload, metric_date),
+            total_steps=cls._extract_total_steps(steps_payload),
+            total_distance_m=cls._extract_total_distance_m(steps_payload),
+            step_goal=cls._extract_step_goal(steps_payload),
             stress_avg=cls._extract_stress_avg(stress_payload),
             stress_max=cls._extract_stress_max(stress_payload),
             spo2_avg=cls._extract_spo2_avg(spo2_payload),
@@ -1121,6 +1146,17 @@ class GarminConnectAdapter:
             user_profile_payload = client.get_user_profile() or {}
         except Exception:
             user_profile_payload = None
+        try:
+            daily_steps_payload = client.get_daily_steps(request.date_from, request.date_to) or []
+        except Exception:
+            daily_steps_payload = []
+        daily_steps_by_date: dict[str, dict[str, Any]] = {}
+        for item in daily_steps_payload:
+            if not isinstance(item, dict):
+                continue
+            metric_date = str(self._pick_first(item, "calendarDate", "date") or "").strip()
+            if metric_date:
+                daily_steps_by_date[metric_date] = item
         for metric_date in iter_dates(request.date_from, request.date_to):
             stats_payload = client.get_stats(metric_date) or {}
             sleep_payload = client.get_sleep_data(metric_date) or {}
@@ -1142,6 +1178,7 @@ class GarminConnectAdapter:
                     stress_payload=stress_payload,
                     spo2_payload=spo2_payload,
                     body_payload=body_payload,
+                    steps_payload=daily_steps_by_date.get(metric_date),
                 )
             )
         return metrics

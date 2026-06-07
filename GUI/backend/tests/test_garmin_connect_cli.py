@@ -559,6 +559,9 @@ class GarminImportStorageStateTests(unittest.TestCase):
                         NormalizedDailyMetric(
                             metric_date="2026-05-05",
                             resting_hr=50,
+                            total_steps=12345,
+                            total_distance_m=9876.0,
+                            step_goal=10000,
                         )
                     ],
                 )
@@ -584,10 +587,16 @@ class GarminImportStorageStateTests(unittest.TestCase):
 
                 with storage_module_connection(database_path) as connection:
                     activity_total = connection.execute("SELECT COUNT(*) AS total FROM exec_activities").fetchone()["total"]
+                    metric_row = connection.execute(
+                        "SELECT total_steps, total_distance_m, step_goal FROM exec_daily_metrics"
+                    ).fetchone()
                     metric_total = connection.execute("SELECT COUNT(*) AS total FROM exec_daily_metrics").fetchone()["total"]
 
                 self.assertEqual(activity_total, 1)
                 self.assertEqual(metric_total, 1)
+                self.assertEqual(metric_row["total_steps"], 12345)
+                self.assertEqual(metric_row["total_distance_m"], 9876.0)
+                self.assertEqual(metric_row["step_goal"], 10000)
 
 
 class GarminImportApiPayloadTests(unittest.TestCase):
@@ -710,6 +719,14 @@ def create_minimal_exec_tables(connection):
             metric_date TEXT NOT NULL,
             source_system TEXT NOT NULL,
             weight_kg REAL,
+            body_fat_pct REAL,
+            body_water_pct REAL,
+            bone_mass_kg REAL,
+            muscle_mass_kg REAL,
+            bmi REAL,
+            visceral_fat REAL,
+            metabolic_age REAL,
+            physique_rating REAL,
             sleep_hours REAL,
             sleep_quality TEXT,
             resting_hr REAL,
@@ -718,6 +735,9 @@ def create_minimal_exec_tables(connection):
             lactate_threshold_hr REAL,
             hrv REAL,
             body_battery REAL,
+            total_steps INTEGER,
+            total_distance_m REAL,
+            step_goal INTEGER,
             stress_avg REAL,
             stress_max REAL,
             spo2_avg REAL,

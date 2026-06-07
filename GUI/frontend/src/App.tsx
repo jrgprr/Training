@@ -314,6 +314,9 @@ type DailyMetricDetail = {
   lactate_threshold_hr: number | null;
   hrv: number | null;
   body_battery: number | null;
+  total_steps: number | null;
+  total_distance_m: number | null;
+  step_goal: number | null;
   stress_avg: number | null;
   stress_max: number | null;
   spo2_avg: number | null;
@@ -4202,6 +4205,9 @@ export default function App() {
                     {selectedDailyMetric.lactate_threshold_hr != null ? <article><span>FC umbral Garmin</span><strong>{toMetricLabel(selectedDailyMetric.lactate_threshold_hr, " bpm")}</strong></article> : null}
                     {selectedDailyMetric.hrv != null ? <article><span>HRV</span><strong>{toMetricLabel(selectedDailyMetric.hrv)}</strong></article> : null}
                     {selectedDailyMetric.body_battery != null ? <article><span>Body Battery</span><strong>{toMetricLabel(selectedDailyMetric.body_battery)}</strong></article> : null}
+                    {selectedDailyMetric.total_steps != null ? <article><span>Pasos</span><strong>{toMetricLabel(selectedDailyMetric.total_steps)}</strong></article> : null}
+                    {selectedDailyMetric.total_distance_m != null ? <article><span>Distancia pie</span><strong>{toMetricLabel(selectedDailyMetric.total_distance_m / 1000, " km")}</strong></article> : null}
+                    {selectedDailyMetric.step_goal != null ? <article><span>Objetivo pasos</span><strong>{toMetricLabel(selectedDailyMetric.step_goal)}</strong></article> : null}
                     {selectedDailyMetric.stress_avg != null ? <article><span>Estres medio</span><strong>{toMetricLabel(selectedDailyMetric.stress_avg)}</strong></article> : null}
                     {selectedDailyMetric.stress_max != null ? <article><span>Estres pico</span><strong>{toMetricLabel(selectedDailyMetric.stress_max)}</strong></article> : null}
                     {selectedDailyMetric.spo2_sleep_avg != null ? <article><span>SpO2 sueno</span><strong>{toMetricLabel(selectedDailyMetric.spo2_sleep_avg, "%")}</strong></article> : null}

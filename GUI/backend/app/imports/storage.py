@@ -1348,10 +1348,10 @@ class GarminImportStorage:
                             bmi, visceral_fat, metabolic_age, physique_rating,
                             sleep_hours,
                             sleep_quality, resting_hr, vo2max_cycling, vo2max_running, lactate_threshold_hr,
-                            hrv, body_battery, stress_avg, stress_max,
+                            hrv, body_battery, total_steps, total_distance_m, step_goal, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes, raw_payload_path
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             import_job_id,
@@ -1375,6 +1375,9 @@ class GarminImportStorage:
                             metric.lactate_threshold_hr,
                             metric.hrv,
                             metric.body_battery,
+                            metric.total_steps,
+                            metric.total_distance_m,
+                            metric.step_goal,
                             metric.stress_avg,
                             metric.stress_max,
                             metric.spo2_avg,
@@ -1395,10 +1398,10 @@ class GarminImportStorage:
                             bmi, visceral_fat, metabolic_age, physique_rating,
                             sleep_hours, sleep_quality,
                             resting_hr, vo2max_cycling, vo2max_running, lactate_threshold_hr,
-                            hrv, body_battery, stress_avg, stress_max,
+                            hrv, body_battery, total_steps, total_distance_m, step_goal, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
                             weight_kg = excluded.weight_kg,
                             body_fat_pct = excluded.body_fat_pct,
@@ -1417,6 +1420,9 @@ class GarminImportStorage:
                             lactate_threshold_hr = excluded.lactate_threshold_hr,
                             hrv = excluded.hrv,
                             body_battery = excluded.body_battery,
+                            total_steps = excluded.total_steps,
+                            total_distance_m = excluded.total_distance_m,
+                            step_goal = excluded.step_goal,
                             stress_avg = excluded.stress_avg,
                             stress_max = excluded.stress_max,
                             spo2_avg = excluded.spo2_avg,
@@ -1448,6 +1454,9 @@ class GarminImportStorage:
                             metric.lactate_threshold_hr,
                             metric.hrv,
                             metric.body_battery,
+                            metric.total_steps,
+                            metric.total_distance_m,
+                            metric.step_goal,
                             metric.stress_avg,
                             metric.stress_max,
                             metric.spo2_avg,

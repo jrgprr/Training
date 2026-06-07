@@ -90,6 +90,9 @@ class NormalizedDailyMetric:
     lactate_threshold_hr: float | None = None
     hrv: float | None = None
     body_battery: float | None = None
+    total_steps: int | None = None
+    total_distance_m: float | None = None
+    step_goal: int | None = None
     stress_avg: float | None = None
     stress_max: float | None = None
     spo2_avg: float | None = None

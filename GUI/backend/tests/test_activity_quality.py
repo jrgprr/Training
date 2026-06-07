@@ -133,6 +133,59 @@ class ActivityQualityAdapterTests(unittest.TestCase):
         self.assertEqual(activity.discipline, "trail_walking")
         self.assertAlmostEqual(activity.avg_pace_seconds_per_km, 555.56, places=2)
 
+    def test_fetch_daily_metrics_includes_step_aggregates(self) -> None:
+        adapter = GarminConnectAdapter()
+        request = GarminImportRequest(
+            season_id=2026,
+            date_from="2026-05-30",
+            date_to="2026-05-30",
+            include_daily_metrics=True,
+        )
+
+        class FakeClient:
+            def get_user_profile(self):
+                return {"userData": {"vo2MaxCycling": 52}}
+
+            def get_daily_steps(self, date_from, date_to):
+                return [{
+                    "calendarDate": "2026-05-30",
+                    "totalSteps": 14321,
+                    "totalDistance": 11234,
+                    "stepGoal": 10000,
+                }]
+
+            def get_stats(self, cdate):
+                return {"calendarDate": cdate}
+
+            def get_sleep_data(self, cdate):
+                return {"dailySleepDTO": {"sleepTimeSeconds": 28800}}
+
+            def get_heart_rates(self, cdate):
+                return {"restingHeartRate": 48}
+
+            def get_hrv_data(self, cdate):
+                return None
+
+            def get_body_battery(self, startdate, enddate):
+                return []
+
+            def get_all_day_stress(self, cdate):
+                return {}
+
+            def get_spo2_data(self, cdate):
+                return {}
+
+            def get_body_composition(self, startdate, enddate=None):
+                return {}
+
+        metrics = adapter._fetch_daily_metrics(FakeClient(), request)
+
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0].total_steps, 14321)
+        self.assertEqual(metrics[0].total_distance_m, 11234.0)
+        self.assertEqual(metrics[0].step_goal, 10000)
+        self.assertEqual(metrics[0].resting_hr, 48.0)
+
     def test_fetch_activities_extracts_metric_readings_from_activity_detail_stream(self) -> None:
         adapter = GarminConnectAdapter()
         request = GarminImportRequest(

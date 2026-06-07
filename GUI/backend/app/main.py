@@ -243,7 +243,7 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
                          bmi, visceral_fat, metabolic_age, physique_rating,
                          sleep_hours, sleep_quality, resting_hr,
              vo2max_cycling, vo2max_running, lactate_threshold_hr,
-             hrv, body_battery,
+             hrv, body_battery, total_steps, total_distance_m, step_goal,
                stress_avg, stress_max,
                spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                subjective_energy, subjective_fatigue, soreness, notes
