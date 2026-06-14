@@ -955,6 +955,40 @@ textarea {
   stroke: #b91c1c;
 }
 
+.weight-chart-swatch-line {
+  background: #7c3aed;
+}
+
+.weight-chart-swatch-primary {
+  background: #0f766e;
+}
+
+.weight-chart-swatch-extra {
+  background: #6b7280;
+}
+
+.weight-chart-line {
+  fill: none;
+  stroke: #7c3aed;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.weight-chart-dot {
+  stroke-width: 1.5;
+}
+
+.weight-chart-dot-primary {
+  fill: #d1fae5;
+  stroke: #0f766e;
+}
+
+.weight-chart-dot-extra {
+  fill: rgba(107, 114, 128, 0.22);
+  stroke: #4b5563;
+}
+
 .activity-quality-head {
   display: flex;
   justify-content: space-between;

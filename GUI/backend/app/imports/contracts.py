@@ -74,6 +74,9 @@ class NormalizedActivity:
 class NormalizedDailyMetric:
     metric_date: str
     weight_kg: float | None = None
+    weight_measured_at: str | None = None
+    weight_measurement_source: str | None = None
+    weight_measurements: list["NormalizedWeightMeasurement"] = field(default_factory=list)
     body_fat_pct: float | None = None
     body_water_pct: float | None = None
     bone_mass_kg: float | None = None
@@ -103,6 +106,18 @@ class NormalizedDailyMetric:
     subjective_fatigue: int | None = None
     notes: str | None = None
     raw_payload_path: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class NormalizedWeightMeasurement:
+    metric_date: str
+    measurement_key: str
+    measured_at: str | None
+    weight_kg: float
+    measurement_source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

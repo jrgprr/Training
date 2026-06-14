@@ -25,6 +25,48 @@ REVIEW_FIELDS = (
 )
 
 
+def discipline_family(discipline: str | None) -> str | None:
+    if discipline in {"road_biking", "indoor_cycling", "mountain_biking"}:
+        return "cycling"
+    if discipline in {"walking", "hiking"}:
+        return "walking"
+    if discipline in {"running", "trail_running"}:
+        return "running"
+    return discipline
+
+
+def infer_families_from_text(*texts: str | None) -> set[str]:
+    normalized_text = " ".join((text or "").strip().lower() for text in texts if text)
+    if not normalized_text:
+        return set()
+
+    families: set[str] = set()
+    if "bicicleta" in normalized_text:
+        families.add("cycling")
+    if "monte" in normalized_text or "sender" in normalized_text:
+        families.add("hiking")
+        families.add("walking")
+    if "paseo" in normalized_text or "caminar" in normalized_text:
+        families.add("walking")
+    if "correr" in normalized_text or "running" in normalized_text:
+        families.add("running")
+    return families
+
+
+def planned_session_families(planned_type: str | None, primary_session: str | None) -> set[str]:
+    normalized_planned_type = (planned_type or "").strip().lower()
+    families_by_planned_type = {
+        "bicicleta-z2": {"cycling"},
+        "salida-larga": {"cycling"},
+        "referencia-aerobica": {"cycling"},
+        "fuerza": {"strength_training"},
+        "activacion": {"walking", "cycling"},
+        "recuperacion": {"walking", "cycling"},
+        "complementaria": {"walking", "cycling", "hiking"},
+    }
+    return infer_families_from_text(primary_session) or families_by_planned_type.get(normalized_planned_type, set())
+
+
 def build_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
     season_root = REPO_ROOT / str(season_id) / DAILY_ASSESSMENT_ROOT_NAME
     suffix = f"ps-{planned_session_id}" if planned_session_id is not None else "general"
@@ -103,6 +145,10 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 def fetch_one(connection: sqlite3.Connection, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
     return row_to_dict(connection.execute(query, params).fetchone())
+
+
+def fetch_all(connection: sqlite3.Connection, query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+    return [row_to_dict(row) for row in connection.execute(query, params).fetchall() if row is not None]
 
 
 def infer_season_id(connection: sqlite3.Connection, review_date: str) -> int:
@@ -184,6 +230,92 @@ def infer_planned_summary(connection: sqlite3.Connection, planned_session_id: in
     return primary_session or objective
 
 
+def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_session_id: int | None, activity_id: int | None) -> int | None:
+    if activity_id is not None:
+        row = connection.execute(
+            "SELECT activity_id FROM exec_activities WHERE activity_id = ? AND activity_date = ?",
+            (activity_id, review_date),
+        ).fetchone()
+        return int(row[0]) if row is not None else None
+
+    if planned_session_id is None:
+        return None
+
+    linked = connection.execute(
+        "SELECT activity_id FROM link_plan_execution WHERE planned_session_id = ? ORDER BY link_id DESC LIMIT 1",
+        (planned_session_id,),
+    ).fetchone()
+    if linked is not None:
+        return int(linked[0])
+
+    planned_session = fetch_one(
+        connection,
+        """
+        SELECT planned_type, primary_session
+        FROM plan_planned_sessions
+        WHERE planned_session_id = ? AND session_date = ?
+        """,
+        (planned_session_id, review_date),
+    )
+    if planned_session is None:
+        return None
+
+    target_families = planned_session_families(planned_session.get("planned_type"), planned_session.get("primary_session"))
+    if not target_families:
+        return None
+
+    candidates = fetch_all(
+        connection,
+        """
+        SELECT activity_id, discipline
+        FROM exec_activities
+        WHERE activity_date = ?
+        ORDER BY COALESCE(started_at, activity_date), activity_id
+        """,
+        (review_date,),
+    )
+    compatible_candidates = [
+        candidate for candidate in candidates if discipline_family(candidate.get("discipline")) in target_families
+    ]
+    if len(compatible_candidates) != 1:
+        return None
+    return int(compatible_candidates[0]["activity_id"])
+
+
+def ensure_activity_link(
+    connection: sqlite3.Connection,
+    row: dict[str, Any],
+    activity_id: int | None,
+    payload: dict[str, Any],
+) -> str | None:
+    if row.get("planned_session_id") is None or activity_id is None:
+        return None
+    if row.get("compliance_status") == "skipped":
+        return None
+
+    existing = connection.execute(
+        "SELECT link_id FROM link_plan_execution WHERE planned_session_id = ? AND activity_id = ?",
+        (row["planned_session_id"], activity_id),
+    ).fetchone()
+    if existing is not None:
+        return None
+
+    connection.execute(
+        """
+        INSERT INTO link_plan_execution (
+            planned_session_id, activity_id, link_type, compliance_status, rationale
+        ) VALUES (?, ?, 'garmin_auto', ?, ?)
+        """,
+        (
+            row["planned_session_id"],
+            activity_id,
+            payload.get("compliance_status") or "completed",
+            "Autoenlace desde writeback diario con actividad unica compatible en la fecha.",
+        ),
+    )
+    return "link_plan_execution inserted"
+
+
 def validate_payload(payload: dict[str, Any]) -> None:
     if not any(payload.get(field) not in (None, "") for field in REVIEW_FIELDS):
         raise ValueError("At least one review field must be provided")
@@ -223,12 +355,17 @@ def build_row(connection: sqlite3.Connection, payload: dict[str, Any], args: arg
         if planned_summary is not None:
             warnings.append("planned_summary inferred from planned session")
 
+    resolved_activity_id = infer_activity_id(connection, review_date, planned_session_id, activity_id)
+    if activity_id is None and resolved_activity_id is not None:
+        warnings.append("activity_id inferred from unique compatible day activity")
+
     resolved = {
         "season_id": int(season_id),
         "review_date": review_date,
         "block_id": block_id,
         "week_id": week_id,
         "planned_session_id": planned_session_id,
+        "activity_id": resolved_activity_id,
         "planned_summary": planned_summary,
         "actual_summary": payload.get("actual_summary"),
         "compliance_status": payload.get("compliance_status"),
@@ -307,6 +444,7 @@ def main() -> int:
 
     action = "dry-run"
     stored_row = resolved_row
+    link_action = None
     assessment_markdown_path = build_assessment_markdown_path(
         resolved_row["season_id"],
         resolved_row["review_date"],
@@ -314,6 +452,9 @@ def main() -> int:
     )
     if args.write:
         stored_row = upsert_row(connection, resolved_row) or resolved_row
+        link_action = ensure_activity_link(connection, resolved_row, resolved_row.get("activity_id"), payload)
+        if link_action is not None:
+            connection.commit()
         assessment_markdown_path = write_assessment_markdown(stored_row, payload)
         action = "updated" if existing_row is not None else "inserted"
 
@@ -323,6 +464,7 @@ def main() -> int:
             "review_date": resolved_row["review_date"],
             "season_id": resolved_row["season_id"],
             "planned_session_id": resolved_row["planned_session_id"],
+            "activity_id": resolved_row.get("activity_id"),
             "week_id": resolved_row["week_id"],
             "block_id": resolved_row["block_id"],
         },
@@ -330,6 +472,7 @@ def main() -> int:
         "stored_row": stored_row,
         "assessment_markdown_path": str(assessment_markdown_path),
         "assessment_markdown_exists": assessment_markdown_path.exists(),
+        "link_action": link_action,
         "warnings": warnings,
     }
     print(json.dumps(result, indent=2, ensure_ascii=True))

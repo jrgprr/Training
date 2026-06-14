@@ -27,6 +27,7 @@ from .contracts import (
     NormalizedDailyMetric,
     NormalizedSegmentDefinition,
     NormalizedSegmentEffort,
+    NormalizedWeightMeasurement,
     iter_dates,
 )
 
@@ -142,7 +143,6 @@ class GarminConnectAdapter:
     }
     HIKING_NAME_HINTS = ("senderismo", "hiking", "trek", "trekking")
     CYCLING_DISCIPLINES = {"road_biking", "indoor_cycling", "mountain_biking", "cycling"}
-
     def __init__(self, configuration: GarminConnectConfiguration | None = None) -> None:
         self.configuration = configuration or GarminConnectConfiguration.from_environment()
         self._client: Garmin | None = None
@@ -365,6 +365,139 @@ class GarminConnectAdapter:
         return None
 
     @classmethod
+    def _parse_timestamp(cls, value: Any) -> datetime | None:
+        normalized = cls._normalize_timestamp(value)
+        if normalized is None:
+            return None
+        if isinstance(normalized, str):
+            text = normalized.strip()
+            if "T" not in text and " " not in text:
+                return None
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+        return None
+
+    @classmethod
+    def _extract_weight_entry_timestamp(cls, entry: dict[str, Any]) -> tuple[str | None, datetime | None]:
+        for candidate in (
+            cls._pick_first(entry, "measurementTimeLocal", "sampleTimeLocal", "timestampLocal", "startTimeLocal"),
+            cls._pick_first(
+                entry,
+                "measurementTimeGMT",
+                "sampleTimeGMT",
+                "timestampGMT",
+                "startTimeGMT",
+                "measurementTimestamp",
+                "timestamp",
+                "dateTimestamp",
+                "measurementTime",
+                "sampleTime",
+                "startTime",
+            ),
+        ):
+            parsed = cls._parse_timestamp(candidate)
+            normalized = cls._normalize_timestamp(candidate)
+            if normalized is not None:
+                return normalized, parsed
+        return None, None
+
+    @staticmethod
+    def _normalize_weight_value(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            return None
+        if numeric_value > 500:
+            return round(numeric_value / 1000, 2)
+        return round(numeric_value, 2)
+
+    @classmethod
+    def _classify_weight_measurement_source(cls, parsed_dt: datetime | None) -> str | None:
+        return "timestamped_measurement" if parsed_dt is not None else "daily_aggregate"
+
+    @classmethod
+    def _extract_weight_measurements(
+        cls,
+        body_payload: dict[str, Any] | None,
+        metric_date: str,
+    ) -> list[NormalizedWeightMeasurement]:
+        if not body_payload:
+            return []
+
+        raw_entries = body_payload.get("dateWeightList") if isinstance(body_payload.get("dateWeightList"), list) else None
+        candidate_entries = [entry for entry in (raw_entries or [body_payload]) if isinstance(entry, dict)]
+        measurements: list[tuple[datetime, int, NormalizedWeightMeasurement]] = []
+        for index, entry in enumerate(candidate_entries):
+            weight = cls._normalize_weight_value(cls._pick_first(entry, "weight", "weightInKg"))
+            if weight is None:
+                continue
+            measured_at, parsed_dt = cls._extract_weight_entry_timestamp(entry)
+            measurement_key = str(
+                cls._pick_first(entry, "samplePk", "sampleId", "id")
+                or f"{metric_date}:{index}:{measured_at or weight}"
+            )
+            measurements.append(
+                (
+                    parsed_dt or datetime.max.replace(tzinfo=timezone.utc),
+                    index,
+                    NormalizedWeightMeasurement(
+                        metric_date=metric_date,
+                        measurement_key=measurement_key,
+                        measured_at=measured_at,
+                        weight_kg=weight,
+                        measurement_source=cls._classify_weight_measurement_source(parsed_dt),
+                    ),
+                )
+            )
+
+        measurements.sort(key=lambda item: (item[0], item[1]))
+        return [item[2] for item in measurements]
+
+    @classmethod
+    def _select_weight_entry(
+        cls, body_payload: dict[str, Any] | None
+    ) -> tuple[dict[str, Any] | None, float | None, str | None, str | None]:
+        # Removed the old normalize_weight function as it is now replaced by _normalize_weight_value
+
+        if not body_payload:
+            return None, None, None, None
+
+        raw_entries = body_payload.get("dateWeightList") if isinstance(body_payload.get("dateWeightList"), list) else None
+        candidate_entries = [entry for entry in (raw_entries or [body_payload]) if isinstance(entry, dict)]
+
+        candidates: list[tuple[int, datetime, int, dict[str, Any], float, str | None, str | None]] = []
+        for index, entry in enumerate(candidate_entries):
+            weight = cls._normalize_weight_value(cls._pick_first(entry, "weight", "weightInKg"))
+            if weight is None:
+                continue
+            measured_at, parsed_dt = cls._extract_weight_entry_timestamp(entry)
+            source = "first_daily_measurement" if parsed_dt is not None else "daily_aggregate"
+            sort_dt = parsed_dt or datetime.max.replace(tzinfo=timezone.utc)
+            candidates.append((0 if parsed_dt is not None else 1, sort_dt, index, entry, weight, measured_at, source))
+
+        if not candidates:
+            return None, None, None, None
+
+        _, _, _, selected_entry, selected_weight, measured_at, source = min(candidates)
+        return selected_entry, selected_weight, measured_at, source
+
+    @staticmethod
+    def _fetch_body_composition_payload(client: Garmin, metric_date: str) -> dict[str, Any] | None:
+        try:
+            payload = client.connectapi(f"/weight-service/weight/dayview/{metric_date}")
+        except Exception:
+            payload = None
+        if isinstance(payload, dict) and payload.get("dateWeightList"):
+            return payload
+        return client.get_body_composition(metric_date, metric_date)
+
+    @classmethod
     def _normalize_segment_efforts(cls, payload: dict[str, Any], activity: NormalizedActivity) -> list[NormalizedSegmentEffort]:
         efforts: list[NormalizedSegmentEffort] = []
         for item in cls._segment_payloads(payload):
@@ -513,22 +646,13 @@ class GarminConnectAdapter:
                     avg_cadence=None,
                     avg_heart_rate=None,
                     max_heart_rate=None,
+                    notes=None,
                 )
             )
         return efforts
 
-    @staticmethod
-    def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        earth_radius_m = 6_371_000
-        dlat = radians(lat2 - lat1)
-        dlon = radians(lon2 - lon1)
-        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-        return 2 * earth_radius_m * atan2(sqrt(a), sqrt(1 - a))
-
     @classmethod
-    def _activity_detail_points(cls, payload: dict[str, Any] | None) -> list[dict[str, float]]:
-        if not isinstance(payload, dict):
-            return []
+    def _activity_detail_points(cls, payload: dict[str, Any]) -> list[dict[str, float]]:
         metric_descriptors = payload.get("metricDescriptors")
         metric_rows = payload.get("activityDetailMetrics")
         if not isinstance(metric_descriptors, list) or not isinstance(metric_rows, list):
@@ -592,6 +716,17 @@ class GarminConnectAdapter:
                     point[target_key] = value
             points.append(point)
         return points
+
+    @staticmethod
+    def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        earth_radius_m = 6_371_000
+        phi1 = radians(lat1)
+        phi2 = radians(lat2)
+        delta_phi = radians(lat2 - lat1)
+        delta_lambda = radians(lon2 - lon1)
+        a = sin(delta_phi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(delta_lambda / 2) ** 2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return earth_radius_m * c
 
     @classmethod
     def _reconstruct_segment_effort_candidates(
@@ -920,33 +1055,26 @@ class GarminConnectAdapter:
 
     @classmethod
     def _extract_weight(cls, body_payload: dict[str, Any] | None) -> float | None:
-        def normalize_weight(value: Any) -> float | None:
-            if value is None:
-                return None
-            try:
-                numeric_value = float(value)
-            except (TypeError, ValueError):
-                return None
-            if numeric_value > 500:
-                return round(numeric_value / 1000, 2)
-            return round(numeric_value, 2)
+        _, weight, _, _ = cls._select_weight_entry(body_payload)
+        return weight
 
-        if not body_payload:
-            return None
-        if isinstance(body_payload.get("dateWeightList"), list):
-            for item in body_payload["dateWeightList"]:
-                if isinstance(item, dict):
-                    return normalize_weight(cls._pick_first(item, "weight", "weightInKg"))
-        return normalize_weight(cls._pick_first(body_payload, "weight", "weightInKg"))
+    @classmethod
+    def _extract_weight_measured_at(cls, body_payload: dict[str, Any] | None) -> str | None:
+        _, _, measured_at, _ = cls._select_weight_entry(body_payload)
+        return measured_at
+
+    @classmethod
+    def _extract_weight_measurement_source(cls, body_payload: dict[str, Any] | None) -> str | None:
+        _, _, _, source = cls._select_weight_entry(body_payload)
+        return source
 
     @classmethod
     def _first_body_composition_entry(cls, body_payload: dict[str, Any] | None) -> dict[str, Any] | None:
+        entry, _, _, _ = cls._select_weight_entry(body_payload)
+        if entry is not None:
+            return entry
         if not body_payload:
             return None
-        if isinstance(body_payload.get("dateWeightList"), list):
-            for item in body_payload["dateWeightList"]:
-                if isinstance(item, dict):
-                    return item
         return body_payload
 
     @classmethod
@@ -1044,6 +1172,9 @@ class GarminConnectAdapter:
         return NormalizedDailyMetric(
             metric_date=metric_date,
             weight_kg=cls._extract_weight(body_payload),
+            weight_measured_at=cls._extract_weight_measured_at(body_payload),
+            weight_measurement_source=cls._extract_weight_measurement_source(body_payload),
+            weight_measurements=cls._extract_weight_measurements(body_payload, metric_date),
             body_fat_pct=cls._extract_body_fat_pct(body_payload),
             body_water_pct=cls._extract_body_water_pct(body_payload),
             bone_mass_kg=cls._extract_bone_mass_kg(body_payload),
@@ -1165,7 +1296,7 @@ class GarminConnectAdapter:
             body_battery_payload = client.get_body_battery(metric_date, metric_date)
             stress_payload = client.get_all_day_stress(metric_date)
             spo2_payload = client.get_spo2_data(metric_date)
-            body_payload = client.get_body_composition(metric_date, metric_date)
+            body_payload = self._fetch_body_composition_payload(client, metric_date)
             metrics.append(
                 self._normalize_daily_metric(
                     metric_date=metric_date,

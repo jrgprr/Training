@@ -180,6 +180,26 @@ type WeeklyReview = {
   zone_comparison_summary?: WeekZoneComparisonSummary;
 };
 
+type BlockReview = {
+  block_id: number;
+  season_id: number;
+  block_code: string;
+  block_name?: string | null;
+  review_status: string;
+  closed_at: string | null;
+  weeks_in_block?: number | null;
+  adherence_rate?: number | null;
+  traceability_rate?: number | null;
+  actual_minutes?: number | null;
+  planned_reference_minutes?: number | null;
+  volume_delta_minutes?: number | null;
+  risk_level: string | null;
+  recommendation_text: string | null;
+  summary_text: string | null;
+  block_assessment_available: boolean;
+  block_assessment_url: string | null;
+};
+
 type WeightReview = {
   season_id: number;
   weight_review_id: number | null;
@@ -297,6 +317,10 @@ type DailyMetricDetail = {
       tsb: number;
     }>;
   } | null;
+  weight_trend?: WeightTrendEntry[];
+  weight_measurements?: WeightMeasurementEntry[];
+  weight_measured_at: string | null;
+  weight_measurement_source: string | null;
   weight_kg: number | null;
   body_fat_pct: number | null;
   body_water_pct: number | null;
@@ -327,6 +351,20 @@ type DailyMetricDetail = {
   subjective_fatigue: number | null;
   soreness: string | null;
   notes: string | null;
+};
+
+type WeightTrendEntry = {
+  metric_date: string;
+  weight_kg: number;
+  weight_measured_at: string | null;
+  weight_measurement_source: string | null;
+};
+
+type WeightMeasurementEntry = {
+  metric_date: string;
+  measured_at: string | null;
+  weight_kg: number;
+  measurement_source: string | null;
 };
 
 type ActivityDetail = {
@@ -1362,6 +1400,118 @@ function renderLoadModelChart(
   );
 }
 
+function formatWeightMeasurementSourceLabel(source: string | null) {
+  if (source === "first_daily_measurement") {
+    return "lectura usada del dia";
+  }
+  if (source === "timestamped_measurement") {
+    return "lectura con hora";
+  }
+  if (source === "daily_aggregate") {
+    return "agregado diario";
+  }
+  return source ?? "sin origen";
+}
+
+function renderWeightTrendChart(
+  weightTrend: WeightTrendEntry[],
+  weightMeasurements: WeightMeasurementEntry[],
+  className = "weight-chart-card panel-subcard",
+) {
+  if (!weightTrend.length) {
+    return null;
+  }
+
+  const width = 1200;
+  const height = 280;
+  const leftGutter = 56;
+  const rightGutter = 24;
+  const topGutter = 26;
+  const bottomGutter = 52;
+  const plotWidth = width - leftGutter - rightGutter;
+  const plotHeight = height - topGutter - bottomGutter;
+  const maxWeight = Math.max(...weightTrend.map((entry) => entry.weight_kg));
+  const paddedMin = 82;
+  const paddedMax = maxWeight + 0.4;
+  const weightRange = Math.max(paddedMax - paddedMin, 0.8);
+  const stepX = weightTrend.length > 1 ? plotWidth / (weightTrend.length - 1) : 0;
+
+  const toX = (index: number) => leftGutter + index * stepX;
+  const toY = (value: number) => topGutter + ((paddedMax - value) / weightRange) * plotHeight;
+  const path = weightTrend
+    .map((entry, index) => `${index === 0 ? "M" : "L"}${toX(index).toFixed(1)},${toY(entry.weight_kg).toFixed(1)}`)
+    .join(" ");
+  const tickValues = [paddedMax, (paddedMax + paddedMin) / 2, paddedMin].filter(
+    (value, index, values) => values.findIndex((candidate) => Math.abs(candidate - value) < 0.01) === index,
+  );
+  const selectedByDate = new Map(weightTrend.map((entry) => [entry.metric_date, `${entry.weight_measured_at ?? ""}|${entry.weight_kg}`]));
+  const extraMeasurements = weightMeasurements.filter((measurement) => {
+    const selectedKey = selectedByDate.get(measurement.metric_date);
+    const measurementKey = `${measurement.measured_at ?? ""}|${measurement.weight_kg}`;
+    return selectedKey !== measurementKey;
+  });
+  const indexByDate = new Map(weightTrend.map((entry, index) => [entry.metric_date, index]));
+
+  return (
+    <section className={className}>
+      <div className="load-chart-head">
+        <div>
+          <strong>Tendencia de peso</strong>
+          <p className="segment-missing-copy">Serie diaria usando la primera lectura del dia cuando existe hora de medicion, con puntos adicionales para el resto de pesajes del mismo dia sin unirlos con lineas.</p>
+        </div>
+        <div className="load-chart-legend" aria-label="Leyenda del grafico de peso">
+          <span><i className="load-chart-swatch weight-chart-swatch-line" />Peso</span>
+          <span><i className="load-chart-swatch weight-chart-swatch-primary" />Lectura usada</span>
+          <span><i className="load-chart-swatch weight-chart-swatch-extra" />Otras medidas del dia</span>
+        </div>
+      </div>
+      <svg className="load-model-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de tendencia de peso con primera lectura diaria y medidas adicionales">
+        {tickValues.map((tick) => (
+          <g key={tick}>
+            <line x1={leftGutter} y1={toY(tick)} x2={width - rightGutter} y2={toY(tick)} className="load-chart-grid" />
+            <text x={12} y={toY(tick) + 4} className="load-chart-axis-label">{toMetricLabel(tick, " kg")}</text>
+          </g>
+        ))}
+        <path d={path} className="weight-chart-line" />
+        {extraMeasurements.map((entry, index) => {
+          const dayIndex = indexByDate.get(entry.metric_date);
+          if (dayIndex == null) {
+            return null;
+          }
+          return (
+            <circle
+              key={`${entry.metric_date}-${entry.measured_at ?? index}-${entry.weight_kg}`}
+              cx={toX(dayIndex)}
+              cy={toY(entry.weight_kg)}
+              r={3.6}
+              className="weight-chart-dot weight-chart-dot-extra"
+            >
+              <title>{`${entry.metric_date} · ${toMetricLabel(entry.weight_kg, " kg")} · medida adicional${entry.measured_at ? ` · ${toDateTimeLabel(entry.measured_at)}` : ""}`}</title>
+            </circle>
+          );
+        })}
+        {weightTrend.map((entry, index) => {
+          return (
+            <g key={entry.metric_date}>
+              <circle
+                cx={toX(index)}
+                cy={toY(entry.weight_kg)}
+                r={4.2}
+                className="weight-chart-dot weight-chart-dot-primary"
+              >
+                <title>{`${entry.metric_date} · ${toMetricLabel(entry.weight_kg, " kg")} · ${formatWeightMeasurementSourceLabel(entry.weight_measurement_source)}${entry.weight_measured_at ? ` · ${toDateTimeLabel(entry.weight_measured_at)}` : ""}`}</title>
+              </circle>
+              {index === 0 || index === weightTrend.length - 1 || index % Math.max(Math.floor(weightTrend.length / 4), 1) === 0 ? (
+                <text x={toX(index)} y={height - 14} textAnchor="middle" className="load-chart-date-label">{entry.metric_date.slice(5)}</text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+    </section>
+  );
+}
+
 function toDurationLabel(min: number | null, max: number | null) {
   if (min == null) {
     return "-";
@@ -2270,6 +2420,7 @@ export default function App() {
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<Block | null>(null);
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null);
+  const [blockReview, setBlockReview] = useState<BlockReview | null>(null);
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
   const [weightReview, setWeightReview] = useState<WeightReview | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<ActivityDetail | null>(null);
@@ -2282,6 +2433,7 @@ export default function App() {
   const [selectedDailyMetric, setSelectedDailyMetric] = useState<DailyMetricDetail | null>(null);
   const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
   const [selectedDailyAssessment, setSelectedDailyAssessment] = useState<DailyAssessmentView | null>(null);
+  const [selectedBlockAssessmentMarkdown, setSelectedBlockAssessmentMarkdown] = useState<string | null>(null);
   const [selectedWeeklyAssessmentMarkdown, setSelectedWeeklyAssessmentMarkdown] = useState<string | null>(null);
   const [selectedWeightAssessmentMarkdown, setSelectedWeightAssessmentMarkdown] = useState<string | null>(null);
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
@@ -2304,6 +2456,7 @@ export default function App() {
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
   const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
   const [loadingDailyAssessment, setLoadingDailyAssessment] = useState(false);
+  const [loadingBlockAssessment, setLoadingBlockAssessment] = useState(false);
   const [loadingWeeklyAssessment, setLoadingWeeklyAssessment] = useState(false);
   const [loadingWeightAssessment, setLoadingWeightAssessment] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -2495,12 +2648,14 @@ export default function App() {
       setSelectedSeason(season);
       setSelectedBlock(null);
       setSelectedWeek(null);
+      setBlockReview(null);
       setWeeklyReview(null);
       setWeightReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
       setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
+      setSelectedBlockAssessmentMarkdown(null);
       setSelectedWeeklyAssessmentMarkdown(null);
       setSelectedWeightAssessmentMarkdown(null);
       setSelectedDailyMetric(null);
@@ -2605,18 +2760,24 @@ export default function App() {
       setSubmissionMessage(null);
       setSelectedBlock(block);
       setSelectedWeek(null);
+      setBlockReview(null);
       setWeeklyReview(null);
       setSelectedActivity(null);
       setSelectedActivityQuality(null);
       setSelectedActivityRunningDynamicsHistory(null);
       setSelectedDailyAssessment(null);
+      setSelectedBlockAssessmentMarkdown(null);
       setSelectedWeeklyAssessmentMarkdown(null);
       setSelectedWeightAssessmentMarkdown(null);
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
-      const data = await fetchJson<Week[]>(`/api/blocks/${block.block_id}/weeks`);
+      const [data, review] = await Promise.all([
+        fetchJson<Week[]>(`/api/blocks/${block.block_id}/weeks`),
+        fetchJson<BlockReview>(`/api/blocks/${block.block_id}/review`),
+      ]);
       setWeeks(data);
+      setBlockReview(review);
       const preferredWeek = pickPreferredWeek(data, getTodayIsoDate());
       if (preferredWeek) {
         await handleWeekSelect(preferredWeek);
@@ -2698,6 +2859,22 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setLoadingWeeklyAssessment(false);
+    }
+  }
+
+  async function loadBlockAssessment() {
+    if (!blockReview?.block_assessment_url) {
+      return;
+    }
+    try {
+      setLoadingBlockAssessment(true);
+      setError(null);
+      const markdown = await fetchText(blockReview.block_assessment_url);
+      setSelectedBlockAssessmentMarkdown(markdown);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setLoadingBlockAssessment(false);
     }
   }
 
@@ -3070,6 +3247,7 @@ export default function App() {
       </section>
 
       {selectedDailyMetric?.load_model?.trend?.length ? renderLoadModelChart(selectedDailyMetric.load_model, "panel load-chart-card load-chart-panel-top") : null}
+      {selectedDailyMetric?.weight_trend?.length ? renderWeightTrendChart(selectedDailyMetric.weight_trend, selectedDailyMetric.weight_measurements ?? [], "panel weight-chart-card load-chart-panel-top") : null}
 
       <section className="import-layout">
         <section className="panel import-panel">
@@ -4025,6 +4203,55 @@ export default function App() {
                   </button>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {selectedBlock ? (
+            <div className="week-review-card daily-assessment-card">
+              <div className="daily-assessment-card-head">
+                <div>
+                  <h3>Assessment bloque</h3>
+                  <p className="daily-assessment-subtitle">Cierre narrativo del bloque seleccionado, accesible sin salir de la GUI.</p>
+                </div>
+                {selectedBlockAssessmentMarkdown ? (
+                  <button className="ghost-button" type="button" onClick={() => setSelectedBlockAssessmentMarkdown(null)}>
+                    Cerrar assessment bloque
+                  </button>
+                ) : null}
+              </div>
+
+              {blockReview?.block_code ? (
+                <p>
+                  {blockReview.block_code} · {blockReview.block_name ?? selectedBlock.block_name} · {blockReview.risk_level ?? "Sin riesgo persistido"}
+                </p>
+              ) : null}
+
+              {blockReview?.summary_text ? <p>{blockReview.summary_text}</p> : null}
+
+              {blockReview?.block_assessment_available && blockReview.block_assessment_url ? (
+                <div className="review-actions">
+                  <button className="ghost-button" type="button" onClick={() => void loadBlockAssessment()} disabled={loadingBlockAssessment}>
+                    {loadingBlockAssessment ? "Cargando assessment bloque..." : "Ver assessment bloque"}
+                  </button>
+                </div>
+              ) : null}
+
+              {loadingBlockAssessment ? (
+                <p>Cargando assessment bloque...</p>
+              ) : selectedBlockAssessmentMarkdown ? (
+                <article className="daily-assessment-markdown" aria-label="assessment bloque renderizado">
+                  <ReactMarkdown>{selectedBlockAssessmentMarkdown}</ReactMarkdown>
+                </article>
+              ) : (
+                <div className="empty-state-card">
+                  <strong>{blockReview?.block_assessment_available ? "Assessment bloque disponible sin abrir" : "Sin assessment bloque persistido"}</strong>
+                  <p>
+                    {blockReview?.block_assessment_available
+                      ? 'Pulsa en "Ver assessment bloque" para abrir el cierre del bloque en esta misma vista.'
+                      : "Cuando exista una valoracion de bloque persistida, podras abrirla aqui."}
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
 

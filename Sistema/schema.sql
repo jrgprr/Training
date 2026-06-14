@@ -237,6 +237,8 @@ CREATE TABLE IF NOT EXISTS exec_daily_metrics (
     metric_date TEXT NOT NULL,
     source_system TEXT NOT NULL,
     weight_kg REAL,
+    weight_measured_at TEXT,
+    weight_measurement_source TEXT,
     body_fat_pct REAL,
     body_water_pct REAL,
     bone_mass_kg REAL,
@@ -266,6 +268,23 @@ CREATE TABLE IF NOT EXISTS exec_daily_metrics (
     UNIQUE (season_id, metric_date, source_system),
     FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
 );
+
+CREATE TABLE IF NOT EXISTS exec_weight_measurements (
+    weight_measurement_id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL,
+    metric_date TEXT NOT NULL,
+    source_system TEXT NOT NULL,
+    measurement_key TEXT NOT NULL,
+    measured_at TEXT,
+    weight_kg REAL NOT NULL,
+    measurement_source TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_system, measurement_key),
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_exec_weight_measurements_date ON exec_weight_measurements (season_id, metric_date, measured_at);
 
 CREATE TABLE IF NOT EXISTS zone_metric_profiles (
     zone_metric_profile_id INTEGER PRIMARY KEY,
@@ -614,6 +633,53 @@ CREATE TABLE IF NOT EXISTS review_weekly_reviews (
     FOREIGN KEY (week_id) REFERENCES plan_micro_weeks (week_id)
 );
 
+CREATE TABLE IF NOT EXISTS review_block_reviews (
+    block_review_id INTEGER PRIMARY KEY,
+    season_id INTEGER NOT NULL,
+    block_id INTEGER NOT NULL UNIQUE,
+    review_status TEXT NOT NULL DEFAULT 'open',
+    closed_at TEXT,
+    weeks_in_block INTEGER,
+    total_sessions INTEGER,
+    completed_sessions INTEGER,
+    partial_sessions INTEGER,
+    pending_sessions INTEGER,
+    skipped_sessions INTEGER,
+    replaced_sessions INTEGER,
+    adherence_rate REAL,
+    traceability_rate REAL,
+    planned_reference_minutes INTEGER,
+    actual_minutes INTEGER,
+    volume_delta_minutes INTEGER,
+    key_sessions_total INTEGER,
+    key_sessions_closed INTEGER,
+    aligned_zone_sessions INTEGER,
+    limited_zone_sessions INTEGER,
+    misaligned_zone_sessions INTEGER,
+    daily_training_load_total REAL,
+    daily_training_load_peak REAL,
+    starting_tsb REAL,
+    ending_tsb REAL,
+    lowest_tsb REAL,
+    starting_atl REAL,
+    ending_atl REAL,
+    starting_ctl REAL,
+    ending_ctl REAL,
+    avg_sleep_hours REAL,
+    avg_resting_hr REAL,
+    avg_stress REAL,
+    starting_weight_kg REAL,
+    ending_weight_kg REAL,
+    weight_delta_kg REAL,
+    risk_level TEXT,
+    recommendation_text TEXT,
+    summary_text TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (season_id) REFERENCES plan_seasons (season_id),
+    FOREIGN KEY (block_id) REFERENCES plan_meso_blocks (block_id)
+);
+
 CREATE TABLE IF NOT EXISTS review_weight_reviews (
     weight_review_id INTEGER PRIMARY KEY,
     season_id INTEGER NOT NULL,
@@ -702,6 +768,8 @@ CREATE TABLE IF NOT EXISTS staging_garmin_daily_metrics (
     source_system TEXT NOT NULL,
     metric_date TEXT NOT NULL,
     weight_kg REAL,
+    weight_measured_at TEXT,
+    weight_measurement_source TEXT,
     body_fat_pct REAL,
     body_water_pct REAL,
     bone_mass_kg REAL,

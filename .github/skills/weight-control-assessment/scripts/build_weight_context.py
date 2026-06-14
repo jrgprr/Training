@@ -95,6 +95,41 @@ def compute_previous_rolling_average(values: list[float], window: int) -> float 
     return sum(values[-window * 2 : -window]) / window
 
 
+def parse_measurement_timestamp(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if "T" not in text and " " not in text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return None
+
+
+def select_weight_rows_for_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    preferred_by_date: dict[str, dict[str, Any]] = {}
+
+    def rank(row: dict[str, Any]) -> tuple[int, datetime, int, int]:
+        measured_at = parse_measurement_timestamp(row.get("weight_measured_at"))
+        system_rank = 0 if row.get("source_system") == "garmin" else 1
+        sort_dt = measured_at or datetime.max.replace(tzinfo=timezone.utc)
+        row_id = int(row.get("daily_metric_id") or 0)
+        return (0 if measured_at is not None else 1, sort_dt, system_rank, row_id)
+
+    for row in rows:
+        metric_date = row["metric_date"]
+        existing = preferred_by_date.get(metric_date)
+        if existing is None or rank(row) < rank(existing):
+            preferred_by_date[metric_date] = row
+
+    return [preferred_by_date[key] for key in sorted(preferred_by_date)]
+
+
 def summarize_series(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
     values = [float(row[key]) for row in rows if row.get(key) is not None]
     if not values:
@@ -139,17 +174,24 @@ def summarize_series(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
 def summarize_weight_history(weight_rows: list[dict[str, Any]], target_weight: float | None, reference_weight: float | None) -> dict[str, Any]:
     weights = [float(row["weight_kg"]) for row in weight_rows if row.get("weight_kg") is not None]
     dates = [row["metric_date"] for row in weight_rows]
+    latest_row = weight_rows[-1] if weight_rows else None
     latest_weight = weights[-1] if weights else None
     latest_7d_avg = compute_rolling_average(weights, 7)
     previous_7d_avg = compute_previous_rolling_average(weights, 7)
     latest_14d_avg = compute_rolling_average(weights, 14)
     previous_14d_avg = compute_previous_rolling_average(weights, 14)
     volatility_7d = pstdev(weights[-7:]) if len(weights) >= 7 else None
+    timestamped_sample_days = sum(1 for row in weight_rows if row.get("weight_measured_at") is not None)
     return {
         "samples": len(weights),
         "first_date": dates[0] if dates else None,
         "last_date": dates[-1] if dates else None,
         "latest_weight_kg": round(latest_weight, 2) if latest_weight is not None else None,
+        "latest_weight_measured_at": latest_row.get("weight_measured_at") if latest_row else None,
+        "latest_weight_measurement_source": latest_row.get("weight_measurement_source") if latest_row else None,
+        "timestamped_sample_days": timestamped_sample_days,
+        "aggregate_sample_days": len(weights) - timestamped_sample_days,
+        "selection_policy": "earliest_timestamp_then_aggregate",
         "first_weight_kg": round(weights[0], 2) if weights else None,
         "net_change_kg": round(weights[-1] - weights[0], 2) if len(weights) >= 2 else None,
         "latest_7d_avg_kg": round(latest_7d_avg, 2) if latest_7d_avg is not None else None,
@@ -198,6 +240,15 @@ def load_recent_load_context(target_date: str, season_id: int, history_days: int
     return snapshot
 
 
+def build_daily_metric_projection(connection: sqlite3.Connection) -> tuple[str, str]:
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(exec_daily_metrics)").fetchall()}
+    weight_measured_at_expr = "weight_measured_at" if "weight_measured_at" in columns else "NULL AS weight_measured_at"
+    weight_measurement_source_expr = (
+        "weight_measurement_source" if "weight_measurement_source" in columns else "NULL AS weight_measurement_source"
+    )
+    return weight_measured_at_expr, weight_measurement_source_expr
+
+
 def main() -> int:
     args = parse_args()
     target_day = date.fromisoformat(args.date)
@@ -233,11 +284,13 @@ def main() -> int:
         (season_id,),
     )
     week_context = resolve_week_context(connection, args.date, season_id)
+    weight_measured_at_expr, weight_measurement_source_expr = build_daily_metric_projection(connection)
 
     target_metric = fetch_one(
         connection,
-        """
+        f"""
          SELECT daily_metric_id, metric_date, source_system, weight_kg,
+             {weight_measured_at_expr}, {weight_measurement_source_expr},
              body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
              bmi, visceral_fat, metabolic_age, physique_rating,
              sleep_hours, sleep_quality,
@@ -245,15 +298,22 @@ def main() -> int:
                subjective_fatigue, soreness, notes
         FROM exec_daily_metrics
         WHERE season_id = ? AND metric_date = ?
-        ORDER BY CASE WHEN source_system = 'garmin' THEN 0 ELSE 1 END, daily_metric_id DESC
+        ORDER BY CASE
+                                     WHEN weight_measured_at IS NOT NULL THEN 0
+                                     WHEN source_system = 'garmin' THEN 1
+                                     ELSE 2
+                 END,
+                 weight_measured_at ASC,
+                 daily_metric_id DESC
         LIMIT 1
         """,
         (season_id, args.date),
     )
     weight_history = fetch_all(
         connection,
-        """
-         SELECT metric_date, source_system, weight_kg,
+        f"""
+         SELECT daily_metric_id, metric_date, source_system, weight_kg,
+             {weight_measured_at_expr}, {weight_measurement_source_expr},
              body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
              bmi, visceral_fat, metabolic_age, physique_rating,
              sleep_hours, resting_hr, hrv,
@@ -264,9 +324,10 @@ def main() -> int:
           AND metric_date <= ?
           AND weight_kg IS NOT NULL
         ORDER BY metric_date ASC, daily_metric_id ASC
-        """,
+                """,
         (season_id, window_start, args.date),
     )
+    weight_history = select_weight_rows_for_trend(weight_history)
     daily_dashboard = fetch_all(
         connection,
         """

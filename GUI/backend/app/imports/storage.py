@@ -136,6 +136,7 @@ class GarminImportStorage:
             families.add("cycling")
         if "monte" in normalized_text or "sender" in normalized_text:
             families.add("hiking")
+            families.add("walking")
         if "paseo" in normalized_text or "caminar" in normalized_text:
             families.add("walking")
         if "correr" in normalized_text or "running" in normalized_text:
@@ -1344,6 +1345,7 @@ class GarminImportStorage:
                         """
                         INSERT INTO staging_garmin_daily_metrics (
                             import_job_id, season_id, source_system, metric_date, weight_kg,
+                            weight_measured_at, weight_measurement_source,
                             body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
                             bmi, visceral_fat, metabolic_age, physique_rating,
                             sleep_hours,
@@ -1351,7 +1353,7 @@ class GarminImportStorage:
                             hrv, body_battery, total_steps, total_distance_m, step_goal, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes, raw_payload_path
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             import_job_id,
@@ -1359,6 +1361,8 @@ class GarminImportStorage:
                             batch.metadata.source_system,
                             metric.metric_date,
                             metric.weight_kg,
+                            metric.weight_measured_at,
+                            metric.weight_measurement_source,
                             metric.body_fat_pct,
                             metric.body_water_pct,
                             metric.bone_mass_kg,
@@ -1393,7 +1397,7 @@ class GarminImportStorage:
                     connection.execute(
                         """
                         INSERT INTO exec_daily_metrics (
-                            season_id, metric_date, source_system, weight_kg,
+                            season_id, metric_date, source_system, weight_kg, weight_measured_at, weight_measurement_source,
                             body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
                             bmi, visceral_fat, metabolic_age, physique_rating,
                             sleep_hours, sleep_quality,
@@ -1401,9 +1405,11 @@ class GarminImportStorage:
                             hrv, body_battery, total_steps, total_distance_m, step_goal, stress_avg, stress_max,
                             spo2_avg, spo2_sleep_avg, spo2_7d_avg, spo2_lowest,
                             subjective_energy, subjective_fatigue, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(season_id, metric_date, source_system) DO UPDATE SET
                             weight_kg = excluded.weight_kg,
+                            weight_measured_at = excluded.weight_measured_at,
+                            weight_measurement_source = excluded.weight_measurement_source,
                             body_fat_pct = excluded.body_fat_pct,
                             body_water_pct = excluded.body_water_pct,
                             bone_mass_kg = excluded.bone_mass_kg,
@@ -1438,6 +1444,8 @@ class GarminImportStorage:
                             metric.metric_date,
                             batch.metadata.source_system,
                             metric.weight_kg,
+                            metric.weight_measured_at,
+                            metric.weight_measurement_source,
                             metric.body_fat_pct,
                             metric.body_water_pct,
                             metric.bone_mass_kg,
@@ -1468,6 +1476,38 @@ class GarminImportStorage:
                             metric.notes,
                         ),
                     )
+                    connection.execute(
+                        """
+                        DELETE FROM exec_weight_measurements
+                        WHERE season_id = ? AND metric_date = ? AND source_system = ?
+                        """,
+                        (batch.request.season_id, metric.metric_date, batch.metadata.source_system),
+                    )
+                    for weight_measurement in metric.weight_measurements:
+                        connection.execute(
+                            """
+                            INSERT INTO exec_weight_measurements (
+                                season_id, metric_date, source_system, measurement_key,
+                                measured_at, weight_kg, measurement_source
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(source_system, measurement_key) DO UPDATE SET
+                                season_id = excluded.season_id,
+                                metric_date = excluded.metric_date,
+                                measured_at = excluded.measured_at,
+                                weight_kg = excluded.weight_kg,
+                                measurement_source = excluded.measurement_source,
+                                updated_at = CURRENT_TIMESTAMP
+                            """,
+                            (
+                                batch.request.season_id,
+                                weight_measurement.metric_date,
+                                batch.metadata.source_system,
+                                weight_measurement.measurement_key,
+                                weight_measurement.measured_at,
+                                weight_measurement.weight_kg,
+                                weight_measurement.measurement_source,
+                            ),
+                        )
                     if existing_metric is None:
                         breakdown.daily_metric_rows_inserted += 1
                     else:

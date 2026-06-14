@@ -20,6 +20,7 @@ app = FastAPI(title="Training System GUI API", version="0.2.0")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 WEEKLY_ASSESSMENT_ROOT_NAME = "Weekly-Assessment-Logbook"
+BLOCK_ASSESSMENT_ROOT_NAME = "Block-Assessment-Logbook"
 WEIGHT_ASSESSMENT_ROOT_NAME = "Weight-Assessment-Logbook"
 RUNNING_DISCIPLINES = {"running", "trail_running", "track_running", "treadmill_running"}
 RUNNING_DYNAMICS_METRIC_NAMES = (
@@ -195,6 +196,10 @@ def get_weekly_assessment_markdown_path(season_id: int, week_code: str, week_id:
     return REPO_ROOT / str(season_id) / WEEKLY_ASSESSMENT_ROOT_NAME / f"{week_code}-week-{week_id}.md"
 
 
+def get_block_assessment_markdown_path(season_id: int, block_code: str, block_id: int) -> Path:
+    return REPO_ROOT / str(season_id) / BLOCK_ASSESSMENT_ROOT_NAME / f"{block_code}-block-{block_id}.md"
+
+
 def get_weight_assessment_markdown_path(season_id: int, review_date: str) -> Path:
     return REPO_ROOT / str(season_id) / WEIGHT_ASSESSMENT_ROOT_NAME / f"{review_date}.md"
 
@@ -239,6 +244,7 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     metric = fetch_one(
         """
         SELECT daily_metric_id, season_id, metric_date, source_system,
+                                                 weight_measured_at, weight_measurement_source,
                          weight_kg, body_fat_pct, body_water_pct, bone_mass_kg, muscle_mass_kg,
                          bmi, visceral_fat, metabolic_age, physique_rating,
                          sleep_hours, sleep_quality, resting_hr,
@@ -257,7 +263,84 @@ def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     if metric is None:
         raise HTTPException(status_code=404, detail=f"No existen metricas diarias para {metric_date} en la temporada {season_id}.")
     metric["load_model"] = get_load_model_snapshot(season_id=season_id, metric_date=metric_date)
+    metric["weight_trend"] = get_weight_trend_snapshot(season_id=season_id, metric_date=metric_date)
+    metric["weight_measurements"] = get_weight_measurement_snapshot(season_id=season_id, metric_date=metric_date)
     return metric
+
+
+def get_weight_trend_snapshot(season_id: int, metric_date: str, trailing_days: int = 14) -> list[dict[str, Any]]:
+    return fetch_all(
+        """
+        WITH ranked_weights AS (
+            SELECT
+                daily_metric_id,
+                metric_date,
+                weight_kg,
+                weight_measured_at,
+                weight_measurement_source,
+                ROW_NUMBER() OVER (
+                    PARTITION BY metric_date
+                    ORDER BY
+                        CASE WHEN source_system = 'garmin' THEN 0 ELSE 1 END,
+                        CASE WHEN weight_measured_at IS NULL THEN 1 ELSE 0 END,
+                        COALESCE(weight_measured_at, metric_date) ASC,
+                        daily_metric_id DESC
+                ) AS row_rank
+            FROM exec_daily_metrics
+            WHERE season_id = ?
+              AND metric_date <= ?
+              AND weight_kg IS NOT NULL
+        ),
+        selected_weights AS (
+            SELECT metric_date, weight_kg, weight_measured_at, weight_measurement_source
+            FROM ranked_weights
+            WHERE row_rank = 1
+            ORDER BY metric_date DESC
+            LIMIT ?
+        )
+        SELECT metric_date, weight_kg, weight_measured_at, weight_measurement_source
+        FROM selected_weights
+        ORDER BY metric_date ASC
+        """,
+        (season_id, metric_date, trailing_days),
+    )
+
+
+def get_weight_measurement_snapshot(season_id: int, metric_date: str, trailing_days: int = 14) -> list[dict[str, Any]]:
+    return fetch_all(
+        """
+        WITH ranked_weights AS (
+            SELECT
+                daily_metric_id,
+                metric_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY metric_date
+                    ORDER BY
+                        CASE WHEN source_system = 'garmin' THEN 0 ELSE 1 END,
+                        CASE WHEN weight_measured_at IS NULL THEN 1 ELSE 0 END,
+                        COALESCE(weight_measured_at, metric_date) ASC,
+                        daily_metric_id DESC
+                ) AS row_rank
+            FROM exec_daily_metrics
+            WHERE season_id = ?
+              AND metric_date <= ?
+              AND weight_kg IS NOT NULL
+        ),
+        selected_dates AS (
+            SELECT metric_date
+            FROM ranked_weights
+            WHERE row_rank = 1
+            ORDER BY metric_date DESC
+            LIMIT ?
+        )
+        SELECT metric_date, measured_at, weight_kg, measurement_source
+        FROM exec_weight_measurements
+        WHERE season_id = ?
+          AND metric_date IN (SELECT metric_date FROM selected_dates)
+        ORDER BY metric_date ASC, COALESCE(measured_at, metric_date) ASC, weight_measurement_id ASC
+        """,
+        (season_id, metric_date, trailing_days, season_id),
+    )
 
 
 def get_week_context(week_id: int) -> dict[str, Any]:
@@ -273,6 +356,21 @@ def get_week_context(week_id: int) -> dict[str, Any]:
     )
     if row is None:
         raise HTTPException(status_code=404, detail=f"No existe la semana {week_id}.")
+    return row
+
+
+def get_block_context(block_id: int) -> dict[str, Any]:
+    row = fetch_one(
+        """
+        SELECT block_id, season_id, block_code, block_name, phase_name, sequence_order,
+               start_date, end_date, objective_primary, exit_criteria
+        FROM plan_meso_blocks
+        WHERE block_id = ?
+        """,
+        (block_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No existe el bloque {block_id}.")
     return row
 
 
@@ -1072,6 +1170,72 @@ def get_weeks(block_id: int) -> list[dict[str, Any]]:
         (block_id,),
     )
     return ensure_entity_exists(rows, f"No se encontraron semanas para el bloque {block_id}.")
+
+
+@app.get("/api/blocks/{block_id}/review")
+def get_block_review(block_id: int) -> dict[str, Any]:
+    block = get_block_context(block_id)
+    row = fetch_one(
+        """
+        SELECT block_review_id, season_id, block_id, review_status, closed_at,
+               weeks_in_block, total_sessions, completed_sessions, partial_sessions,
+               pending_sessions, skipped_sessions, replaced_sessions,
+               adherence_rate, traceability_rate, planned_reference_minutes,
+               actual_minutes, volume_delta_minutes, key_sessions_total,
+               key_sessions_closed, aligned_zone_sessions, limited_zone_sessions,
+               misaligned_zone_sessions, daily_training_load_total,
+               daily_training_load_peak, starting_tsb, ending_tsb, lowest_tsb,
+               starting_atl, ending_atl, starting_ctl, ending_ctl,
+               avg_sleep_hours, avg_resting_hr, avg_stress,
+               starting_weight_kg, ending_weight_kg, weight_delta_kg,
+               risk_level, recommendation_text, summary_text,
+               created_at, updated_at
+        FROM review_block_reviews
+        WHERE block_id = ?
+        """,
+        (block_id,),
+    )
+    if row is None:
+        return {
+            "block_id": block["block_id"],
+            "season_id": block["season_id"],
+            "block_code": block["block_code"],
+            "block_name": block["block_name"],
+            "review_status": "open",
+            "closed_at": None,
+            "risk_level": None,
+            "recommendation_text": None,
+            "summary_text": None,
+            "block_assessment_available": False,
+            "block_assessment_url": None,
+        }
+
+    markdown_path = get_block_assessment_markdown_path(int(row["season_id"]), str(block["block_code"]), int(block_id))
+    row["block_code"] = block["block_code"]
+    row["block_name"] = block["block_name"]
+    row["block_assessment_available"] = markdown_path.exists()
+    row["block_assessment_url"] = f"/api/blocks/{block_id}/assessment-markdown" if markdown_path.exists() else None
+    return row
+
+
+@app.get("/api/blocks/{block_id}/assessment-markdown")
+def get_block_assessment_markdown(block_id: int) -> FileResponse:
+    block = get_block_context(block_id)
+    row = fetch_one(
+        """
+        SELECT block_review_id, season_id, block_id
+        FROM review_block_reviews
+        WHERE block_id = ?
+        """,
+        (block_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No se encontro la revision de bloque {block_id}.")
+
+    markdown_path = get_block_assessment_markdown_path(int(row["season_id"]), str(block["block_code"]), int(block_id))
+    if not markdown_path.exists():
+        raise HTTPException(status_code=404, detail="No existe markdown para esta revision de bloque.")
+    return FileResponse(markdown_path, media_type="text/markdown")
 
 
 @app.get("/api/weeks/{week_id}/sessions")
