@@ -55,7 +55,7 @@ La temporada 2026 se organiza en seis bloques meso operativos. Las tres fases gr
 
 ### B2 - Construccion aerobica extensiva I
 - Duracion orientativa: 4-5 semanas.
-- Objetivo: subir tiempo aerobico util, consolidar frecuencia alta y hacer de la bicicleta el soporte central.
+- Objetivo: subir tiempo aerobico util, consolidar frecuencia alta y hacer de la bicicleta el soporte central, con opcion de entrada absorbente si B1 no deja frescura suficiente.
 - Criterio de salida: mas volumen tolerable sin deterioro claro de recuperacion.
 
 ### B3 - Consolidacion y absorcion
