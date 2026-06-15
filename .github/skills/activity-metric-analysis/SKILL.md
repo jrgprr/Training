@@ -35,6 +35,7 @@ This skill defines when and how to deepen a daily assessment with activity-level
 5. Produce only the metrics justified by the available data using:
    [metric-output-contract.md](./references/metric-output-contract.md)
 6. Return a concise structured metric-analysis block that supports the day-level conclusion.
+7. When available, include the richer technical sub-blocks for segment efforts and recent similar-session comparison, but keep them evidence-first and compact.
 
 ## Output Rule
 

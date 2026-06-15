@@ -2,6 +2,7 @@
 .venv/
 venv/
 env/
+.garmin_mcp_env/
 __pycache__/
 *.py[cod]
 .pytest_cache/

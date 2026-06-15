@@ -27,7 +27,10 @@ This skill packages the workflow, script, and reference material needed to asses
    [sport-specific-rules.md](./references/sport-specific-rules.md)
 5. If the evidence bundle already includes `activity_metric_analysis`, treat that as the default structured technical read for the dominant endurance session.
 6. When the dominant endurance session is cycling, running, or a meaningful walking-like session but `activity_metric_analysis` is absent, or when execution quality is still unclear, load the `activity-metric-analysis` skill and incorporate its structured outputs.
-7. Format the answer using:
+7. In the `Activity Metrics` section, use this fixed order when the data exists: session control, global efficiency, terrain and segments, then recent similar-session comparison.
+8. In the global-efficiency part, treat `activity_efficiency` as the primary interpretation surface when available, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, `load_density`, and any meaningful respiration relationship.
+9. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
+10. Format the answer using:
    [day-assessment-template.md](./assets/day-assessment-template.md)
 
 ## Required Evidence Domains
@@ -49,6 +52,7 @@ This skill packages the workflow, script, and reference material needed to asses
 - Distinguish between a hard day that was appropriate and a hard day that was excessive.
 - Assess today relative to the role of the day inside the week and block, not in isolation.
 - Always separate observed evidence from coaching recommendation.
+- Keep the output fully in English.
 
 ## Minimum Output
 

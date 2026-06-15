@@ -35,9 +35,9 @@
 
 ### Lunes
 - Objetivo: mantener el patron de apertura con margen.
-- Sesion principal: paseo 45-60 minutos, bici Z1 60-90 minutos si hay buena frescura, o descanso activo.
+- Sesion principal: paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.
 - Complementario: pecho, triceps y hombro 25-30 minutos.
-- Observaciones: si el fin de semana fue caro, hacer del lunes un dia claramente mas vacio; solo estirar la bici hasta 1h30 cuando la recuperacion sea buena y el terreno facil.
+- Observaciones: si el fin de semana fue caro, hacer del lunes un dia claramente mas vacio; incluso en el extremo alto debe sentirse claramente recuperadora.
 
 ### Martes
 - Objetivo: consolidar una referencia aerobica ya algo mas larga.
@@ -59,7 +59,7 @@
 
 ### Viernes
 - Objetivo: llegar suelto al fin de semana largo.
-- Sesion principal: paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura. Sesion opcional si la recuperacion no es buena.
+- Sesion principal: paseo 60-120 minutos o bicicleta Z1 60-120 minutos. Sesion opcional si la recuperacion no es buena.
 - Complementario: espalda y biceps 25-30 minutos, opcional segun el estado de recuperacion.
 - Observaciones: viernes de recuperacion; si hace falta elegir, proteger primero la frescura del sabado y mantener la bici claramente regenerativa; la fuerza se omite si deja residuo.
 

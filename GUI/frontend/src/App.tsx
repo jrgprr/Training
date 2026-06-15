@@ -46,7 +46,36 @@ type Session = {
   duration_min: number | null;
   duration_max: number | null;
   is_key_session: number;
+  planned_activity_groups?: PlannedActivityGroup[];
   planned_zone_target?: PlannedZoneTarget | null;
+};
+
+type PlannedActivityItem = {
+  activity_item_id: number;
+  sequence_order: number;
+  item_type: string;
+  discipline_family: string | null;
+  display_label: string | null;
+  duration_min: number | null;
+  duration_max: number | null;
+  target_basis: string | null;
+  target_zone_min_code: string | null;
+  target_zone_max_code: string | null;
+  condition_key: string | null;
+  condition_value: string | null;
+  notes: string | null;
+};
+
+type PlannedActivityGroup = {
+  activity_group_id: number;
+  planned_session_id: number;
+  group_role: "primary" | "support" | string;
+  relation_group: number;
+  relation_mode: "one_of" | "all_of" | string;
+  is_optional: number;
+  summary_label: string | null;
+  notes: string | null;
+  items: PlannedActivityItem[];
 };
 
 type PlannedZoneTargetSegment = {
@@ -111,6 +140,7 @@ type PlanVsRealRow = {
   next_day_decision: string | null;
   daily_assessment_available?: boolean;
   daily_assessment_url?: string | null;
+  planned_activity_groups?: PlannedActivityGroup[];
   activities?: PlanVsRealActivity[];
   optional_daily_activities?: OptionalDailyActivity[];
   other_daily_activities?: DailyUnlinkedActivity[];
@@ -1522,6 +1552,16 @@ function toDurationLabel(min: number | null, max: number | null) {
   return `${min} min`;
 }
 
+function toDurationFragment(min: number | null, max: number | null) {
+  if (min == null) {
+    return null;
+  }
+  if (max != null && max !== min) {
+    return `${min}-${max} min`;
+  }
+  return `${min} min`;
+}
+
 function toBadgeClass(status: string) {
   return `badge badge-${status}`;
 }
@@ -1603,6 +1643,60 @@ function toDisciplineLabel(discipline: string | null) {
     yoga: "Yoga",
   };
   return labels[discipline] ?? discipline;
+}
+
+function toPlannedFamilyLabel(discipline: string | null, itemType: string, fallbackLabel: string | null) {
+  if (itemType === "rest") {
+    return fallbackLabel ?? "Descanso activo";
+  }
+  const labels: Record<string, string> = {
+    cycling: "Bicicleta",
+    running: "Carrera",
+    strength_training: "Fuerza",
+    walking: "Paseo",
+    yoga: "Movilidad",
+  };
+  return fallbackLabel && fallbackLabel.trim().length > 0 && itemType !== "endurance"
+    ? fallbackLabel
+    : labels[discipline ?? ""] ?? fallbackLabel ?? "Actividad";
+}
+
+function formatPlannedActivityItem(item: PlannedActivityItem) {
+  const rawLabel = item.display_label?.trim() ?? null;
+  if (rawLabel && /\bmin\b/i.test(rawLabel)) {
+    return rawLabel;
+  }
+
+  const baseLabel = toPlannedFamilyLabel(item.discipline_family, item.item_type, rawLabel);
+  const zoneLabel = item.target_zone_min_code
+    ? item.target_zone_max_code && item.target_zone_max_code !== item.target_zone_min_code
+      ? `${item.target_zone_min_code}-${item.target_zone_max_code}`
+      : item.target_zone_min_code
+    : null;
+  const durationLabel = toDurationFragment(item.duration_min, item.duration_max);
+  return [baseLabel, zoneLabel, durationLabel].filter(Boolean).join(" ");
+}
+
+function formatPlannedActivityGroups(groups: PlannedActivityGroup[] | undefined, role?: "primary" | "support") {
+  const scopedGroups = (groups ?? []).filter((group) => (role ? group.group_role === role : true));
+  if (scopedGroups.length === 0) {
+    return null;
+  }
+  return scopedGroups
+    .map((group) => group.items.map((item) => formatPlannedActivityItem(item)).join(group.relation_mode === "all_of" ? " + " : " o "))
+    .join(" + ");
+}
+
+function getSessionPrimaryText(session: Session) {
+  return formatPlannedActivityGroups(session.planned_activity_groups, "primary") ?? session.primary_session;
+}
+
+function getSessionSupportText(session: Session) {
+  return formatPlannedActivityGroups(session.planned_activity_groups, "support") ?? session.complementary_session ?? "-";
+}
+
+function getPlanVsRealPlannedText(row: PlanVsRealRow) {
+  return formatPlannedActivityGroups(row.planned_activity_groups) ?? row.planned_session;
 }
 
 function toPlannedTypeLabel(plannedType: string | null) {
@@ -2836,7 +2930,7 @@ export default function App() {
       setSelectedDailyAssessment({
         dailyReviewId: row.daily_review_id,
         sessionDate: row.session_date,
-        plannedSession: row.planned_session,
+        plannedSession: getPlanVsRealPlannedText(row),
         markdown,
       });
     } catch (requestError) {
@@ -3823,7 +3917,7 @@ export default function App() {
                       </td>
                       <td>{toPlannedTypeLabel(session.planned_type)}</td>
                       <td>{session.objective}</td>
-                      <td>{session.primary_session}</td>
+                      <td>{getSessionPrimaryText(session)}</td>
                       <td>
                         {session.planned_zone_target ? (
                           <span className="zone-pill zone-pill-target">{formatPlannedZoneTargetLabel(session.planned_zone_target)}</span>
@@ -3833,8 +3927,8 @@ export default function App() {
                       </td>
                       <td>
                         <div>
-                          <div>{session.complementary_session ?? '-'}</div>
-                          {session.planned_support_routine ? <small>Soporte diario: {session.planned_support_routine}</small> : null}
+                          <div>{getSessionSupportText(session)}</div>
+                          {session.planned_support_routine ? <small>Soporte opcional diario: {session.planned_support_routine}</small> : null}
                         </div>
                       </td>
                       <td>{toDurationLabel(session.duration_min, session.duration_max)}</td>
@@ -4025,8 +4119,8 @@ export default function App() {
                         </td>
                         <td>
                           <strong>{toPlannedTypeLabel(row.planned_type)}</strong>
-                          <small>{row.planned_session}</small>
-                          {row.planned_support_routine ? <small>Soporte diario planificado: {row.planned_support_routine}</small> : null}
+                          <small>{getPlanVsRealPlannedText(row)}</small>
+                          {row.planned_support_routine ? <small>Soporte opcional diario: {row.planned_support_routine}</small> : null}
                           {row.zone_comparison && row.zone_comparison.length > 0 ? (
                             <div className="zone-chip-list">
                               {row.zone_comparison.map((item, index) => (

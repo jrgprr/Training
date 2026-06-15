@@ -8,6 +8,11 @@
 - Execution:
 - Physiology:
 - Load:
+- Activity Metrics:
+  Start with session control.
+  Continue with global efficiency.
+  Add terrain and segments only when they materially explain the session.
+  Close with recent similar-session comparison.
 
 ## Coaching Interpretation
 - What went well:

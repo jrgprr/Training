@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .planned_sessions import ensure_planned_session_structure_schema, sync_all_planned_session_structures
+
 
 WEEKLY_REVIEW_SCHEMA = """
 CREATE TABLE IF NOT EXISTS review_weekly_reviews (
@@ -247,6 +249,22 @@ CREATE TABLE IF NOT EXISTS exec_activity_metric_readings (
     FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
 );
 
+CREATE TABLE IF NOT EXISTS exec_activity_route_points (
+    activity_route_point_id INTEGER PRIMARY KEY,
+    activity_id INTEGER NOT NULL,
+    point_index INTEGER NOT NULL,
+    latitude_degrees REAL NOT NULL,
+    longitude_degrees REAL NOT NULL,
+    altitude_meters REAL,
+    distance_meters REAL,
+    recorded_at TEXT,
+    elapsed_seconds REAL,
+    source_payload_kind TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (activity_id, point_index),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
 CREATE TABLE IF NOT EXISTS exec_activity_quality_runs (
     quality_run_id INTEGER PRIMARY KEY,
     activity_id INTEGER NOT NULL,
@@ -306,6 +324,7 @@ CREATE TABLE IF NOT EXISTS exec_activity_metric_summaries (
 );
 
 CREATE INDEX IF NOT EXISTS idx_exec_activity_metric_readings_activity_metric ON exec_activity_metric_readings (activity_id, metric_name);
+CREATE INDEX IF NOT EXISTS idx_exec_activity_route_points_activity ON exec_activity_route_points (activity_id, point_index);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_quality_runs_activity ON exec_activity_quality_runs (activity_id, evaluated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_quality_decisions_activity_metric ON exec_activity_quality_decisions (activity_id, metric_name, start_sample_index);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_metric_summaries_activity_metric ON exec_activity_metric_summaries (activity_id, metric_name, summary_kind);
@@ -637,10 +656,15 @@ def initialize_database() -> None:
         connection.executescript(IMPORT_SCHEMA)
         connection.executescript(PRESCRIPTION_SCHEMA)
         connection.executescript(ZONE_SCHEMA)
+        ensure_planned_session_structure_schema(connection)
         _ensure_zone_schema(connection)
         _ensure_import_job_columns(connection)
         _ensure_daily_metric_columns(connection)
         _ensure_exec_activity_quality_schema(connection)
+        _ensure_exec_activity_route_points_schema(connection)
+        _ensure_exec_activity_elevation_enrichment_schema(connection)
+        _ensure_exec_activity_elevation_enrichment_schema(connection)
+        sync_all_planned_session_structures(connection)
         normalize_existing_manual_activity_disciplines(connection)
 
 
@@ -844,6 +868,131 @@ def _ensure_exec_activity_segment_columns(connection: sqlite3.Connection) -> Non
     for column_name, statement in expected_columns.items():
         if column_name not in existing_columns:
             connection.execute(statement)
+
+
+def _ensure_exec_activity_route_points_schema(connection: sqlite3.Connection) -> None:
+    exec_activities_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activities'"
+    ).fetchone()
+    if exec_activities_exists is None:
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activity_route_points (
+            activity_route_point_id INTEGER PRIMARY KEY,
+            activity_id INTEGER NOT NULL,
+            point_index INTEGER NOT NULL,
+            latitude_degrees REAL NOT NULL,
+            longitude_degrees REAL NOT NULL,
+            altitude_meters REAL,
+            distance_meters REAL,
+            recorded_at TEXT,
+            elapsed_seconds REAL,
+            source_payload_kind TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (activity_id, point_index)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_activity_route_points_activity ON exec_activity_route_points (activity_id, point_index)"
+    )
+
+
+def _ensure_exec_activity_elevation_enrichment_schema(connection: sqlite3.Connection) -> None:
+    exec_activities_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activities'"
+    ).fetchone()
+    if exec_activities_exists is None:
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activity_elevation_enrichments (
+            elevation_enrichment_id INTEGER PRIMARY KEY,
+            activity_id INTEGER NOT NULL,
+            provider_key TEXT NOT NULL,
+            provider_version TEXT NOT NULL,
+            route_fingerprint TEXT NOT NULL,
+            status TEXT NOT NULL,
+            point_count INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT,
+            requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            UNIQUE (activity_id, provider_key, provider_version, route_fingerprint)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activity_corrected_elevation_points (
+            corrected_elevation_point_id INTEGER PRIMARY KEY,
+            elevation_enrichment_id INTEGER NOT NULL,
+            activity_id INTEGER NOT NULL,
+            point_index INTEGER NOT NULL,
+            corrected_altitude_meters REAL NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (elevation_enrichment_id, point_index)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_enrichments_activity ON exec_activity_elevation_enrichments (activity_id, provider_key, requested_at DESC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_activity_corrected_elevation_points_activity ON exec_activity_corrected_elevation_points (activity_id, elevation_enrichment_id, point_index)"
+    )
+
+
+def _ensure_exec_activity_elevation_enrichment_schema(connection: sqlite3.Connection) -> None:
+    exec_activities_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activities'"
+    ).fetchone()
+    if exec_activities_exists is None:
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activity_elevation_enrichment_runs (
+            enrichment_run_id INTEGER PRIMARY KEY,
+            activity_id INTEGER NOT NULL,
+            provider_key TEXT NOT NULL,
+            provider_version TEXT NOT NULL,
+            provider_config_json TEXT,
+            source_route_fingerprint TEXT NOT NULL,
+            queried_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL,
+            point_count INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            UNIQUE (activity_id, provider_key, provider_version, source_route_fingerprint),
+            FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exec_activity_elevation_enrichment_points (
+            enrichment_point_id INTEGER PRIMARY KEY,
+            enrichment_run_id INTEGER NOT NULL,
+            activity_id INTEGER NOT NULL,
+            point_index INTEGER NOT NULL,
+            corrected_altitude_meters REAL NOT NULL,
+            correction_status TEXT NOT NULL DEFAULT 'corrected',
+            provider_confidence REAL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (enrichment_run_id, point_index),
+            FOREIGN KEY (enrichment_run_id) REFERENCES exec_activity_elevation_enrichment_runs (enrichment_run_id),
+            FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_runs_activity ON exec_activity_elevation_enrichment_runs (activity_id, provider_key, queried_at DESC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_points_activity ON exec_activity_elevation_enrichment_points (activity_id, enrichment_run_id, point_index)"
+    )
 
 
 def _ensure_exec_activity_quality_schema(connection: sqlite3.Connection) -> None:

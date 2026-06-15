@@ -20,7 +20,13 @@ This skill packages the workflow, script, and reference material needed to asses
 1. Resolve the target week and season.
 2. Build a normalized evidence bundle with:
    [build_week_context.py](./scripts/build_week_context.py)
-3. Use the assessment rubric in:
+3. Analyze whether the active zone definitions still fit the current evidence with:
+   [analyze_week_zone_coherence.py](../weekly-zone-coherence-assessment/scripts/analyze_week_zone_coherence.py)
+4. Use the assessment rubrics in:
    [assessment-framework.md](./references/assessment-framework.md)
-4. Format the answer using:
+   and:
+   [zone-coherence-framework.md](../weekly-zone-coherence-assessment/references/zone-coherence-framework.md)
+5. Write the weekly assessment in this fixed order when the data exists: week control, load and recovery distribution, decisive days, then zone coherence.
+6. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
+7. Format the answer using:
    [week-assessment-template.md](./assets/week-assessment-template.md)

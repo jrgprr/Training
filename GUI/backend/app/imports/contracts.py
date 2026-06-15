@@ -56,6 +56,7 @@ class NormalizedActivity:
     segment_checked_at: str | None = None
     segments: list["NormalizedSegmentEffort"] = field(default_factory=list)
     metric_readings: list["NormalizedMetricReading"] = field(default_factory=list)
+    route_points: list["NormalizedRoutePoint"] = field(default_factory=list)
     quality_status: str = "not_checked"
     quality_rule_version: str | None = None
     quality_checked_at: str | None = None
@@ -128,6 +129,21 @@ class NormalizedMetricReading:
     metric_name: str
     sample_index: int
     raw_value: float
+    recorded_at: str | None = None
+    elapsed_seconds: float | None = None
+    source_payload_kind: str = "activity_detail_stream"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class NormalizedRoutePoint:
+    point_index: int
+    latitude_degrees: float
+    longitude_degrees: float
+    altitude_meters: float | None = None
+    distance_meters: float | None = None
     recorded_at: str | None = None
     elapsed_seconds: float | None = None
     source_payload_kind: str = "activity_detail_stream"

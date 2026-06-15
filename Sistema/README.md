@@ -28,6 +28,7 @@ Contiene:
 
 ### `Seeds/`
 - Contiene scripts de carga o bootstrap por temporada.
+- Usa `Seeds/apply_planning_seed.py` cuando una seed cree o modifique `plan_planned_sessions`, para que la estructura determinista de `plan_session_activity_groups` y `plan_session_activity_items` se escriba en la misma aplicacion.
 
 ### `Flujo-manual-V0.2.md`
 - Define el registro manual minimo de ejecucion para cerrar `V0.2`.

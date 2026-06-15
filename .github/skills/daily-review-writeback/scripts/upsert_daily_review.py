@@ -5,12 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
+BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.planned_sessions import ensure_planned_session_structure, get_planned_session_activity_groups
+
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
 REVIEW_FIELDS = (
@@ -33,38 +40,6 @@ def discipline_family(discipline: str | None) -> str | None:
     if discipline in {"running", "trail_running"}:
         return "running"
     return discipline
-
-
-def infer_families_from_text(*texts: str | None) -> set[str]:
-    normalized_text = " ".join((text or "").strip().lower() for text in texts if text)
-    if not normalized_text:
-        return set()
-
-    families: set[str] = set()
-    if "bicicleta" in normalized_text:
-        families.add("cycling")
-    if "monte" in normalized_text or "sender" in normalized_text:
-        families.add("hiking")
-        families.add("walking")
-    if "paseo" in normalized_text or "caminar" in normalized_text:
-        families.add("walking")
-    if "correr" in normalized_text or "running" in normalized_text:
-        families.add("running")
-    return families
-
-
-def planned_session_families(planned_type: str | None, primary_session: str | None) -> set[str]:
-    normalized_planned_type = (planned_type or "").strip().lower()
-    families_by_planned_type = {
-        "bicicleta-z2": {"cycling"},
-        "salida-larga": {"cycling"},
-        "referencia-aerobica": {"cycling"},
-        "fuerza": {"strength_training"},
-        "activacion": {"walking", "cycling"},
-        "recuperacion": {"walking", "cycling"},
-        "complementaria": {"walking", "cycling", "hiking"},
-    }
-    return infer_families_from_text(primary_session) or families_by_planned_type.get(normalized_planned_type, set())
 
 
 def build_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
@@ -215,7 +190,7 @@ def infer_planned_summary(connection: sqlite3.Connection, planned_session_id: in
     row = fetch_one(
         connection,
         """
-        SELECT primary_session, objective
+        SELECT planned_session_id, primary_session, objective
         FROM plan_planned_sessions
         WHERE planned_session_id = ?
         """,
@@ -223,11 +198,15 @@ def infer_planned_summary(connection: sqlite3.Connection, planned_session_id: in
     )
     if row is None:
         return None
+    ensure_planned_session_structure(connection, row)
+    groups = get_planned_session_activity_groups(connection, int(row["planned_session_id"]))
+    structured_summary = render_planned_activity_groups(groups)
     primary_session = row.get("primary_session")
     objective = row.get("objective")
-    if primary_session and objective:
-        return f"{primary_session} Objetivo: {objective}"
-    return primary_session or objective
+    summary = structured_summary or primary_session or objective
+    if summary and objective and objective not in summary:
+        return f"{summary} Objetivo: {objective}"
+    return summary
 
 
 def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_session_id: int | None, activity_id: int | None) -> int | None:
@@ -251,7 +230,7 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
     planned_session = fetch_one(
         connection,
         """
-        SELECT planned_type, primary_session
+        SELECT planned_session_id, planned_type, primary_session
         FROM plan_planned_sessions
         WHERE planned_session_id = ? AND session_date = ?
         """,
@@ -260,8 +239,18 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
     if planned_session is None:
         return None
 
-    target_families = planned_session_families(planned_session.get("planned_type"), planned_session.get("primary_session"))
-    if not target_families:
+    ensure_planned_session_structure(connection, planned_session)
+    groups = get_planned_session_activity_groups(connection, int(planned_session["planned_session_id"]))
+    target_groups = [
+        {
+            item.get("discipline_family")
+            for item in group["items"]
+            if item.get("discipline_family") in {"cycling", "walking", "running", "strength_training", "yoga"}
+        }
+        for group in groups
+    ]
+    target_groups = [group for group in target_groups if group]
+    if not target_groups:
         return None
 
     candidates = fetch_all(
@@ -274,12 +263,69 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
         """,
         (review_date,),
     )
-    compatible_candidates = [
-        candidate for candidate in candidates if discipline_family(candidate.get("discipline")) in target_families
-    ]
-    if len(compatible_candidates) != 1:
+    used_activity_ids: set[int] = set()
+    matched_activity_id: int | None = None
+    for target_families in target_groups:
+        compatible_candidates = [
+            candidate
+            for candidate in candidates
+            if discipline_family(candidate.get("discipline")) in target_families
+            and candidate["activity_id"] not in used_activity_ids
+        ]
+        if len(compatible_candidates) != 1:
+            continue
+        matched_activity_id = int(compatible_candidates[0]["activity_id"])
+        used_activity_ids.add(matched_activity_id)
+        break
+    return matched_activity_id
+
+
+def render_planned_activity_groups(groups: list[dict[str, Any]]) -> str | None:
+    if not groups:
         return None
-    return int(compatible_candidates[0]["activity_id"])
+    rendered_groups: list[str] = []
+    for group in groups:
+        item_labels = [render_planned_activity_item(item) for item in group.get("items", [])]
+        item_labels = [label for label in item_labels if label]
+        if not item_labels:
+            continue
+        separator = " + " if group.get("relation_mode") == "all_of" else " o "
+        rendered_groups.append(separator.join(item_labels))
+    return " + ".join(rendered_groups) if rendered_groups else None
+
+
+def render_planned_activity_item(item: dict[str, Any]) -> str | None:
+    label = str(item.get("display_label") or "").strip()
+    if label and "min" in label.lower():
+        return label
+
+    base_label = label or {
+        "cycling": "Bicicleta",
+        "running": "Carrera",
+        "strength_training": "Fuerza",
+        "walking": "Paseo",
+        "yoga": "Movilidad",
+    }.get(item.get("discipline_family"), "Descanso activo" if item.get("item_type") == "rest" else None)
+    if base_label is None:
+        return None
+
+    zone_min = item.get("target_zone_min_code")
+    zone_max = item.get("target_zone_max_code")
+    if zone_min and zone_max and zone_min != zone_max:
+        zone_label = f"{zone_min}-{zone_max}"
+    else:
+        zone_label = zone_min
+
+    duration_min = item.get("duration_min")
+    duration_max = item.get("duration_max")
+    if duration_min is None:
+        duration_label = None
+    elif duration_max is not None and duration_max != duration_min:
+        duration_label = f"{duration_min}-{duration_max} min"
+    else:
+        duration_label = f"{duration_min} min"
+
+    return " ".join(part for part in [base_label, zone_label, duration_label] if part)
 
 
 def ensure_activity_link(

@@ -9,7 +9,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from .db import get_connection
-from .imports.contracts import NormalizedActivity, NormalizedMetricReading
+from .imports.contracts import NormalizedActivity, NormalizedMetricReading, NormalizedRoutePoint
 
 RULE_SET_KEY = "bad_reading_filter"
 RULE_SET_VERSION = "bad_reading_filter/v1"
@@ -66,6 +66,31 @@ class ActivityQualityEvaluation:
     checked_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+def _coerce_numeric(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _parse_recorded_at(timestamp_raw: Any) -> str | None:
+    timestamp_value = _coerce_numeric(timestamp_raw)
+    if timestamp_value is None:
+        return None
+    if timestamp_value > 10_000_000_000:
+        timestamp_value /= 1000
+    return datetime.fromtimestamp(timestamp_value, tz=timezone.utc).isoformat()
+
+
+def _parse_tcx_time(time_text: str | None) -> datetime | None:
+    if not time_text:
+        return None
+    normalized = time_text.replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
 def _build_passthrough_metric_summaries(readings: list[NormalizedMetricReading]) -> tuple[list[ActivityMetricSummary], list[str]]:
     summaries: list[ActivityMetricSummary] = []
     metric_names: list[str] = []
@@ -108,6 +133,66 @@ def _build_passthrough_metric_summaries(readings: list[NormalizedMetricReading])
             ]
         )
     return summaries, metric_names
+
+
+def normalize_route_points_from_activity_detail(payload: dict[str, Any] | None) -> list[NormalizedRoutePoint]:
+    if not isinstance(payload, dict):
+        return []
+    metric_descriptors = payload.get("metricDescriptors")
+    metric_rows = payload.get("activityDetailMetrics")
+    if not isinstance(metric_descriptors, list) or not isinstance(metric_rows, list):
+        return []
+
+    descriptor_indexes: dict[str, int] = {}
+    for item in metric_descriptors:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key")
+        index = item.get("metricsIndex")
+        if isinstance(key, str) and isinstance(index, int):
+            descriptor_indexes[key] = index
+
+    latitude_index = descriptor_indexes.get("directLatitude")
+    longitude_index = descriptor_indexes.get("directLongitude")
+    if latitude_index is None or longitude_index is None:
+        return []
+
+    timestamp_index = descriptor_indexes.get("directTimestamp")
+    elapsed_index = descriptor_indexes.get("sumElapsedDuration")
+    distance_index = descriptor_indexes.get("sumDistance")
+    altitude_index = descriptor_indexes.get("directElevation")
+
+    route_points: list[NormalizedRoutePoint] = []
+    for row in metric_rows:
+        if not isinstance(row, dict):
+            continue
+        metrics = row.get("metrics")
+        if not isinstance(metrics, list):
+            continue
+        if latitude_index >= len(metrics) or longitude_index >= len(metrics):
+            continue
+        latitude = _coerce_numeric(metrics[latitude_index])
+        longitude = _coerce_numeric(metrics[longitude_index])
+        if latitude is None or longitude is None:
+            continue
+
+        recorded_at = _parse_recorded_at(metrics[timestamp_index]) if timestamp_index is not None and timestamp_index < len(metrics) else None
+        elapsed_seconds = _coerce_numeric(metrics[elapsed_index]) if elapsed_index is not None and elapsed_index < len(metrics) else None
+        altitude_meters = _coerce_numeric(metrics[altitude_index]) if altitude_index is not None and altitude_index < len(metrics) else None
+        distance_meters = _coerce_numeric(metrics[distance_index]) if distance_index is not None and distance_index < len(metrics) else None
+        route_points.append(
+            NormalizedRoutePoint(
+                point_index=len(route_points),
+                latitude_degrees=latitude,
+                longitude_degrees=longitude,
+                altitude_meters=altitude_meters,
+                distance_meters=distance_meters,
+                recorded_at=recorded_at,
+                elapsed_seconds=elapsed_seconds,
+            )
+        )
+
+    return route_points
 
 
 def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | None) -> list[NormalizedMetricReading]:
@@ -158,20 +243,9 @@ def normalize_metric_readings_from_activity_detail(payload: dict[str, Any] | Non
         if not isinstance(metrics, list):
             continue
 
-        recorded_at: str | None = None
-        if timestamp_index is not None and timestamp_index < len(metrics):
-            timestamp_raw = metrics[timestamp_index]
-            if isinstance(timestamp_raw, (int, float)) and not isinstance(timestamp_raw, bool):
-                timestamp_value = float(timestamp_raw)
-                if timestamp_value > 10_000_000_000:
-                    timestamp_value /= 1000
-                recorded_at = datetime.fromtimestamp(timestamp_value, tz=timezone.utc).isoformat()
+        recorded_at = _parse_recorded_at(metrics[timestamp_index]) if timestamp_index is not None and timestamp_index < len(metrics) else None
 
-        elapsed_seconds: float | None = None
-        if elapsed_index is not None and elapsed_index < len(metrics):
-            elapsed_raw = metrics[elapsed_index]
-            if isinstance(elapsed_raw, (int, float)) and not isinstance(elapsed_raw, bool):
-                elapsed_seconds = float(elapsed_raw)
+        elapsed_seconds = _coerce_numeric(metrics[elapsed_index]) if elapsed_index is not None and elapsed_index < len(metrics) else None
 
         for source_key, metric_name in metric_keys.items():
             metric_index = descriptor_indexes.get(source_key)
@@ -428,6 +502,73 @@ def normalize_metric_readings_from_tcx_artifact(raw_payload_path: str | None) ->
                 pass
 
     return readings
+
+
+def normalize_route_points_from_tcx_artifact(raw_payload_path: str | None) -> list[NormalizedRoutePoint]:
+    if not raw_payload_path:
+        return []
+    artifact_path = Path(raw_payload_path)
+    if not artifact_path.is_file():
+        return []
+
+    try:
+        root = ElementTree.parse(artifact_path).getroot()
+    except (ElementTree.ParseError, OSError):
+        return []
+
+    namespaces = {
+        "tcx": "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2",
+    }
+    trackpoints = root.findall(".//tcx:Trackpoint", namespaces)
+    route_points: list[NormalizedRoutePoint] = []
+    first_timestamp: datetime | None = None
+
+    for trackpoint in trackpoints:
+        latitude_text = trackpoint.findtext("tcx:Position/tcx:LatitudeDegrees", default=None, namespaces=namespaces)
+        longitude_text = trackpoint.findtext("tcx:Position/tcx:LongitudeDegrees", default=None, namespaces=namespaces)
+        if latitude_text is None or longitude_text is None:
+            continue
+        try:
+            latitude = float(latitude_text)
+            longitude = float(longitude_text)
+        except (TypeError, ValueError):
+            continue
+
+        time_text = trackpoint.findtext("tcx:Time", default=None, namespaces=namespaces)
+        timestamp = _parse_tcx_time(time_text)
+        if first_timestamp is None and timestamp is not None:
+            first_timestamp = timestamp
+        elapsed_seconds = (timestamp - first_timestamp).total_seconds() if timestamp is not None and first_timestamp is not None else None
+
+        altitude_text = trackpoint.findtext("tcx:AltitudeMeters", default=None, namespaces=namespaces)
+        distance_text = trackpoint.findtext("tcx:DistanceMeters", default=None, namespaces=namespaces)
+        altitude_meters = None
+        distance_meters = None
+        try:
+            if altitude_text is not None:
+                altitude_meters = float(altitude_text)
+        except (TypeError, ValueError):
+            altitude_meters = None
+        try:
+            if distance_text is not None:
+                distance_meters = float(distance_text)
+        except (TypeError, ValueError):
+            distance_meters = None
+
+        route_points.append(
+            NormalizedRoutePoint(
+                point_index=len(route_points),
+                latitude_degrees=latitude,
+                longitude_degrees=longitude,
+                altitude_meters=altitude_meters,
+                distance_meters=distance_meters,
+                recorded_at=time_text,
+                elapsed_seconds=elapsed_seconds,
+                source_payload_kind="tcx_artifact",
+            )
+        )
+
+    return route_points
 
 
 def get_activity_quality(activity_id: int) -> dict[str, Any] | None:

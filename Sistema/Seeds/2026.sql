@@ -49,7 +49,7 @@ INSERT OR IGNORE INTO plan_user_profiles (
     'Bicicleta',
     'Carrera intensa, series largas en bici y repeticiones cortas intensas',
     'Alta disponibilidad: hasta 7 dias por semana, 2 horas entre semana y 4-6 horas en fin de semana',
-    'Rutina matinal diaria de 20 minutos de activacion ligera y 20 minutos de flexibilidad, ajustable a la baja si interfiere con la recuperacion'
+    '30 minutos de flexibilidad'
 );
 
 INSERT OR IGNORE INTO plan_macro_cycles (

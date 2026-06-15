@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, timedelta
 import json
 import re
 import sqlite3
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from typing import Any
 
 
@@ -38,6 +39,8 @@ WALKING_DISCIPLINES = {
     "nordic_walking",
 }
 
+PACE_ENDURANCE_DISCIPLINES = RUNNING_DISCIPLINES | WALKING_DISCIPLINES
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute a compact activity-metric analysis block from stored activity data.")
@@ -65,7 +68,8 @@ def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> d
         connection,
         """
         SELECT ea.activity_id, ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
-               ea.duration_seconds, ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power,
+               ea.season_id, ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
+               ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power,
                ea.avg_pace_seconds_per_km, ea.training_load, ea.quality_status,
                ea.quality_decision_count, ea.quality_limited_metric_count,
                l.planned_session_id,
@@ -111,6 +115,170 @@ def load_metric_readings(connection: sqlite3.Connection, activity_id: int, metri
         """,
         (activity_id, metric_name),
     )
+
+
+def build_reading_index(readings: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    indexed: dict[int, dict[str, Any]] = {}
+    for row in readings:
+        sample_index = row.get("sample_index")
+        if sample_index is None:
+            continue
+        indexed[int(sample_index)] = row
+    return indexed
+
+
+def derive_vertical_speed_index(elevation_readings: list[dict[str, Any]]) -> dict[int, float]:
+    vertical_speed: dict[int, float] = {}
+    previous_row: dict[str, Any] | None = None
+    for row in elevation_readings:
+        sample_index = row.get("sample_index")
+        raw_value = row.get("raw_value")
+        elapsed_seconds = row.get("elapsed_seconds")
+        if sample_index is None or raw_value is None:
+            previous_row = row
+            continue
+        if previous_row is None:
+            previous_row = row
+            continue
+        previous_value = previous_row.get("raw_value")
+        previous_elapsed = previous_row.get("elapsed_seconds")
+        previous_index = previous_row.get("sample_index")
+        if previous_value is None or previous_index is None:
+            previous_row = row
+            continue
+        current_elapsed = float(elapsed_seconds if elapsed_seconds is not None else sample_index)
+        prior_elapsed = float(previous_elapsed if previous_elapsed is not None else previous_index)
+        delta_seconds = current_elapsed - prior_elapsed
+        if delta_seconds > 0:
+            vertical_speed[int(sample_index)] = (float(raw_value) - float(previous_value)) / delta_seconds
+        previous_row = row
+    return vertical_speed
+
+
+def terrain_multiplier_running(grade: float) -> float:
+    clipped_grade = max(min(grade, 0.3), -0.3)
+    flat_cost = 3.6
+    grade_cost = (
+        155.4 * clipped_grade**5
+        - 30.4 * clipped_grade**4
+        - 43.3 * clipped_grade**3
+        + 46.3 * clipped_grade**2
+        + 19.5 * clipped_grade
+        + flat_cost
+    )
+    if grade_cost <= 0:
+        return 1.0
+    return grade_cost / flat_cost
+
+
+def terrain_multiplier_walking(grade: float) -> float:
+    import math
+
+    clipped_grade = max(min(grade, 0.5), -0.5)
+    flat_speed = 6.0 * math.exp(-3.5 * abs(0.05))
+    graded_speed = 6.0 * math.exp(-3.5 * abs(clipped_grade + 0.05))
+    if graded_speed <= 0:
+        return 1.0
+    return flat_speed / graded_speed
+
+
+def format_seconds_per_km(seconds_per_km: float | None) -> str | None:
+    return format_pace(seconds_per_km)
+
+
+def build_grade_adjusted_pace_summary(
+    activity: dict[str, Any],
+    speed_readings: list[dict[str, Any]],
+    vertical_speed_readings: list[dict[str, Any]],
+    elevation_readings: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    discipline = str(activity.get("discipline") or "").lower()
+    if discipline not in PACE_ENDURANCE_DISCIPLINES:
+        return None
+
+    avg_pace_seconds_per_km = float(activity["avg_pace_seconds_per_km"]) if activity.get("avg_pace_seconds_per_km") not in (None, 0) else None
+    if avg_pace_seconds_per_km is None:
+        return None
+
+    if discipline in WALKING_DISCIPLINES:
+        distance_meters = float(activity["distance_meters"]) if activity.get("distance_meters") not in (None, 0) else None
+        ascent_meters = float(activity["ascent_meters"]) if activity.get("ascent_meters") not in (None, 0) else None
+        if distance_meters is None or ascent_meters is None or distance_meters <= 0 or ascent_meters <= 0:
+            return None
+        effective_grade = max(min(ascent_meters / distance_meters, 0.25), 0.0)
+        multiplier = terrain_multiplier_walking(effective_grade)
+        adjusted_pace = avg_pace_seconds_per_km / multiplier if multiplier > 0 else avg_pace_seconds_per_km
+        return {
+            "model_key": "walking_tobler_adjustment",
+            "actual_pace_seconds_per_km": round(avg_pace_seconds_per_km, 2),
+            "actual_pace_formatted": format_seconds_per_km(avg_pace_seconds_per_km),
+            "grade_adjusted_pace_seconds_per_km": round(adjusted_pace, 2),
+            "grade_adjusted_pace_formatted": format_seconds_per_km(adjusted_pace),
+            "adjustment_seconds_per_km": round(adjusted_pace - avg_pace_seconds_per_km, 2),
+        }
+
+    if len(speed_readings) < 10:
+        return None
+
+    vertical_speed_index = {
+        int(key): float(value["raw_value"])
+        for key, value in build_reading_index(vertical_speed_readings).items()
+        if value.get("raw_value") is not None
+    }
+    if not vertical_speed_index and elevation_readings:
+        vertical_speed_index = derive_vertical_speed_index(elevation_readings)
+
+    weighted_actual_speed = 0.0
+    weighted_adjusted_speed = 0.0
+    total_seconds = 0.0
+    actual_samples = [row for row in speed_readings if row.get("raw_value") not in (None, 0)]
+    if len(actual_samples) < 10:
+        return None
+
+    elapsed_values = []
+    for row in actual_samples:
+        elapsed_seconds = row.get("elapsed_seconds")
+        sample_index = row.get("sample_index")
+        elapsed_values.append(float(elapsed_seconds if elapsed_seconds is not None else sample_index))
+    actual_values = elapsed_values
+    intervals = [
+        max(actual_values[index + 1] - actual_values[index], 0.0)
+        for index in range(len(actual_values) - 1)
+        if actual_values[index + 1] >= actual_values[index]
+    ]
+    default_interval = median(intervals) if intervals else 1.0
+
+    for index, row in enumerate(actual_samples):
+        speed = float(row["raw_value"])
+        sample_index = int(row.get("sample_index") or 0)
+        interval = default_interval
+        if index < len(actual_samples) - 1:
+            interval = max(elapsed_values[index + 1] - elapsed_values[index], 0.0) or default_interval
+        if speed <= 0.2:
+            continue
+        vertical_speed = vertical_speed_index.get(sample_index, 0.0)
+        grade = max(min(vertical_speed / speed, 0.3), -0.3)
+        multiplier = terrain_multiplier_running(grade)
+        adjusted_speed = speed * multiplier
+        weighted_actual_speed += speed * interval
+        weighted_adjusted_speed += adjusted_speed * interval
+        total_seconds += interval
+
+    if total_seconds <= 0 or weighted_actual_speed <= 0 or weighted_adjusted_speed <= 0:
+        return None
+
+    adjustment_ratio = (weighted_adjusted_speed / total_seconds) / (weighted_actual_speed / total_seconds)
+    if adjustment_ratio <= 0:
+        return None
+    adjusted_pace = avg_pace_seconds_per_km / adjustment_ratio
+    return {
+        "model_key": "running_grade_cost_model",
+        "actual_pace_seconds_per_km": round(avg_pace_seconds_per_km, 2),
+        "actual_pace_formatted": format_seconds_per_km(avg_pace_seconds_per_km),
+        "grade_adjusted_pace_seconds_per_km": round(adjusted_pace, 2),
+        "grade_adjusted_pace_formatted": format_seconds_per_km(adjusted_pace),
+        "adjustment_seconds_per_km": round(adjusted_pace - avg_pace_seconds_per_km, 2),
+    }
 
 
 RUNNING_DYNAMICS_METRICS = (
@@ -229,10 +397,24 @@ def load_zone_results(connection: sqlite3.Connection, activity_id: int) -> list[
     return fetch_all(
         connection,
         """
-        SELECT metric_basis, calculation_status, dominant_zone_code, dominant_zone_share, total_supported_seconds
+        SELECT activity_zone_result_id, metric_basis, calculation_status, dominant_zone_code, dominant_zone_share, total_supported_seconds
         FROM exec_activity_zone_results
         WHERE activity_id = ?
         ORDER BY metric_basis
+        """,
+        (activity_id,),
+    )
+
+
+def load_zone_buckets(connection: sqlite3.Connection, activity_id: int) -> list[dict[str, Any]]:
+    return fetch_all(
+        connection,
+        """
+        SELECT azr.metric_basis, azb.zone_code, azb.zone_index, azb.seconds_in_zone, azb.share_in_zone
+        FROM exec_activity_zone_results azr
+        JOIN exec_activity_zone_buckets azb ON azb.activity_zone_result_id = azr.activity_zone_result_id
+        WHERE azr.activity_id = ?
+        ORDER BY azr.metric_basis, azb.zone_index
         """,
         (activity_id,),
     )
@@ -335,10 +517,459 @@ def classify_duration_vs_plan(activity: dict[str, Any]) -> tuple[str, int | None
     return "on_target", 0
 
 
-def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], dict[str, Any]], hr_readings: list[dict[str, Any]], power_readings: list[dict[str, Any]], zone_results: list[dict[str, Any]]) -> dict[str, Any]:
+def round_or_none(value: float | int | None, digits: int = 1) -> float | None:
+    if value is None:
+        return None
+    return round(float(value), digits)
+
+
+def build_segment_analysis(connection: sqlite3.Connection, activity: dict[str, Any]) -> dict[str, Any] | None:
+    efforts = fetch_all(
+        connection,
+        """
+        SELECT se.segment_effort_id,
+               se.segment_id,
+               se.activity_id,
+               se.activity_date,
+               se.elapsed_time_seconds,
+               se.avg_power,
+               se.avg_heart_rate,
+               s.segment_name,
+               s.discipline,
+               s.distance_meters,
+               s.ascent_meters,
+               s.average_grade_percent
+        FROM exec_segment_efforts se
+        JOIN exec_segments s ON s.segment_id = se.segment_id
+        WHERE se.activity_id = ?
+        ORDER BY se.started_at, se.segment_effort_id
+        """,
+        (activity["activity_id"],),
+    )
+    if not efforts:
+        return None
+
+    segment_items: list[dict[str, Any]] = []
+    for effort in efforts:
+        history = fetch_all(
+            connection,
+            """
+            SELECT segment_effort_id,
+                   activity_id,
+                   activity_date,
+                   elapsed_time_seconds,
+                   avg_power,
+                   avg_heart_rate
+            FROM exec_segment_efforts
+            WHERE segment_id = ?
+              AND activity_id != ?
+              AND elapsed_time_seconds IS NOT NULL
+              AND (
+                    activity_date < ?
+                 OR (activity_date = ? AND segment_effort_id < ?)
+              )
+            ORDER BY activity_date DESC, segment_effort_id DESC
+            LIMIT 5
+            """,
+            (
+                effort["segment_id"],
+                activity["activity_id"],
+                activity["activity_date"],
+                activity["activity_date"],
+                effort["segment_effort_id"],
+            ),
+        )
+        comparable_history = [row for row in history if row.get("elapsed_time_seconds") is not None]
+        latest_previous = comparable_history[0] if comparable_history else None
+        best_previous = min(comparable_history, key=lambda row: float(row["elapsed_time_seconds"])) if comparable_history else None
+
+        elapsed_time_seconds = effort.get("elapsed_time_seconds")
+        delta_vs_previous = None
+        delta_vs_best = None
+        trend_status = "first_recorded_effort"
+        if elapsed_time_seconds is not None and latest_previous and latest_previous.get("elapsed_time_seconds") is not None:
+            delta_vs_previous = int(float(elapsed_time_seconds) - float(latest_previous["elapsed_time_seconds"]))
+            if delta_vs_previous < 0:
+                trend_status = "improved_vs_previous"
+            elif delta_vs_previous > 0:
+                trend_status = "slower_vs_previous"
+            else:
+                trend_status = "matched_previous"
+        if elapsed_time_seconds is not None and best_previous and best_previous.get("elapsed_time_seconds") is not None:
+            delta_vs_best = int(float(elapsed_time_seconds) - float(best_previous["elapsed_time_seconds"]))
+
+        segment_items.append(
+            {
+                "segment_id": effort["segment_id"],
+                "segment_name": effort.get("segment_name") or f"Segment {effort['segment_id']}",
+                "discipline": effort.get("discipline"),
+                "distance_meters": round_or_none(effort.get("distance_meters"), 0),
+                "ascent_meters": round_or_none(effort.get("ascent_meters"), 0),
+                "average_grade_percent": round_or_none(effort.get("average_grade_percent"), 1),
+                "elapsed_time_seconds": elapsed_time_seconds,
+                "avg_power": round_or_none(effort.get("avg_power"), 1),
+                "avg_heart_rate": round_or_none(effort.get("avg_heart_rate"), 1),
+                "history_sample_count": len(comparable_history),
+                "delta_vs_previous_seconds": delta_vs_previous,
+                "delta_vs_best_seconds": delta_vs_best,
+                "trend_status": trend_status,
+            }
+        )
+
+    comparable_count = sum(1 for item in segment_items if item["history_sample_count"] > 0)
+    return {
+        "segment_count": len(segment_items),
+        "comparable_segment_count": comparable_count,
+        "highlights": segment_items,
+    }
+
+
+def load_recent_comparable_activities(connection: sqlite3.Connection, activity: dict[str, Any]) -> list[dict[str, Any]]:
+    discipline = activity.get("discipline")
+    season_id = activity.get("season_id")
+    activity_date = activity.get("activity_date")
+    if discipline is None or season_id is None or activity_date is None:
+        return []
+
+    current_duration_seconds = float(activity.get("duration_seconds") or 0)
+    lower_bound = int(max(current_duration_seconds * 0.6, current_duration_seconds - 45 * 60)) if current_duration_seconds else 0
+    upper_bound = int(max(current_duration_seconds * 1.4, current_duration_seconds + 45 * 60)) if current_duration_seconds else 24 * 60 * 60
+    lookback_start = (date.fromisoformat(str(activity_date)) - timedelta(days=42)).isoformat()
+
+    return fetch_all(
+        connection,
+        """
+        SELECT ea.activity_id,
+               ea.activity_date,
+               ea.discipline,
+               ea.duration_seconds,
+               ea.distance_meters,
+               ea.ascent_meters,
+               ea.avg_hr,
+               ea.avg_power,
+               ea.normalized_power,
+               ea.avg_pace_seconds_per_km,
+               ea.training_load,
+               (
+                   SELECT ms.trusted_value
+                   FROM exec_activity_metric_summaries ms
+                   WHERE ms.activity_id = ea.activity_id
+                     AND ms.metric_name = 'respiration_rate'
+                     AND ms.summary_kind = 'average'
+                   LIMIT 1
+               ) AS avg_respiration_rate
+        FROM exec_activities ea
+        WHERE ea.season_id = ?
+          AND ea.discipline = ?
+          AND ea.activity_id != ?
+          AND ea.activity_date >= ?
+          AND ea.activity_date <= ?
+          AND ea.duration_seconds BETWEEN ? AND ?
+        ORDER BY ea.activity_date DESC, ea.started_at DESC, ea.activity_id DESC
+        LIMIT 5
+        """,
+        (season_id, discipline, activity["activity_id"], lookback_start, activity_date, lower_bound, upper_bound),
+    )
+
+
+def summarize_comparison(current_value: float | int | None, recent_values: list[float], digits: int = 1) -> dict[str, Any] | None:
+    if current_value is None or not recent_values:
+        return None
+    recent_average = mean(recent_values)
+    delta = float(current_value) - recent_average
+    percent_delta = None if recent_average == 0 else round((delta / recent_average) * 100, 1)
+    return {
+        "current": round_or_none(float(current_value), digits),
+        "recent_average": round_or_none(recent_average, digits),
+        "delta": round_or_none(delta, digits),
+        "percent_delta": percent_delta,
+    }
+
+
+def build_recent_comparison(activity: dict[str, Any], recent_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not recent_rows:
+        return None
+
+    comparison: dict[str, Any] = {
+        "matching_basis": "same_discipline_recent_duration_band",
+        "sample_count": len(recent_rows),
+        "window_start_date": recent_rows[-1].get("activity_date"),
+        "window_end_date": recent_rows[0].get("activity_date"),
+        "similar_activities": [],
+        "current_vs_recent": {},
+    }
+
+    metric_names = (
+        "duration_seconds",
+        "avg_hr",
+        "avg_power",
+        "normalized_power",
+        "avg_pace_seconds_per_km",
+        "training_load",
+    )
+    for metric_name in metric_names:
+        comparable_values = [float(row[metric_name]) for row in recent_rows if row.get(metric_name) not in (None, 0)]
+        current_value = activity.get(metric_name)
+        summary = summarize_comparison(current_value, comparable_values)
+        if summary is not None:
+            comparison["current_vs_recent"][metric_name] = summary
+
+    for row in recent_rows[:3]:
+        comparison["similar_activities"].append(
+            {
+                "activity_id": row["activity_id"],
+                "activity_date": row.get("activity_date"),
+                "duration_minutes": round_or_none((row.get("duration_seconds") or 0) / 60, 1),
+                "avg_hr": round_or_none(row.get("avg_hr"), 1),
+                "avg_power": round_or_none(row.get("avg_power"), 1),
+                "normalized_power": round_or_none(row.get("normalized_power"), 1),
+                "training_load": round_or_none(row.get("training_load"), 1),
+            }
+        )
+
+    return comparison
+
+
+def estimate_low_output_share(readings: list[dict[str, Any]], threshold: float) -> tuple[float | None, float | None]:
+    valid_readings = [row for row in readings if row.get("raw_value") is not None]
+    if len(valid_readings) < 10:
+        return None, None
+
+    elapsed_values: list[float] = []
+    for row in valid_readings:
+        elapsed_seconds = row.get("elapsed_seconds")
+        sample_index = row.get("sample_index")
+        if elapsed_seconds is None and sample_index is None:
+            elapsed_values.append(float(len(elapsed_values)))
+        else:
+            elapsed_values.append(float(elapsed_seconds if elapsed_seconds is not None else sample_index))
+
+    intervals = [
+        max(elapsed_values[index + 1] - elapsed_values[index], 0.0)
+        for index in range(len(elapsed_values) - 1)
+        if elapsed_values[index + 1] >= elapsed_values[index]
+    ]
+    default_interval = median(intervals) if intervals else 1.0
+
+    total_seconds = 0.0
+    low_output_seconds = 0.0
+    for index, row in enumerate(valid_readings):
+        interval = default_interval
+        if index < len(valid_readings) - 1:
+            interval = max(elapsed_values[index + 1] - elapsed_values[index], 0.0) or default_interval
+        total_seconds += interval
+        if float(row["raw_value"]) <= threshold:
+            low_output_seconds += interval
+
+    if total_seconds <= 0:
+        return None, None
+    return low_output_seconds, low_output_seconds / total_seconds
+
+
+def build_activity_efficiency(
+    activity: dict[str, Any],
+    summaries: dict[tuple[str, str], dict[str, Any]],
+    power_readings: list[dict[str, Any]],
+    zone_buckets: list[dict[str, Any]],
+    recent_rows: list[dict[str, Any]],
+    grade_adjusted_pace: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    avg_hr = float(activity["avg_hr"]) if activity.get("avg_hr") not in (None, 0) else None
+    avg_power = float(activity["avg_power"]) if activity.get("avg_power") not in (None, 0) else None
+    normalized_power = float(activity["normalized_power"]) if activity.get("normalized_power") not in (None, 0) else None
+    duration_seconds = float(activity.get("duration_seconds") or 0)
+    training_load = float(activity["training_load"]) if activity.get("training_load") not in (None, 0) else None
+    ascent_meters = float(activity["ascent_meters"]) if activity.get("ascent_meters") not in (None, 0) else None
+    avg_respiration_rate = get_summary_value(summaries, "respiration_rate")
+    target_zone = extract_target_zone(activity.get("source_text"))
+    target_basis = activity.get("target_basis")
+    avg_pace_seconds_per_km = float(activity["avg_pace_seconds_per_km"]) if activity.get("avg_pace_seconds_per_km") not in (None, 0) else None
+    discipline = str(activity.get("discipline") or "").lower()
+
+    efficiency: dict[str, Any] = {}
+
+    efficiency_factor_value = None
+    efficiency_factor_basis = None
+    if normalized_power is not None and avg_hr is not None and avg_hr > 0:
+        efficiency_factor_value = normalized_power / avg_hr
+        efficiency_factor_basis = "normalized_power_per_avg_hr"
+    elif avg_power is not None and avg_hr is not None and avg_hr > 0:
+        efficiency_factor_value = avg_power / avg_hr
+        efficiency_factor_basis = "avg_power_per_avg_hr"
+    elif avg_pace_seconds_per_km is not None and avg_hr is not None and avg_hr > 0:
+        effective_pace = grade_adjusted_pace.get("grade_adjusted_pace_seconds_per_km") if grade_adjusted_pace else avg_pace_seconds_per_km
+        if effective_pace not in (None, 0):
+            effective_speed = 1000.0 / float(effective_pace)
+            efficiency_factor_value = effective_speed / avg_hr
+            efficiency_factor_basis = "grade_adjusted_speed_per_avg_hr" if grade_adjusted_pace else "speed_per_avg_hr"
+
+    if efficiency_factor_value is not None and efficiency_factor_basis is not None:
+        recent_efficiency_values: list[float] = []
+        for row in recent_rows:
+            row_avg_hr = row.get("avg_hr")
+            if row_avg_hr in (None, 0):
+                continue
+            if efficiency_factor_basis == "normalized_power_per_avg_hr" and row.get("normalized_power") not in (None, 0):
+                recent_efficiency_values.append(float(row["normalized_power"]) / float(row_avg_hr))
+            elif efficiency_factor_basis == "avg_power_per_avg_hr" and row.get("avg_power") not in (None, 0):
+                recent_efficiency_values.append(float(row["avg_power"]) / float(row_avg_hr))
+        comparison = summarize_comparison(efficiency_factor_value, recent_efficiency_values, digits=3)
+        efficiency["efficiency_factor"] = {
+            "basis": efficiency_factor_basis,
+            **(comparison or {"current": round_or_none(efficiency_factor_value, 3)}),
+        }
+
+    if normalized_power is not None and avg_power is not None and avg_power > 0:
+        variability_index = normalized_power / avg_power
+        recent_variability_values = [
+            float(row["normalized_power"]) / float(row["avg_power"])
+            for row in recent_rows
+            if row.get("normalized_power") not in (None, 0) and row.get("avg_power") not in (None, 0)
+        ]
+        comparison = summarize_comparison(variability_index, recent_variability_values, digits=3)
+        status = "smooth" if variability_index <= 1.08 else "moderately_variable" if variability_index <= 1.15 else "spiky"
+        efficiency["variability_index"] = {
+            "status": status,
+            **(comparison or {"current": round_or_none(variability_index, 3)}),
+        }
+
+    if grade_adjusted_pace is not None:
+        efficiency["grade_adjusted_pace"] = grade_adjusted_pace
+
+    zone_basis = target_basis if target_basis else ("heart_rate" if any(row.get("metric_basis") == "heart_rate" for row in zone_buckets) else None)
+    matching_zone_rows = [row for row in zone_buckets if row.get("metric_basis") == zone_basis] if zone_basis else []
+    if target_zone and matching_zone_rows:
+        target_index = int(target_zone[1:])
+        total_seconds = sum(int(row.get("seconds_in_zone") or 0) for row in matching_zone_rows)
+        if total_seconds > 0:
+            in_target_seconds = sum(int(row.get("seconds_in_zone") or 0) for row in matching_zone_rows if row.get("zone_code") == target_zone)
+            above_target_seconds = sum(int(row.get("seconds_in_zone") or 0) for row in matching_zone_rows if int(str(row.get("zone_code") or "Z0")[1:]) > target_index)
+            below_target_seconds = sum(int(row.get("seconds_in_zone") or 0) for row in matching_zone_rows if int(str(row.get("zone_code") or "Z0")[1:]) < target_index)
+            in_target_share = in_target_seconds / total_seconds
+            above_target_share = above_target_seconds / total_seconds
+            below_target_share = below_target_seconds / total_seconds
+            status = "tight" if in_target_share >= 0.75 and above_target_share <= 0.1 else "acceptable" if in_target_share >= 0.6 and above_target_share <= 0.2 else "loose"
+            efficiency["target_zone_compliance"] = {
+                "metric_basis": zone_basis,
+                "target_zone": target_zone,
+                "time_in_target_seconds": in_target_seconds,
+                "time_in_target_share": round(in_target_share, 4),
+                "time_above_target_seconds": above_target_seconds,
+                "time_above_target_share": round(above_target_share, 4),
+                "time_below_target_seconds": below_target_seconds,
+                "time_below_target_share": round(below_target_share, 4),
+                "status": status,
+            }
+
+    if training_load is not None and duration_seconds > 0:
+        load_density = training_load / (duration_seconds / 3600.0)
+        recent_density_values = [
+            float(row["training_load"]) / (float(row["duration_seconds"]) / 3600.0)
+            for row in recent_rows
+            if row.get("training_load") not in (None, 0) and row.get("duration_seconds") not in (None, 0)
+        ]
+        comparison = summarize_comparison(load_density, recent_density_values, digits=1)
+        efficiency["load_density"] = {
+            "basis": "garmin_training_load_per_hour",
+            **(comparison or {"current": round_or_none(load_density, 1)}),
+        }
+
+    low_output_seconds, low_output_share = estimate_low_output_share(power_readings, threshold=5.0)
+    if low_output_share is not None:
+        status = "minimal" if low_output_share <= 0.1 else "moderate" if low_output_share <= 0.2 else "high"
+        efficiency["coasting_or_low_output_share"] = {
+            "threshold_watts": 5.0,
+            "low_output_seconds": round_or_none(low_output_seconds, 1),
+            "share": round(low_output_share, 4),
+            "status": status,
+        }
+
+    if ascent_meters is not None and ascent_meters >= 150 and duration_seconds > 0:
+        vertical_rate = ascent_meters / (duration_seconds / 3600.0)
+        recent_vertical_rates = [
+            float(row["ascent_meters"]) / (float(row["duration_seconds"]) / 3600.0)
+            for row in recent_rows
+            if row.get("ascent_meters") not in (None, 0) and row.get("duration_seconds") not in (None, 0)
+        ]
+        climbing_efficiency: dict[str, Any] = {
+            "ascent_meters": round_or_none(ascent_meters, 1),
+            "vertical_rate_m_per_hour": summarize_comparison(vertical_rate, recent_vertical_rates, digits=1) or {"current": round_or_none(vertical_rate, 1)},
+        }
+        distance_meters = float(activity["distance_meters"]) if activity.get("distance_meters") not in (None, 0) else None
+        if distance_meters is not None and distance_meters > 0:
+            ascent_per_km = ascent_meters / (distance_meters / 1000.0)
+            recent_ascent_per_km = [
+                float(row["ascent_meters"]) / (float(row["distance_meters"]) / 1000.0)
+                for row in recent_rows
+                if row.get("ascent_meters") not in (None, 0) and row.get("distance_meters") not in (None, 0)
+            ]
+            climbing_efficiency["ascent_per_km"] = summarize_comparison(ascent_per_km, recent_ascent_per_km, digits=1) or {"current": round_or_none(ascent_per_km, 1)}
+        if avg_power is not None and avg_power > 0:
+            energy_kj = avg_power * duration_seconds / 1000.0
+            vertical_gain_per_kj = ascent_meters / energy_kj if energy_kj > 0 else None
+            recent_vertical_gain_values = [
+                float(row["ascent_meters"]) / ((float(row["avg_power"]) * float(row["duration_seconds"])) / 1000.0)
+                for row in recent_rows
+                if row.get("ascent_meters") not in (None, 0) and row.get("avg_power") not in (None, 0) and row.get("duration_seconds") not in (None, 0)
+            ]
+            climbing_efficiency["vertical_gain_per_kj"] = summarize_comparison(vertical_gain_per_kj, recent_vertical_gain_values, digits=3) or {"current": round_or_none(vertical_gain_per_kj, 3)}
+        efficiency["climbing_efficiency"] = climbing_efficiency
+
+    if avg_respiration_rate is not None and avg_respiration_rate > 0:
+        respiration_relationship: dict[str, Any] = {
+            "avg_respiration_rate": round_or_none(avg_respiration_rate, 1),
+        }
+        if avg_power is not None and avg_power > 0:
+            breaths_per_100w = avg_respiration_rate / (avg_power / 100.0)
+            recent_breaths_per_100w = [
+                float(row["avg_respiration_rate"]) / (float(row["avg_power"]) / 100.0)
+                for row in recent_rows
+                if row.get("avg_respiration_rate") not in (None, 0) and row.get("avg_power") not in (None, 0)
+            ]
+            respiration_relationship["breaths_per_100w"] = summarize_comparison(breaths_per_100w, recent_breaths_per_100w, digits=2) or {
+                "current": round_or_none(breaths_per_100w, 2)
+            }
+        elif avg_pace_seconds_per_km is not None and avg_pace_seconds_per_km > 0:
+            breaths_per_km = avg_respiration_rate * (avg_pace_seconds_per_km / 60.0)
+            recent_breaths_per_km = [
+                float(row["avg_respiration_rate"]) * (float(row["avg_pace_seconds_per_km"]) / 60.0)
+                for row in recent_rows
+                if row.get("avg_respiration_rate") not in (None, 0) and row.get("avg_pace_seconds_per_km") not in (None, 0)
+            ]
+            respiration_relationship["breaths_per_km"] = summarize_comparison(breaths_per_km, recent_breaths_per_km, digits=1) or {
+                "current": round_or_none(breaths_per_km, 1)
+            }
+        if avg_hr is not None and avg_hr > 0:
+            breaths_per_beat = avg_respiration_rate / avg_hr
+            recent_breaths_per_beat = [
+                float(row["avg_respiration_rate"]) / float(row["avg_hr"])
+                for row in recent_rows
+                if row.get("avg_respiration_rate") not in (None, 0) and row.get("avg_hr") not in (None, 0)
+            ]
+            respiration_relationship["breaths_per_beat"] = summarize_comparison(breaths_per_beat, recent_breaths_per_beat, digits=3) or {
+                "current": round_or_none(breaths_per_beat, 3)
+            }
+        efficiency["respiration_relationship"] = respiration_relationship
+
+    return efficiency or None
+
+
+def build_analysis(
+    connection: sqlite3.Connection,
+    activity: dict[str, Any],
+    summaries: dict[tuple[str, str], dict[str, Any]],
+    hr_readings: list[dict[str, Any]],
+    power_readings: list[dict[str, Any]],
+    speed_readings: list[dict[str, Any]],
+    vertical_speed_readings: list[dict[str, Any]],
+    elevation_readings: list[dict[str, Any]],
+    zone_results: list[dict[str, Any]],
+    zone_buckets: list[dict[str, Any]],
+) -> dict[str, Any]:
     discipline = str(activity.get("discipline") or "").lower()
     is_running = discipline in RUNNING_DISCIPLINES
-    is_pace_endurance = discipline in RUNNING_DISCIPLINES or discipline in WALKING_DISCIPLINES
+    is_walking_like = discipline in WALKING_DISCIPLINES
+    is_pace_endurance = discipline in PACE_ENDURANCE_DISCIPLINES
     avg_hr = float(activity["avg_hr"]) if activity.get("avg_hr") not in (None, 0) else None
     max_hr = float(activity["max_hr"]) if activity.get("max_hr") not in (None, 0) else None
     avg_power = float(activity["avg_power"]) if activity.get("avg_power") not in (None, 0) else None
@@ -362,6 +993,7 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         hr_power_decoupling_percent = round(((second_ratio - first_ratio) / first_ratio) * 100, 2)
 
     pacing_status, pacing_evidence = classify_pacing_stability(activity, power_readings, hr_readings)
+    grade_adjusted_pace = build_grade_adjusted_pace_summary(activity, speed_readings, vertical_speed_readings, elevation_readings)
     late_session_fade = "unclear"
     if first_power and second_power:
         late_session_fade = "yes" if second_power < first_power * 0.95 else "no"
@@ -378,14 +1010,21 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
             aerobic_status = "poor"
         aerobic_notes = f"HR-power decoupling {hr_power_decoupling_percent:.2f}% based on first-versus-second half averages."
     elif hr_drift_percent is not None:
-        absolute_drift = abs(hr_drift_percent)
-        if absolute_drift < 5:
+        if is_pace_endurance and hr_drift_percent < -5:
             aerobic_status = "good"
-        elif absolute_drift < 8:
-            aerobic_status = "borderline"
+            if is_walking_like:
+                aerobic_notes = f"HR drift {hr_drift_percent:.2f}% with pace-endurance terrain usually reflects easing terrain or deliberate containment rather than aerobic breakdown."
+            else:
+                aerobic_notes = f"HR drift {hr_drift_percent:.2f}% suggests the session stayed contained or terrain softened late rather than showing aerobic breakdown."
         else:
-            aerobic_status = "poor"
-        aerobic_notes = f"HR drift {hr_drift_percent:.2f}% based on first-versus-second half averages."
+            absolute_drift = abs(hr_drift_percent)
+            if absolute_drift < 5:
+                aerobic_status = "good"
+            elif absolute_drift < 8:
+                aerobic_status = "borderline"
+            else:
+                aerobic_status = "poor"
+            aerobic_notes = f"HR drift {hr_drift_percent:.2f}% based on first-versus-second half averages."
 
     duration_status, duration_delta = classify_duration_vs_plan(activity)
     execution_vs_plan = duration_status
@@ -423,13 +1062,21 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         relationship_notes = f"Based on HR-power decoupling of {hr_power_decoupling_percent:.2f}%."
     elif is_pace_endurance and avg_pace_formatted and hr_drift_percent is not None:
         absolute_drift = abs(hr_drift_percent)
-        if absolute_drift < 5:
+        if absolute_drift < 5 or hr_drift_percent < -5:
             power_hr_relationship = "aligned"
         elif hr_drift_percent > 0:
             power_hr_relationship = "hr_high_for_power"
         else:
-            power_hr_relationship = "power_high_for_hr"
-        relationship_notes = f"Average pace {avg_pace_formatted} with HR drift {hr_drift_percent:.2f}% across the run."
+            power_hr_relationship = "aligned"
+        if is_walking_like and hr_drift_percent < -5:
+            if grade_adjusted_pace is not None:
+                relationship_notes = f"Average pace {avg_pace_formatted}; grade-adjusted pace {grade_adjusted_pace['grade_adjusted_pace_formatted']}; HR drift {hr_drift_percent:.2f}%. In a walking-like session this usually reflects easing terrain or controlled containment."
+            else:
+                relationship_notes = f"Average pace {avg_pace_formatted} with HR drift {hr_drift_percent:.2f}% for a walking-like session usually reflects easing terrain or controlled containment."
+        elif grade_adjusted_pace is not None:
+            relationship_notes = f"Average pace {avg_pace_formatted}; grade-adjusted pace {grade_adjusted_pace['grade_adjusted_pace_formatted']}; HR drift {hr_drift_percent:.2f}%."
+        else:
+            relationship_notes = f"Average pace {avg_pace_formatted} with HR drift {hr_drift_percent:.2f}% across the pace-endurance session."
 
     efficiency_flags: list[str] = []
     if hr_power_decoupling_percent is not None and abs(hr_power_decoupling_percent) >= 8:
@@ -448,7 +1095,7 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         metric_sources.append("heart_rate")
     if power_values:
         metric_sources.append("power")
-    elif is_running and avg_pace_formatted:
+    elif is_pace_endurance and avg_pace_formatted:
         metric_sources.append("pace")
     if any(key[0] == "respiration_rate" for key in summaries):
         metric_sources.append("respiration_rate")
@@ -457,6 +1104,13 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
     running_dynamics = build_running_dynamics_summary(activity, summaries)
     if running_dynamics is not None:
         metric_sources.append("running_dynamics")
+
+    segment_analysis = build_segment_analysis(connection, activity)
+    if segment_analysis is not None:
+        metric_sources.append("segments")
+    recent_rows = load_recent_comparable_activities(connection, activity)
+    recent_comparison = build_recent_comparison(activity, recent_rows)
+    activity_efficiency = build_activity_efficiency(activity, summaries, power_readings, zone_buckets, recent_rows, grade_adjusted_pace)
 
     quality_status = str(activity.get("quality_status") or "unavailable")
     quality_notes = []
@@ -505,6 +1159,7 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         "max_hr": max_hr,
         "avg_pace_seconds_per_km": avg_pace_seconds_per_km,
         "avg_pace_formatted": avg_pace_formatted,
+        "grade_adjusted_pace": grade_adjusted_pace,
         "relationship_notes": relationship_notes,
         "zone_execution": zone_execution,
         "dominant_hr_zone": dominant_hr_zone,
@@ -512,6 +1167,9 @@ def build_analysis(activity: dict[str, Any], summaries: dict[tuple[str, str], di
         "zone_execution_notes": zone_execution_notes,
         "running_dynamics": running_dynamics,
         "efficiency_flags": efficiency_flags,
+        "activity_efficiency": activity_efficiency,
+        "segment_analysis": segment_analysis,
+        "recent_comparison": recent_comparison,
         "metric_verdict": build_metric_verdict(execution_vs_plan, intensity_execution, aerobic_status, pacing_status, late_session_fade),
         "coaching_implication": build_coaching_implication(execution_vs_plan, aerobic_status, efficiency_flags),
     }
@@ -522,8 +1180,12 @@ def compute_activity_metric_analysis(connection: sqlite3.Connection, activity_id
     summaries = load_metric_summaries(connection, activity_id)
     hr_readings = load_metric_readings(connection, activity_id, "heart_rate")
     power_readings = load_metric_readings(connection, activity_id, "power")
+    speed_readings = load_metric_readings(connection, activity_id, "speed")
+    vertical_speed_readings = load_metric_readings(connection, activity_id, "vertical_speed")
+    elevation_readings = load_metric_readings(connection, activity_id, "elevation")
     zone_results = load_zone_results(connection, activity_id)
-    return build_analysis(activity, summaries, hr_readings, power_readings, zone_results)
+    zone_buckets = load_zone_buckets(connection, activity_id)
+    return build_analysis(connection, activity, summaries, hr_readings, power_readings, speed_readings, vertical_speed_readings, elevation_readings, zone_results, zone_buckets)
 
 
 def build_metric_verdict(execution_vs_plan: str, intensity_execution: str, aerobic_status: str, pacing_status: str, late_session_fade: str) -> str:

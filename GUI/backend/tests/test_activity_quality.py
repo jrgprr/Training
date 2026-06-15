@@ -7,15 +7,43 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-from app.activity_quality import RULE_SET_VERSION, get_activity_quality, normalize_metric_readings_from_activity_detail
+from app.activity_quality import (
+    RULE_SET_VERSION,
+    get_activity_quality,
+    normalize_metric_readings_from_activity_detail,
+    normalize_route_points_from_activity_detail,
+)
 from app.db import initialize_database
-from app.imports.contracts import GarminImportBatch, GarminImportRequest, ImportFetchMetadata, NormalizedActivity, NormalizedMetricReading
+from app.imports.contracts import GarminImportBatch, GarminImportRequest, ImportFetchMetadata, NormalizedActivity, NormalizedMetricReading, NormalizedRoutePoint
 from app.imports.garmin_connect import GarminConnectAdapter
 from app.imports.storage import GarminImportStorage
 from app.main import ActivityQualityReplayPayload, get_activity_running_dynamics_history_endpoint, replay_activity_quality_endpoint
 
 
 class ActivityQualityAdapterTests(unittest.TestCase):
+    def test_normalize_activity_detail_extracts_route_points(self) -> None:
+        route_points = normalize_route_points_from_activity_detail(
+            {
+                "metricDescriptors": [
+                    {"metricsIndex": 0, "key": "directTimestamp"},
+                    {"metricsIndex": 1, "key": "sumElapsedDuration"},
+                    {"metricsIndex": 2, "key": "directLatitude"},
+                    {"metricsIndex": 3, "key": "directLongitude"},
+                    {"metricsIndex": 4, "key": "directElevation"},
+                    {"metricsIndex": 5, "key": "sumDistance"},
+                ],
+                "activityDetailMetrics": [
+                    {"metrics": [0, 0, 43.12, -2.58, 180.2, 0.0]},
+                    {"metrics": [1_000, 1, 43.13, -2.57, 181.4, 12.5]},
+                ],
+            }
+        )
+
+        self.assertEqual(len(route_points), 2)
+        self.assertEqual(route_points[0].point_index, 0)
+        self.assertAlmostEqual(route_points[1].latitude_degrees, 43.13, places=2)
+        self.assertAlmostEqual(route_points[1].distance_meters or 0.0, 12.5, places=2)
+
     def test_normalize_activity_detail_converts_stride_length_to_meters(self) -> None:
         readings = normalize_metric_readings_from_activity_detail(
             {
@@ -73,10 +101,14 @@ class ActivityQualityAdapterTests(unittest.TestCase):
                             {"metricsIndex": 9, "key": "directVerticalOscillation"},
                             {"metricsIndex": 10, "key": "directStrideLength"},
                             {"metricsIndex": 11, "key": "directPerformanceCondition"},
+                            {"metricsIndex": 12, "key": "directLatitude"},
+                            {"metricsIndex": 13, "key": "directLongitude"},
+                            {"metricsIndex": 14, "key": "directElevation"},
+                            {"metricsIndex": 15, "key": "sumDistance"},
                         ],
                         "activityDetailMetrics": [
-                            {"metrics": [0, 0, 145, 86, 172, 0.3, 6.8, 248, 49.7, 8.7, 1.12, -2]},
-                            {"metrics": [1_000, 1, 147, 87, 174, 0.5, 6.9, 246, 50.1, 8.8, 1.14, -1]},
+                            {"metrics": [0, 0, 145, 86, 172, 0.3, 6.8, 248, 49.7, 8.7, 1.12, -2, 43.12, -2.58, 180.0, 0.0]},
+                            {"metrics": [1_000, 1, 147, 87, 174, 0.5, 6.9, 246, 50.1, 8.8, 1.14, -1, 43.13, -2.57, 181.0, 12.5]},
                         ],
                     }
                 raise AssertionError(f"unexpected path: {path}")
@@ -110,6 +142,8 @@ class ActivityQualityAdapterTests(unittest.TestCase):
                 "performance_condition",
             }.issubset(metric_names)
         )
+        self.assertEqual(len(activities[0].route_points), 2)
+        self.assertAlmostEqual(activities[0].route_points[0].latitude_degrees, 43.12, places=2)
 
     def test_normalize_activity_derives_pace_for_trail_walking(self) -> None:
         adapter = GarminConnectAdapter()
@@ -597,18 +631,27 @@ class ActivityQualityStorageTests(unittest.TestCase):
                 <Track>
                     <Trackpoint>
                         <Time>2026-05-05T08:00:00Z</Time>
+                        <Position><LatitudeDegrees>43.12</LatitudeDegrees><LongitudeDegrees>-2.58</LongitudeDegrees></Position>
+                        <AltitudeMeters>180.0</AltitudeMeters>
+                        <DistanceMeters>0.0</DistanceMeters>
                         <HeartRateBpm><Value>150</Value></HeartRateBpm>
                         <Cadence>82</Cadence>
                         <Extensions><ns3:TPX><ns3:Watts>210</ns3:Watts></ns3:TPX></Extensions>
                     </Trackpoint>
                     <Trackpoint>
                         <Time>2026-05-05T08:00:01Z</Time>
+                        <Position><LatitudeDegrees>43.1205</LatitudeDegrees><LongitudeDegrees>-2.5795</LongitudeDegrees></Position>
+                        <AltitudeMeters>181.0</AltitudeMeters>
+                        <DistanceMeters>5.0</DistanceMeters>
                         <HeartRateBpm><Value>242</Value></HeartRateBpm>
                         <Cadence>84</Cadence>
                         <Extensions><ns3:TPX><ns3:Watts>220</ns3:Watts></ns3:TPX></Extensions>
                     </Trackpoint>
                     <Trackpoint>
                         <Time>2026-05-05T08:00:02Z</Time>
+                        <Position><LatitudeDegrees>43.121</LatitudeDegrees><LongitudeDegrees>-2.579</LongitudeDegrees></Position>
+                        <AltitudeMeters>182.0</AltitudeMeters>
+                        <DistanceMeters>10.0</DistanceMeters>
                         <HeartRateBpm><Value>152</Value></HeartRateBpm>
                         <Cadence>83</Cadence>
                         <Extensions><ns3:TPX><ns3:Watts>215</ns3:Watts></ns3:TPX></Extensions>
@@ -672,14 +715,84 @@ class ActivityQualityStorageTests(unittest.TestCase):
                     reading_count = connection.execute(
                         "SELECT COUNT(*) AS total FROM exec_activity_metric_readings WHERE activity_id = 1"
                     ).fetchone()["total"]
+                    route_point_count = connection.execute(
+                        "SELECT COUNT(*) AS total FROM exec_activity_route_points WHERE activity_id = 1"
+                    ).fetchone()["total"]
+                    first_route_point = connection.execute(
+                        "SELECT latitude_degrees, longitude_degrees, altitude_meters, distance_meters FROM exec_activity_route_points WHERE activity_id = 1 ORDER BY point_index LIMIT 1"
+                    ).fetchone()
                     activity_row = connection.execute(
                         "SELECT avg_hr, max_hr, quality_status FROM exec_activities WHERE activity_id = 1"
                     ).fetchone()
 
                 self.assertEqual(reading_count, 9)
+                self.assertEqual(route_point_count, 3)
+                self.assertAlmostEqual(first_route_point["latitude_degrees"], 43.12, places=2)
                 self.assertEqual(activity_row["avg_hr"], 151.0)
                 self.assertEqual(activity_row["max_hr"], 152.0)
                 self.assertEqual(activity_row["quality_status"], "filtered")
+
+    def test_persist_batch_stores_route_points(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.object(GarminImportStorage, "_auto_link_garmin_activities", return_value=(0, 0)):
+                initialize_database()
+                create_minimal_exec_tables(database_path)
+                storage = GarminImportStorage()
+
+                batch = GarminImportBatch(
+                    request=GarminImportRequest(
+                        season_id=2026,
+                        date_from="2026-05-06",
+                        date_to="2026-05-06",
+                        include_daily_metrics=False,
+                    ),
+                    metadata=ImportFetchMetadata(
+                        source_system="garmin",
+                        source_label="garminconnect",
+                        date_from="2026-05-06",
+                        date_to="2026-05-06",
+                    ),
+                    activities=[
+                        NormalizedActivity(
+                            external_activity_id="route-1",
+                            activity_date="2026-05-06",
+                            started_at="2026-05-06T08:00:00",
+                            discipline="walking",
+                            activity_type="Walk",
+                            duration_seconds=1200,
+                            distance_meters=1500,
+                            ascent_meters=40,
+                            calories=100,
+                            avg_hr=110,
+                            max_hr=120,
+                            avg_power=None,
+                            normalized_power=None,
+                            training_load=10,
+                            avg_pace_seconds_per_km=700,
+                            metric_readings=[
+                                NormalizedMetricReading(metric_name="heart_rate", sample_index=0, raw_value=108),
+                                NormalizedMetricReading(metric_name="heart_rate", sample_index=1, raw_value=112),
+                            ],
+                            route_points=[
+                                NormalizedRoutePoint(point_index=0, latitude_degrees=43.12, longitude_degrees=-2.58, altitude_meters=180.0, distance_meters=0.0),
+                                NormalizedRoutePoint(point_index=1, latitude_degrees=43.121, longitude_degrees=-2.579, altitude_meters=181.0, distance_meters=12.0),
+                            ],
+                        )
+                    ],
+                    daily_metrics=[],
+                )
+
+                storage.persist_batch(batch)
+
+                with storage_connection(database_path) as connection:
+                    route_point_count = connection.execute(
+                        "SELECT COUNT(*) AS total FROM exec_activity_route_points WHERE activity_id = 1"
+                    ).fetchone()["total"]
+
+                self.assertEqual(route_point_count, 2)
 
     def test_persist_batch_marks_quality_limited_when_all_hr_samples_are_excluded(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

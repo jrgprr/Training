@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from datetime import date, timedelta
 from statistics import median
 from typing import Any
@@ -1008,6 +1009,204 @@ def get_week_zone_comparison_summary(week_id: int) -> dict[str, Any]:
     return {"items": [summary_by_basis[key] for key in sorted(summary_by_basis)]}
 
 
+def get_week_zone_coherence_assessment(week_id: int) -> dict[str, Any]:
+    with get_connection() as connection:
+        week_row = connection.execute(
+            """
+            SELECT mw.week_id, mw.start_date, mw.end_date, mb.season_id
+            FROM plan_micro_weeks mw
+            JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
+            WHERE mw.week_id = ?
+            """,
+            (week_id,),
+        ).fetchone()
+        if week_row is None:
+            raise LookupError(f"No existe la semana {week_id}.")
+
+        season_id = int(week_row["season_id"])
+        as_of_date = str(week_row["end_date"])
+        weekly_summary_index = {
+            item["metric_basis"]: item for item in get_week_zone_comparison_summary(week_id)["items"]
+        }
+        current_profiles = list_current_zone_profiles(season_id, "cycling")["profiles"]
+        proposal_payload = list_zone_proposals(season_id, "cycling")
+
+        basis_assessments = []
+        for metric_basis in sorted(SUPPORTED_ZONE_BASES):
+            basis_assessments.append(
+                _assess_week_zone_coherence_for_basis(
+                    connection,
+                    season_id=season_id,
+                    as_of_date=as_of_date,
+                    metric_basis=metric_basis,
+                    weekly_summary=weekly_summary_index.get(metric_basis),
+                    current_profile=current_profiles.get(metric_basis),
+                    proposal_items=proposal_payload["items"],
+                )
+            )
+
+    return {
+        "week_id": week_id,
+        "season_id": season_id,
+        "discipline": "cycling",
+        "assessment_date": as_of_date,
+        "overall_status": _resolve_week_zone_coherence_overall_status(basis_assessments),
+        "basis_assessments": basis_assessments,
+        "proposal_review_state": proposal_payload["review_state"],
+    }
+
+
+def _assess_week_zone_coherence_for_basis(
+    connection: Any,
+    *,
+    season_id: int,
+    as_of_date: str,
+    metric_basis: str,
+    weekly_summary: dict[str, Any] | None,
+    current_profile: dict[str, Any] | None,
+    proposal_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    summary = weekly_summary or _empty_week_zone_summary(metric_basis)
+    basis_proposals = [
+        item
+        for item in proposal_items
+        if item.get("metric_basis") == metric_basis and item.get("proposal_status") in {"pending", "deferred"}
+    ]
+    latest_actionable_proposal = basis_proposals[0] if basis_proposals else None
+
+    if current_profile is None:
+        return {
+            "metric_basis": metric_basis,
+            "status": "missing_profile",
+            "summary": summary,
+            "current_profile": None,
+            "current_metric_profile": None,
+            "latest_actionable_proposal": latest_actionable_proposal,
+            "supporting_activity_count": 0,
+            "supporting_activities": [],
+            "proposed_boundary_changes": [],
+            "limiting_factors": [],
+            "recommendation": "No hay perfil activo para esta base; conviene revisar y fijar zonas antes de usarla como referencia semanal.",
+        }
+
+    active_profile = _get_active_zone_profile(
+        connection,
+        season_id=season_id,
+        discipline="cycling",
+        metric_basis=metric_basis,
+        activity_date=as_of_date,
+    )
+    if active_profile is None:
+        return {
+            "metric_basis": metric_basis,
+            "status": "missing_profile",
+            "summary": summary,
+            "current_profile": current_profile,
+            "current_metric_profile": current_profile.get("metric_profile"),
+            "latest_actionable_proposal": latest_actionable_proposal,
+            "supporting_activity_count": 0,
+            "supporting_activities": [],
+            "proposed_boundary_changes": [],
+            "limiting_factors": [],
+            "recommendation": "No hay un perfil activo para la fecha de cierre de la semana; conviene revisar vigencia y versionado de zonas.",
+        }
+
+    current_boundaries = _get_profile_boundaries(connection, int(active_profile["zone_profile_id"]))
+    proposed_boundaries, supporting_rows = _build_refinement_boundary_updates(
+        connection,
+        zone_profile_id=int(active_profile["zone_profile_id"]),
+        metric_basis=metric_basis,
+        as_of_date=as_of_date,
+        current_boundaries=current_boundaries,
+    )
+    limiting_factors: list[str] = []
+    if proposed_boundaries:
+        limiting_factors, _ = _collect_recovery_limiting_factors(
+            connection,
+            season_id=season_id,
+            as_of_date=as_of_date,
+            metric_basis=metric_basis,
+        )
+
+    if proposed_boundaries:
+        status = "update_deferred" if limiting_factors else "update_recommended"
+        recommendation = (
+            "Las actividades recientes en Z2 apoyan una revision de zonas, pero conviene diferir el cambio hasta que mejore la recuperacion."
+            if limiting_factors
+            else "Las actividades recientes en Z2 sugieren que la definicion actual puede haberse quedado baja y conviene revisar o actualizar el perfil."
+        )
+    elif latest_actionable_proposal is not None:
+        status = "update_deferred" if latest_actionable_proposal["proposal_status"] == "deferred" else "update_recommended"
+        recommendation = (
+            latest_actionable_proposal.get("proposal_summary")
+            or "Existe una propuesta de refinamiento pendiente para esta base; conviene revisarla en la decision semanal."
+        )
+    elif summary["misaligned_count"] > 0 and summary["aligned_count"] == 0 and summary["linked_activity_count"] > 0:
+        status = "watch"
+        recommendation = "La semana no demuestra por si sola que las zonas esten mal, pero deja una senal para vigilar ejecucion, terreno y coherencia del perfil."
+    elif summary["planned_session_count"] > 0 and summary["linked_activity_count"] < summary["planned_session_count"]:
+        status = "limited_week_evidence"
+        recommendation = "La evidencia semanal es parcial; no hay base suficiente para cambiar zonas solo con esta semana."
+    else:
+        status = "coherent"
+        recommendation = "No hay una senal util esta semana para cambiar la definicion de zonas; mantener y seguir observando."
+
+    return {
+        "metric_basis": metric_basis,
+        "status": status,
+        "summary": summary,
+        "current_profile": {
+            "zone_profile_id": current_profile.get("zone_profile_id"),
+            "profile_label": current_profile.get("profile_label"),
+            "effective_start_date": current_profile.get("effective_start_date"),
+            "z2_upper_bound": _find_zone_boundary_value(current_profile.get("boundaries", []), "Z2", "upper_bound_value"),
+            "z3_lower_bound": _find_zone_boundary_value(current_profile.get("boundaries", []), "Z3", "lower_bound_value"),
+        },
+        "current_metric_profile": current_profile.get("metric_profile"),
+        "latest_actionable_proposal": latest_actionable_proposal,
+        "supporting_activity_count": len(supporting_rows),
+        "supporting_activities": supporting_rows[:3],
+        "proposed_boundary_changes": proposed_boundaries,
+        "limiting_factors": limiting_factors,
+        "recommendation": recommendation,
+    }
+
+
+def _resolve_week_zone_coherence_overall_status(basis_assessments: list[dict[str, Any]]) -> str:
+    statuses = {item["status"] for item in basis_assessments}
+    if "missing_profile" in statuses:
+        return "review_needed"
+    if "update_recommended" in statuses:
+        return "update_candidate"
+    if "update_deferred" in statuses:
+        return "defer_update"
+    if "watch" in statuses:
+        return "monitor"
+    if "limited_week_evidence" in statuses:
+        return "limited_week_evidence"
+    return "coherent"
+
+
+def _empty_week_zone_summary(metric_basis: str) -> dict[str, Any]:
+    return {
+        "metric_basis": metric_basis,
+        "planned_session_count": 0,
+        "linked_activity_count": 0,
+        "aligned_count": 0,
+        "misaligned_count": 0,
+        "limited_count": 0,
+        "not_comparable_count": 0,
+        "sessions": [],
+    }
+
+
+def _find_zone_boundary_value(boundaries: list[dict[str, Any]], zone_code: str, field_name: str) -> Any:
+    for boundary in boundaries:
+        if boundary.get("zone_code") == zone_code:
+            return boundary.get(field_name)
+    return None
+
+
 def _parse_calculation_notes(calculation_notes: str | None) -> list[str]:
     if calculation_notes is None:
         return []
@@ -1617,21 +1816,24 @@ def _collect_recovery_limiting_factors(
     metric_basis: str,
 ) -> tuple[list[str], list[dict[str, Any]]]:
     lookback_start = (date.fromisoformat(as_of_date) - timedelta(days=REFINEMENT_RECOVERY_LOOKBACK_DAYS)).isoformat()
-    rows = connection.execute(
-        """
-        SELECT daily_metric_id,
-               metric_date,
-               sleep_hours,
-               body_battery,
-               stress_avg,
-               hrv
-        FROM exec_daily_metrics
-        WHERE season_id = ?
-          AND metric_date BETWEEN ? AND ?
-        ORDER BY metric_date DESC, daily_metric_id DESC
-        """,
-        (season_id, lookback_start, as_of_date),
-    ).fetchall()
+    try:
+        rows = connection.execute(
+            """
+            SELECT daily_metric_id,
+                   metric_date,
+                   sleep_hours,
+                   body_battery,
+                   stress_avg,
+                   hrv
+            FROM exec_daily_metrics
+            WHERE season_id = ?
+              AND metric_date BETWEEN ? AND ?
+            ORDER BY metric_date DESC, daily_metric_id DESC
+            """,
+            (season_id, lookback_start, as_of_date),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return ([], [])
 
     limiting_factors: set[str] = set()
     evidence_rows: list[dict[str, Any]] = []

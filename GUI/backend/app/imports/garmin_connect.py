@@ -17,7 +17,11 @@ from garminconnect import (
     GarminConnectTooManyRequestsError,
 )
 
-from ..activity_quality import normalize_metric_readings_from_activity_detail
+from ..activity_quality import (
+    normalize_metric_readings_from_activity_detail,
+    normalize_route_points_from_activity_detail,
+    normalize_route_points_from_tcx_artifact,
+)
 from ..db import initialize_database
 from .contracts import (
     GarminImportBatch,
@@ -1261,6 +1265,7 @@ class GarminConnectAdapter:
                     except Exception:
                         activity_detail_stream_payload = None
             activity.metric_readings = normalize_metric_readings_from_activity_detail(activity_detail_stream_payload)
+            activity.route_points = normalize_route_points_from_activity_detail(activity_detail_stream_payload)
             try:
                 artifact_path = self._download_activity_artifact(client, request.season_id, activity)
             except Exception:
@@ -1268,6 +1273,8 @@ class GarminConnectAdapter:
                 continue
             if artifact_path:
                 activity.raw_payload_path = artifact_path
+                if not activity.route_points:
+                    activity.route_points = normalize_route_points_from_tcx_artifact(artifact_path)
                 artifact_paths.append(artifact_path)
         return activities, artifact_paths, artifact_failures
 

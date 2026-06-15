@@ -77,11 +77,12 @@ def load_weekly_metrics(week_id: int) -> dict[str, Any]:
     sys.path.insert(0, backend_path)
     try:
         from app.main import calculate_weekly_review_metrics, get_week_plan_vs_real_rows  # type: ignore
-        from app.training_zones import get_week_zone_comparison_summary  # type: ignore
+        from app.training_zones import get_week_zone_coherence_assessment, get_week_zone_comparison_summary  # type: ignore
         return {
             "review_metrics": calculate_weekly_review_metrics(week_id),
             "plan_vs_real_rows": get_week_plan_vs_real_rows(week_id),
             "zone_comparison_summary": get_week_zone_comparison_summary(week_id),
+            "zone_coherence_assessment": get_week_zone_coherence_assessment(week_id),
         }
     finally:
         if backend_path in sys.path:
@@ -168,6 +169,7 @@ def main() -> int:
         "review_metrics": metrics_bundle["review_metrics"],
         "plan_vs_real_rows": metrics_bundle["plan_vs_real_rows"],
         "zone_comparison_summary": metrics_bundle["zone_comparison_summary"],
+        "zone_coherence_assessment": metrics_bundle["zone_coherence_assessment"],
         "days": day_bundles,
         "next_week_context": next_week,
         "next_week_planned_sessions": next_week_sessions,

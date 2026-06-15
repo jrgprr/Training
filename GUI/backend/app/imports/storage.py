@@ -4,9 +4,15 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState, NormalizedActivity, NormalizedMetricReading, NormalizedSegmentEffort
-from ..activity_quality import ActivityQualityEvaluation, evaluate_activity_quality, normalize_metric_readings_from_tcx_artifact
-from ..db import _ensure_exec_activity_quality_schema, _ensure_exec_activity_segment_columns, get_connection
+from .contracts import GarminImportBatch, ImportJobBreakdown, ImportJobState, NormalizedActivity, NormalizedMetricReading, NormalizedRoutePoint, NormalizedSegmentEffort
+from ..activity_quality import (
+    ActivityQualityEvaluation,
+    evaluate_activity_quality,
+    normalize_metric_readings_from_tcx_artifact,
+    normalize_route_points_from_tcx_artifact,
+)
+from ..db import _ensure_exec_activity_elevation_enrichment_schema, _ensure_exec_activity_quality_schema, _ensure_exec_activity_route_points_schema, _ensure_exec_activity_segment_columns, get_connection
+from ..planned_sessions import collect_matching_family_groups
 from ..training_zones import persist_accepted_zone_profile as persist_zone_profile_record
 from ..training_zones import persist_activity_zone_results
 
@@ -104,76 +110,6 @@ class GarminImportStorage:
         if discipline in {"running", "trail_running"}:
             return "running"
         return discipline
-
-    @staticmethod
-    def _infer_families_from_text(*texts: str | None) -> set[str]:
-        normalized_text = " ".join((text or "").strip().lower() for text in texts if text)
-        if not normalized_text:
-            return set()
-
-        families: set[str] = set()
-        strength_keywords = {
-            "fuerza",
-            "core",
-            "pecho",
-            "triceps",
-            "hombro",
-            "espalda",
-            "biceps",
-            "pierna",
-            "piernas",
-            "gluteo",
-            "gluteos",
-            "torso",
-        }
-        flexibility_keywords = {"yoga", "flexibilidad", "elasticidad"}
-
-        if any(keyword in normalized_text for keyword in strength_keywords):
-            families.add("strength_training")
-        if any(keyword in normalized_text for keyword in flexibility_keywords):
-            families.add("yoga")
-        if "bicicleta" in normalized_text:
-            families.add("cycling")
-        if "monte" in normalized_text or "sender" in normalized_text:
-            families.add("hiking")
-            families.add("walking")
-        if "paseo" in normalized_text or "caminar" in normalized_text:
-            families.add("walking")
-        if "correr" in normalized_text or "running" in normalized_text:
-            families.add("running")
-        return families
-
-    @classmethod
-    def _planned_session_families(cls, planned_type: str | None, primary_session: str | None) -> set[str]:
-        normalized_planned_type = (planned_type or "").strip().lower()
-
-        families_by_planned_type = {
-            "bicicleta-z2": {"cycling"},
-            "salida-larga": {"cycling"},
-            "referencia-aerobica": {"cycling"},
-            "fuerza": {"strength_training"},
-            "activacion": {"walking", "cycling"},
-            "recuperacion": {"walking", "cycling"},
-            "complementaria": {"walking", "cycling", "hiking"},
-        }
-        inferred_families = cls._infer_families_from_text(primary_session)
-        if inferred_families:
-            return inferred_families
-        return families_by_planned_type.get(normalized_planned_type, set())
-
-    @classmethod
-    def _planned_session_support_families(
-        cls,
-        planned_type: str | None,
-        objective: str | None,
-        complementary_session: str | None,
-    ) -> set[str]:
-        normalized_planned_type = (planned_type or "").strip().lower()
-        if normalized_planned_type == "fuerza":
-            return set()
-
-        support_families = cls._infer_families_from_text(complementary_session, objective)
-        return {family for family in support_families if family in {"strength_training", "yoga"}}
 
     @staticmethod
     def _pick_preferred_candidate(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -299,17 +235,7 @@ class GarminImportStorage:
             inserted += 1
 
         for planned_session in unlinked_sessions:
-            target_groups = [
-                self._planned_session_families(
-                    planned_session["planned_type"],
-                    planned_session["primary_session"],
-                ),
-                self._planned_session_support_families(
-                    planned_session["planned_type"],
-                    planned_session["objective"],
-                    planned_session["complementary_session"],
-                ),
-            ]
+            target_groups = collect_matching_family_groups(connection, dict(planned_session))
             used_activity_ids: set[int] = set()
             for target_families in target_groups:
                 if not target_families:
@@ -507,6 +433,54 @@ class GarminImportStorage:
                 activity_row_id,
             ),
         )
+
+    def _persist_activity_route_points(
+        self,
+        connection: Any,
+        *,
+        activity_row_id: int,
+        activity: NormalizedActivity,
+    ) -> None:
+        if activity.route_points:
+            connection.execute(
+                "DELETE FROM exec_activity_route_points WHERE activity_id = ? AND point_index NOT IN ("
+                + ", ".join("?" for _ in activity.route_points)
+                + ")",
+                (activity_row_id, *(point.point_index for point in activity.route_points)),
+            )
+        else:
+            connection.execute("DELETE FROM exec_activity_route_points WHERE activity_id = ?", (activity_row_id,))
+            return
+
+        for point in activity.route_points:
+            connection.execute(
+                """
+                INSERT INTO exec_activity_route_points (
+                    activity_id, point_index, latitude_degrees, longitude_degrees, altitude_meters,
+                    distance_meters, recorded_at, elapsed_seconds, source_payload_kind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(activity_id, point_index) DO UPDATE SET
+                    latitude_degrees = excluded.latitude_degrees,
+                    longitude_degrees = excluded.longitude_degrees,
+                    altitude_meters = excluded.altitude_meters,
+                    distance_meters = excluded.distance_meters,
+                    recorded_at = excluded.recorded_at,
+                    elapsed_seconds = excluded.elapsed_seconds,
+                    source_payload_kind = excluded.source_payload_kind
+                """,
+                (
+                    activity_row_id,
+                    point.point_index,
+                    point.latitude_degrees,
+                    point.longitude_degrees,
+                    point.altitude_meters,
+                    point.distance_meters,
+                    point.recorded_at,
+                    point.elapsed_seconds,
+                    point.source_payload_kind,
+                ),
+            )
+
 
     def _persist_activity_quality(
         self,
@@ -812,6 +786,10 @@ class GarminImportStorage:
     def _ensure_quality_storage_schema(connection: Any) -> None:
         _ensure_exec_activity_quality_schema(connection)
 
+    @staticmethod
+    def _ensure_route_point_storage_schema(connection: Any) -> None:
+        _ensure_exec_activity_route_points_schema(connection)
+
     def start_import_job(
         self,
         *,
@@ -852,12 +830,86 @@ class GarminImportStorage:
             )
             return int(cursor.lastrowid)
 
+    def backfill_route_points_batch(
+        self,
+        *,
+        activity_id: int | None = None,
+        season_id: int | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        with get_connection() as connection:
+            self._ensure_route_point_storage_schema(connection)
+            conditions = ["raw_payload_path IS NOT NULL"]
+            params: list[Any] = []
+            if activity_id is not None:
+                conditions.append("activity_id = ?")
+                params.append(activity_id)
+            if season_id is not None:
+                conditions.append("season_id = ?")
+                params.append(season_id)
+            if date_from is not None:
+                conditions.append("activity_date >= ?")
+                params.append(date_from)
+            if date_to is not None:
+                conditions.append("activity_date <= ?")
+                params.append(date_to)
+            if not force:
+                conditions.append("NOT EXISTS (SELECT 1 FROM exec_activity_route_points rp WHERE rp.activity_id = exec_activities.activity_id)")
+            query = (
+                "SELECT activity_id, season_id, source_system, external_activity_id, activity_date, started_at, discipline, activity_type, duration_seconds, distance_meters, ascent_meters, calories, avg_hr, max_hr, avg_power, normalized_power, training_load, avg_pace_seconds_per_km, raw_payload_path, notes "
+                "FROM exec_activities WHERE " + " AND ".join(conditions) + " ORDER BY activity_date, activity_id"
+            )
+            if limit is not None:
+                query += f" LIMIT {int(limit)}"
+            activity_rows = connection.execute(query, tuple(params)).fetchall()
+
+            results: list[dict[str, Any]] = []
+            for row in activity_rows:
+                route_points = normalize_route_points_from_tcx_artifact(row["raw_payload_path"])
+                if not route_points:
+                    results.append({"activity_id": row["activity_id"], "status": "no_route_points_found", "route_point_count": 0})
+                    continue
+                activity = NormalizedActivity(
+                    external_activity_id=row["external_activity_id"] or "",
+                    activity_date=row["activity_date"],
+                    started_at=row["started_at"],
+                    discipline=row["discipline"],
+                    activity_type=row["activity_type"],
+                    duration_seconds=row["duration_seconds"],
+                    distance_meters=row["distance_meters"],
+                    ascent_meters=row["ascent_meters"],
+                    calories=row["calories"],
+                    avg_hr=row["avg_hr"],
+                    max_hr=row["max_hr"],
+                    avg_power=row["avg_power"],
+                    normalized_power=row["normalized_power"],
+                    training_load=row["training_load"],
+                    avg_pace_seconds_per_km=row["avg_pace_seconds_per_km"],
+                    raw_payload_path=row["raw_payload_path"],
+                    notes=row["notes"],
+                    route_points=route_points,
+                )
+                self._persist_activity_route_points(connection, activity_row_id=int(row["activity_id"]), activity=activity)
+                results.append({"activity_id": row["activity_id"], "status": "backfilled", "route_point_count": len(route_points)})
+            connection.commit()
+
+        return {
+            "activity_count": len(activity_rows),
+            "backfilled_count": sum(1 for item in results if item["status"] == "backfilled"),
+            "results": results,
+        }
+
+
     def replay_activity_quality(self, activity_id: int, *, source_mode: str = "canonical") -> dict[str, Any] | None:
         if source_mode not in {"canonical", "artifact"}:
             raise ValueError("source_mode no soportado para replay de calidad.")
 
         with get_connection() as connection:
             self._ensure_quality_storage_schema(connection)
+            self._ensure_route_point_storage_schema(connection)
             activity_row = connection.execute(
                 """
                 SELECT activity_id, season_id, external_activity_id, activity_date, started_at,
@@ -883,6 +935,16 @@ class GarminImportStorage:
                 """,
                 (activity_id,),
             ).fetchall()
+            route_point_rows = connection.execute(
+                """
+                SELECT point_index, latitude_degrees, longitude_degrees, altitude_meters,
+                       distance_meters, recorded_at, elapsed_seconds, source_payload_kind
+                FROM exec_activity_route_points
+                WHERE activity_id = ?
+                ORDER BY point_index
+                """,
+                (activity_id,),
+            ).fetchall()
 
             metric_readings: list[NormalizedMetricReading]
             if metric_rows:
@@ -904,6 +966,26 @@ class GarminImportStorage:
             else:
                 raise LookupError("No hay lecturas canonicas para reevaluar esta actividad.")
 
+            route_points: list[NormalizedRoutePoint]
+            if route_point_rows:
+                route_points = [
+                    NormalizedRoutePoint(
+                        point_index=row["point_index"],
+                        latitude_degrees=row["latitude_degrees"],
+                        longitude_degrees=row["longitude_degrees"],
+                        altitude_meters=row["altitude_meters"],
+                        distance_meters=row["distance_meters"],
+                        recorded_at=row["recorded_at"],
+                        elapsed_seconds=row["elapsed_seconds"],
+                        source_payload_kind=row["source_payload_kind"] or "activity_detail_stream",
+                    )
+                    for row in route_point_rows
+                ]
+            elif source_mode == "artifact":
+                route_points = normalize_route_points_from_tcx_artifact(activity_row["raw_payload_path"])
+            else:
+                route_points = []
+
             activity = NormalizedActivity(
                 external_activity_id=activity_row["external_activity_id"] or "",
                 activity_date=activity_row["activity_date"],
@@ -923,6 +1005,7 @@ class GarminImportStorage:
                 raw_payload_path=activity_row["raw_payload_path"],
                 notes=activity_row["notes"],
                 metric_readings=metric_readings,
+                route_points=route_points,
             )
 
             evaluation = evaluate_activity_quality(activity)
@@ -945,6 +1028,11 @@ class GarminImportStorage:
             result = "reused_existing_run" if existing_run is not None else "created_new_run"
 
             breakdown = ImportJobBreakdown()
+            self._persist_activity_route_points(
+                connection,
+                activity_row_id=activity_id,
+                activity=activity,
+            )
             self._persist_activity_quality(
                 connection,
                 activity_row_id=activity_id,
@@ -1112,6 +1200,7 @@ class GarminImportStorage:
         with get_connection() as connection:
             self._ensure_segment_storage_schema(connection)
             self._ensure_quality_storage_schema(connection)
+            self._ensure_route_point_storage_schema(connection)
             if import_job_id is None:
                 cursor = connection.execute(
                     """
@@ -1300,6 +1389,11 @@ class GarminImportStorage:
                         activity_row_id=int(persisted_activity["activity_id"]),
                         activity=activity,
                         breakdown=breakdown,
+                    )
+                    self._persist_activity_route_points(
+                        connection,
+                        activity_row_id=int(persisted_activity["activity_id"]),
+                        activity=activity,
                     )
                     self._persist_activity_quality(
                         connection,

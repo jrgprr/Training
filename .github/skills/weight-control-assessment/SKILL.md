@@ -23,7 +23,8 @@ This skill packages the workflow, script, and reference material needed to asses
    [build_weight_context.py](./scripts/build_weight_context.py)
 3. Use the assessment rubric in:
    [assessment-framework.md](./references/assessment-framework.md)
-4. Format the answer using:
+4. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
+5. Format the answer using:
    [weight-assessment-template.md](./assets/weight-assessment-template.md)
 
 ## Required Evidence Domains
@@ -45,6 +46,7 @@ This skill packages the workflow, script, and reference material needed to asses
 - Weight loss is only positive when it remains compatible with repeatable training, recovery, and preserved structural work.
 - Upward drift is not automatically bad if recovery, load, and week role suggest normal fluctuation.
 - Missing nutrition or appetite data limits certainty; do not infer energy balance directly.
+- Keep the output fully in English.
 
 ## Minimum Output
 

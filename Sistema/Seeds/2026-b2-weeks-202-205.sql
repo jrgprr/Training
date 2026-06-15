@@ -87,9 +87,9 @@ INSERT INTO plan_planned_sessions (
 (
     20201, 202, '2026-06-22', 'Lunes', 1, 'recuperacion',
     'Reabrir la semana con soltura y preparar bien la vuelta a una carga normal.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Pecho, triceps y hombro 25-30 minutos.',
-    'El dia facil sigue siendo obligatorio para que el crecimiento empiece el martes y no el lunes; si la bici se alarga, debe seguir siendo claramente regenerativa.',
-    0, 'muy suave', 45, 90, 'Mantener el lunes deliberadamente facil; solo usar el techo de 1h30 si la sesion sigue siendo claramente regenerativa.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
+    'El dia facil sigue siendo obligatorio para que el crecimiento empiece el martes y no el lunes; incluso en el extremo alto debe seguir siendo claramente regenerativa.',
+    0, 'muy suave', 60, 120, 'Mantener el lunes deliberadamente facil; incluso en el extremo alto la sesion debe seguir siendo claramente regenerativa.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
@@ -119,9 +119,9 @@ INSERT INTO plan_planned_sessions (
 (
     20205, 202, '2026-06-26', 'Viernes', 5, 'recuperacion',
     'Proteger la salida larga y llegar con ganas.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Espalda y biceps 25-30 minutos.',
-    'Dia de recuperacion real; sesion principal y fuerza opcionales segun el estado de recuperacion. Si la bici se alarga, debe seguir siendo claramente regenerativa y la fuerza debe omitirse si resta soltura para el sabado.',
-    0, 'muy suave', 45, 90, 'La prioridad es llegar fresco al sabado; solo usar el techo de 1h30 si la sesion sigue siendo claramente regenerativa y omitir la fuerza si deja residuo.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
+    'Dia de recuperacion real; sesion principal y fuerza opcionales segun el estado de recuperacion. Incluso en el extremo alto debe seguir siendo claramente regenerativa y la fuerza debe omitirse si resta soltura para el sabado.',
+    0, 'muy suave', 60, 120, 'La prioridad es llegar fresco al sabado; incluso en el extremo alto la sesion debe seguir siendo claramente regenerativa y omitir la fuerza si deja residuo.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
@@ -143,9 +143,9 @@ INSERT INTO plan_planned_sessions (
 (
     20301, 203, '2026-06-29', 'Lunes', 1, 'recuperacion',
     'Mantener el patron de apertura con margen.',
-    'Paseo 45-60 minutos, bici Z1 60-90 minutos si hay buena frescura, o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
-    'Si el fin de semana fue caro, hacer del lunes un dia claramente mas vacio; solo estirar la bici hasta 1h30 cuando la recuperacion sea buena y el terreno facil.',
-    0, 'muy suave', 45, 90, 'No contaminar el arranque de la semana; solo usar el techo de 1h30 cuando la sesion siga siendo claramente recuperadora.',
+    'Paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
+    'Si el fin de semana fue caro, hacer del lunes un dia claramente mas vacio; incluso en el extremo alto debe sentirse claramente recuperadora.',
+    0, 'muy suave', 60, 120, 'No contaminar el arranque de la semana; incluso en el extremo alto la sesion debe seguir siendo claramente recuperadora.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
@@ -175,9 +175,9 @@ INSERT INTO plan_planned_sessions (
 (
     20305, 203, '2026-07-03', 'Viernes', 5, 'recuperacion',
     'Llegar suelto al fin de semana largo.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Espalda y biceps 25-30 minutos.',
-    'Viernes de recuperacion; sesion principal y fuerza opcionales segun el estado de recuperacion. Si hace falta elegir, proteger primero la frescura del sabado y mantener la bici claramente regenerativa.',
-    0, 'muy suave', 45, 90, 'No comprometer el sabado; solo usar el techo de 1h30 si la sesion sigue siendo claramente recuperadora y omitir la fuerza si deja residuo.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
+    'Viernes de recuperacion; sesion principal y fuerza opcionales segun el estado de recuperacion. Si hace falta elegir, proteger primero la frescura del sabado y mantener la bici claramente regenerativa incluso en el extremo alto.',
+    0, 'muy suave', 60, 120, 'No comprometer el sabado; incluso en el extremo alto la sesion debe seguir siendo claramente recuperadora y omitir la fuerza si deja residuo.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
@@ -199,9 +199,9 @@ INSERT INTO plan_planned_sessions (
 (
     20401, 204, '2026-07-06', 'Lunes', 1, 'recuperacion',
     'Abrir con orden y no contaminar el empuje principal.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Pecho, triceps y hombro 25-30 minutos.',
-    'El lunes no debe usarse para compensar nada del fin de semana anterior; si la bici se alarga, mantenerla muy llana y claramente recuperadora.',
-    0, 'muy suave', 45, 90, 'No anadir coste extra al lunes; solo usar el techo de 1h30 si la sesion sigue siendo claramente regenerativa.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
+    'El lunes no debe usarse para compensar nada del fin de semana anterior; incluso en el extremo alto mantenerla muy llana y claramente recuperadora.',
+    0, 'muy suave', 60, 120, 'No anadir coste extra al lunes; incluso en el extremo alto la sesion debe seguir siendo claramente regenerativa.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
@@ -231,9 +231,9 @@ INSERT INTO plan_planned_sessions (
 (
     20405, 204, '2026-07-10', 'Viernes', 5, 'recuperacion',
     'Llegar al sabado largo con piernas dispuestas.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Espalda y biceps 25-30 minutos.',
-    'Mantenerlo simple; viernes de recuperacion, con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo claramente facil y la fuerza debe omitirse si compromete la soltura del sabado.',
-    0, 'muy suave', 45, 90, 'La prioridad es frescura; solo usar el techo de 1h30 si la sesion sigue siendo claramente regenerativa y omitir la fuerza si deja residuo.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
+    'Mantenerlo simple; viernes de recuperacion, con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo claramente facil y la fuerza debe omitirse si compromete la soltura del sabado, incluso en el extremo alto.',
+    0, 'muy suave', 60, 120, 'La prioridad es frescura; incluso en el extremo alto la sesion debe seguir siendo claramente regenerativa y omitir la fuerza si deja residuo.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
@@ -255,9 +255,9 @@ INSERT INTO plan_planned_sessions (
 (
     20501, 205, '2026-07-13', 'Lunes', 1, 'recuperacion',
     'Abrir la validacion con soltura.',
-    'Paseo 45-60 minutos, bici Z1 60-90 minutos si hay buena frescura, o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
-    'Si la semana 04 salio cara, recortar sin problema y priorizar frescura; el techo de 1h30 solo tiene sentido si la sesion sigue siendo muy facil.',
-    0, 'muy suave', 45, 90, 'Priorizar frescura de inicio; solo usar el techo de 1h30 si la sesion sigue siendo claramente recuperadora.',
+    'Paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
+    'Si la semana 04 salio cara, recortar sin problema y priorizar frescura; incluso en el extremo alto la sesion debe seguir siendo muy facil.',
+    0, 'muy suave', 60, 120, 'Priorizar frescura de inicio; incluso en el extremo alto la sesion debe seguir siendo claramente recuperadora.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
@@ -287,9 +287,9 @@ INSERT INTO plan_planned_sessions (
 (
     20505, 205, '2026-07-17', 'Viernes', 5, 'recuperacion',
     'Proteger la salida larga final del bloque.',
-    'Paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.', 'Espalda y biceps 25-30 minutos.',
-    'Cualquier duda se resuelve bajando carga, no manteniendola; viernes de recuperacion con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo muy facil y la fuerza debe omitirse si quita frescura para el sabado.',
-    0, 'muy suave', 45, 90, 'Llegar fresco al sabado; solo usar el techo de 1h30 si la sesion sigue siendo claramente recuperadora y omitir la fuerza si deja residuo.',
+    'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
+    'Cualquier duda se resuelve bajando carga, no manteniendola; viernes de recuperacion con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo muy facil y la fuerza debe omitirse si quita frescura para el sabado, incluso en el extremo alto.',
+    0, 'muy suave', 60, 120, 'Llegar fresco al sabado; incluso en el extremo alto la sesion debe seguir siendo claramente recuperadora y omitir la fuerza si deja residuo.',
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (

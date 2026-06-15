@@ -12,6 +12,7 @@ from .activity_quality import get_activity_quality
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 from .load_engine import compute_activity_load, get_load_model_snapshot
+from .planned_sessions import ensure_planned_session_structure, get_planned_session_activity_groups
 from .segments import get_segment_history, list_segments
 from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
@@ -64,6 +65,15 @@ def ensure_entity_exists(rows: list[dict[str, Any]], message: str) -> list[dict[
     if not rows:
         raise HTTPException(status_code=404, detail=message)
     return rows
+
+
+def attach_planned_activity_groups(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    with get_connection() as connection:
+        for row in rows:
+            ensure_planned_session_structure(connection, row)
+            row["planned_activity_groups"] = get_planned_session_activity_groups(connection, int(row["planned_session_id"]))
 
 
 def normalize_running_dynamics_metric_value(metric_name: str, value: float) -> float:
@@ -460,6 +470,7 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         """,
         (week_id,),
     )
+    attach_planned_activity_groups(rows)
 
     for row in rows:
         daily_review_id = row.get("daily_review_id")
@@ -1256,6 +1267,7 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
         """,
         (week_id,),
     )
+    attach_planned_activity_groups(rows)
     for row in rows:
         row["planned_zone_target"] = get_planned_session_zone_target(row["planned_session_id"])
     return ensure_entity_exists(rows, f"No se encontraron sesiones para la semana {week_id}.")

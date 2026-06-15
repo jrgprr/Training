@@ -12,7 +12,7 @@ from app.db import initialize_database
 from app.imports.contracts import GarminImportBatch, GarminImportRequest, ImportFetchMetadata, NormalizedActivity, NormalizedMetricReading
 from app.imports.storage import GarminImportStorage
 from app.main import ZoneMetricProfileAcceptancePayload, ZoneProposalAcceptancePayload, accept_zone_metric_profile_endpoint, accept_zone_proposal_endpoint, get_activity_zones_endpoint, get_current_zone_metric_profiles_endpoint, get_current_zone_profiles_endpoint, get_season_activities, get_sessions, get_week_plan_vs_real, get_weekly_review, get_zone_proposal_detail_endpoint, get_zone_proposals_endpoint
-from app.training_zones import accept_zone_metric_profile, derive_zone_boundaries_from_metrics, generate_zone_refinement_proposals, get_active_zone_profile_for_date, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, is_zone_supported_discipline, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals, normalize_zone_basis, persist_accepted_zone_profile
+from app.training_zones import accept_zone_metric_profile, derive_zone_boundaries_from_metrics, generate_zone_refinement_proposals, get_active_zone_profile_for_date, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_coherence_assessment, get_week_zone_comparison_summary, get_zone_proposal_detail, is_zone_supported_discipline, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals, normalize_zone_basis, persist_accepted_zone_profile
 
 
 class TrainingZoneSchemaTests(unittest.TestCase):
@@ -1290,6 +1290,36 @@ class TrainingZoneComparisonTests(unittest.TestCase):
             "INSERT INTO zone_profiles (zone_profile_id, season_id, discipline, metric_basis, profile_label, governance_status, effective_start_date, accepted_at) VALUES (2, 2026, 'cycling', 'power', 'cycling power v1', 'accepted', '2026-05-01', '2026-05-01T09:00:00Z')"
         )
         connection.execute(
+            "INSERT INTO zone_metric_profiles (zone_metric_profile_id, season_id, discipline, metric_basis, profile_label, model_key, resting_hr, max_hr, ftp, effective_start_date, accepted_at) VALUES (1, 2026, 'cycling', 'heart_rate', 'cycling hr metrics', 'heart_rate_reserve_5_zone', 50, 180, NULL, '2026-05-01', '2026-05-01T09:00:00Z')"
+        )
+        connection.execute(
+            "INSERT INTO zone_metric_profiles (zone_metric_profile_id, season_id, discipline, metric_basis, profile_label, model_key, resting_hr, max_hr, ftp, effective_start_date, accepted_at) VALUES (2, 2026, 'cycling', 'power', 'cycling power metrics', 'ftp_coggan_7_zone', NULL, NULL, 240, '2026-05-01', '2026-05-01T09:00:00Z')"
+        )
+        connection.execute(
+            "UPDATE zone_profiles SET source_metric_profile_id = 1, calculation_model_key = 'heart_rate_reserve_5_zone' WHERE zone_profile_id = 1"
+        )
+        connection.execute(
+            "UPDATE zone_profiles SET source_metric_profile_id = 2, calculation_model_key = 'ftp_coggan_7_zone' WHERE zone_profile_id = 2"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (1, 1, 'Z1', 0, 118, 'bpm')"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (1, 2, 'Z2', 119, 146, 'bpm')"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (1, 3, 'Z3', 147, 160, 'bpm')"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (2, 1, 'Z1', 0, 145, 'watts')"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (2, 2, 'Z2', 146, 180, 'watts')"
+        )
+        connection.execute(
+            "INSERT INTO zone_profile_boundaries (zone_profile_id, zone_index, zone_code, lower_bound_value, upper_bound_value, bound_unit) VALUES (2, 3, 'Z3', 181, 220, 'watts')"
+        )
+        connection.execute(
             "INSERT INTO exec_activity_zone_results (activity_id, zone_profile_id, metric_basis, calculation_status, quality_status_snapshot, supported_sample_count, total_supported_seconds, dominant_zone_code, dominant_zone_share) VALUES (500, 1, 'heart_rate', 'calculated', 'filtered', 300, 5400, 'Z2', 0.71)"
         )
         connection.execute(
@@ -1351,6 +1381,45 @@ class TrainingZoneComparisonTests(unittest.TestCase):
         self.assertEqual(session_row["zone_comparison"][0]["comparison_status"], "aligned")
         self.assertEqual(limited_row["zone_comparison"][0]["comparison_status"], "limited")
         self.assertEqual(review["zone_comparison_summary"]["items"][0]["planned_session_count"], 1)
+
+    def test_get_week_zone_coherence_assessment_marks_update_candidate_when_z2_anchor_runs_high(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch("app.db.normalize_existing_manual_activity_disciplines"):
+                initialize_database()
+                with sqlite3.connect(database_path) as connection:
+                    self._create_week_zone_context(connection)
+
+                payload = get_week_zone_coherence_assessment(20)
+
+        self.assertEqual(payload["overall_status"], "update_candidate")
+        heart_rate = next(item for item in payload["basis_assessments"] if item["metric_basis"] == "heart_rate")
+        self.assertEqual(heart_rate["status"], "update_recommended")
+        self.assertEqual(heart_rate["supporting_activity_count"], 2)
+        self.assertEqual(heart_rate["current_profile"]["z2_upper_bound"], 146)
+        self.assertEqual(heart_rate["proposed_boundary_changes"][0]["proposed_upper_bound_value"], 149.0)
+
+    def test_get_week_zone_coherence_assessment_defers_update_when_recovery_is_limited(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch("app.db.normalize_existing_manual_activity_disciplines"):
+                initialize_database()
+                with sqlite3.connect(database_path) as connection:
+                    self._create_week_zone_context(connection)
+                    connection.execute(
+                        "CREATE TABLE IF NOT EXISTS exec_daily_metrics (daily_metric_id INTEGER PRIMARY KEY, season_id INTEGER NOT NULL, metric_date TEXT NOT NULL, source_system TEXT NOT NULL, sleep_hours REAL, hrv REAL, body_battery REAL, stress_avg REAL)"
+                    )
+                    connection.execute(
+                        "INSERT INTO exec_daily_metrics (daily_metric_id, season_id, metric_date, source_system, sleep_hours, hrv, body_battery, stress_avg) VALUES (1, 2026, '2026-05-24', 'garmin', 5.5, 40, 35, 45)"
+                    )
+                    connection.commit()
+
+                payload = get_week_zone_coherence_assessment(20)
+
+        heart_rate = next(item for item in payload["basis_assessments"] if item["metric_basis"] == "heart_rate")
+        self.assertEqual(heart_rate["status"], "update_deferred")
+        self.assertIn("low_sleep_window", heart_rate["limiting_factors"])
+        self.assertEqual(payload["overall_status"], "defer_update")
 
 
 class PlannedZoneTargetTests(unittest.TestCase):

@@ -35,9 +35,9 @@
 
 ### Lunes
 - Objetivo: abrir la validacion con soltura.
-- Sesion principal: paseo 45-60 minutos, bici Z1 60-90 minutos si hay buena frescura, o descanso activo.
+- Sesion principal: paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.
 - Complementario: pecho, triceps y hombro 25-30 minutos.
-- Observaciones: si la semana 04 salio cara, recortar sin problema y priorizar frescura; el techo de 1h30 solo tiene sentido si la sesion sigue siendo muy facil.
+- Observaciones: si la semana 04 salio cara, recortar sin problema y priorizar frescura; incluso en el extremo alto la sesion debe seguir siendo muy facil.
 
 ### Martes
 - Objetivo: repetir una referencia aerobica comparable del bloque.
@@ -59,7 +59,7 @@
 
 ### Viernes
 - Objetivo: proteger la salida larga final del bloque.
-- Sesion principal: paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura. Sesion opcional si la recuperacion no es buena.
+- Sesion principal: paseo 60-120 minutos o bicicleta Z1 60-120 minutos. Sesion opcional si la recuperacion no es buena.
 - Complementario: espalda y biceps 25-30 minutos, opcional segun el estado de recuperacion.
 - Observaciones: cualquier duda se resuelve bajando carga, no manteniendola; la bici debe seguir siendo muy facil y la fuerza debe omitirse si quita frescura para el sabado.
 

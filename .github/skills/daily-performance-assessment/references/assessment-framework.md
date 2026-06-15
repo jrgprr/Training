@@ -35,7 +35,22 @@ Interpretation guidance:
 - Improving TSB does not mean the athlete is fully fresh.
 - A recovery day is successful if it preserves adaptation, not if it creates more stimulus.
 
-## 5. Classify The Day
+## 5. Read The Main Session Technically
+
+When a dominant endurance session has `activity_metric_analysis`, write the technical read in this order:
+
+1. Session control: execution versus plan, intensity control, zones, pacing stability, drift or decoupling, and late fade.
+2. Global efficiency: read `activity_efficiency` next, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, and `load_density`.
+3. Terrain and route-specific evidence: use climbing efficiency and segment history only when they help explain the session.
+4. Historical positioning: use recent similar-session comparison last to position the day against recent norms.
+
+Interpretation guidance:
+
+- Explain what the session was before explaining how it compares to other sessions.
+- For recovery days, explicitly separate correct containment from accidental underperformance.
+- Use efficiency metrics to sharpen the read, not to replace the broader day-level conclusion.
+
+## 6. Classify The Day
 
 Choose one primary label:
 
@@ -46,7 +61,7 @@ Choose one primary label:
 - Under-target day
 - Excessive day
 
-## 6. Produce A Decision
+## 7. Produce A Decision
 
 The recommendation should be explicit:
 
@@ -57,7 +72,7 @@ The recommendation should be explicit:
 - Full rest
 - Progress only if the athlete reports good sensations and no warning flags
 
-## 7. Confidence
+## 8. Confidence
 
 Use:
 

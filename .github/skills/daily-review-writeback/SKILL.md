@@ -21,14 +21,22 @@ It also writes a markdown logbook file for the same assessment under the season 
 1. Resolve the target date and season.
 2. When persisting a coaching assessment, include the exact coach response as `detailed_assessment_markdown`.
 3. If the request arrives via handoff from `Daily Performance Coach`, treat the handed-off response body as the default `detailed_assessment_markdown` with no manual rewriting.
-4. Build a structured payload using:
+4. Keep the persisted markdown fully in English. If the source assessment contains Spanish evidence snippets, translate them before persistence unless a brief direct quote is necessary.
+5. Build a structured payload using:
    [review-payload-template.json](./assets/review-payload-template.json)
-5. Validate the required and optional fields using:
+6. Validate the required and optional fields using:
    [field-contract.md](./references/field-contract.md)
-6. If the request is a persistence handoff from `Daily Performance Coach` and there is no read-only or dry-run override, run write mode directly.
-7. Otherwise run:
+7. If the request is a persistence handoff from `Daily Performance Coach` and there is no read-only or dry-run override, run write mode directly.
+8. Otherwise run:
    [upsert_daily_review.py](./scripts/upsert_daily_review.py)
-8. Default to `--dry-run` unless the request is that explicit persistence handoff or the user explicitly asked to persist.
+9. Default to `--dry-run` unless the request is that explicit persistence handoff or the user explicitly asked to persist.
+
+## Language Rule
+
+- Persist the assessment markdown entirely in English.
+- Translate Spanish planning text, notes, and source evidence into natural English before writing.
+- Keep original Spanish only for brief direct quotes when the exact wording matters.
+- Do not mix English and Spanish headings, labels, or coaching interpretation in persisted markdown.
 
 ## Safety Rules
 

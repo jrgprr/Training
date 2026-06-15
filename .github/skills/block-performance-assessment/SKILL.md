@@ -22,7 +22,8 @@ This skill packages the workflow, script, and reference material needed to asses
    [build_block_context.py](./scripts/build_block_context.py)
 3. Use the assessment rubric in:
    [assessment-framework.md](./references/assessment-framework.md)
-4. Format the answer using:
+4. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
+5. Format the answer using:
    [block-assessment-template.md](./assets/block-assessment-template.md)
 
 ## Required Evidence Domains
@@ -40,6 +41,7 @@ This skill packages the workflow, script, and reference material needed to asses
 - Treat missing subjective or recovery fields as uncertainty, not as failure.
 - Separate a block that produced useful work from a block that is truly ready to hand off progression.
 - Give explicit weight to exit criteria: repeatable weeks, tolerated long ride, integrated strength, and remaining freshness.
+- Keep the output fully in English.
 
 ## Minimum Output
 

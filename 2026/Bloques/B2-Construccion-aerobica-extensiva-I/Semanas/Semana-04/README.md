@@ -35,7 +35,7 @@
 
 ### Lunes
 - Objetivo: abrir con orden y no contaminar el empuje principal.
-- Sesion principal: paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura.
+- Sesion principal: paseo 60-120 minutos o bicicleta Z1 60-120 minutos.
 - Complementario: pecho, triceps y hombro 25-30 minutos.
 - Observaciones: el lunes no debe usarse para compensar nada del fin de semana anterior; si la bici se alarga, mantenerla muy llana y claramente recuperadora.
 
@@ -59,7 +59,7 @@
 
 ### Viernes
 - Objetivo: llegar al sabado largo con piernas dispuestas.
-- Sesion principal: paseo 45-60 minutos o bici Z1 60-90 minutos; hasta 1h30 si hay buena frescura. Sesion opcional si la recuperacion no es buena.
+- Sesion principal: paseo 60-120 minutos o bicicleta Z1 60-120 minutos. Sesion opcional si la recuperacion no es buena.
 - Complementario: espalda y biceps 25-30 minutos, opcional segun el estado de recuperacion.
 - Observaciones: mantenerlo simple; viernes de recuperacion, con bici claramente facil, y omitir la fuerza si compromete la soltura del sabado.
 

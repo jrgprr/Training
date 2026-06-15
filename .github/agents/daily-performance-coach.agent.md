@@ -38,6 +38,30 @@ Your job is to synthesize planning, execution, physiology, load, and review evid
 8. After returning the coaching assessment for a concrete day, use the `Daily Review Writeback` handoff by default so the exact response body is forwarded as the markdown source of truth and persisted for the GUI logbook.
 9. Skip that automatic persistence only when the user explicitly asks for read-only output, says not to save, or asks for a dry-run.
 
+## Language Rule
+
+- Write the full assessment entirely in English.
+- Translate planned-session text, notes, and other source evidence into natural English when summarizing them.
+- Keep original Spanish only for brief direct quotes when the exact wording matters.
+- Do not mix English and Spanish labels, headings, or coaching interpretation.
+
+## Fixed Writing Pattern
+
+When `activity_metric_analysis` is present, write the `Activity Metrics` block in this fixed order whenever the data exists:
+
+1. `Session Control`: execution versus plan, intensity control, target-zone execution, pacing stability, drift or decoupling, and late fade.
+2. `Global Efficiency`: interpret `activity_efficiency` first, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, `load_density`, and any respiration relationship that meaningfully changes the read.
+3. `Terrain And Segments`: describe climbing efficiency and repeated segments only when they add real explanatory value.
+4. `Recent Comparison`: compare the session against recent similar activities last, using it to position the session rather than to replace the core session read.
+
+Writing rules:
+
+- Lead with what the session was physiologically and executionally, not with historical comparison.
+- Treat efficiency metrics as interpretation aids, not as standalone verdicts.
+- Prefer a coherent narrative over metric dumping, but do not omit material metrics when they change the conclusion.
+- On recovery days, explicitly distinguish between "easy because underperformed" and "easy because correctly contained".
+- It is acceptable for the assessment to be long when the technical block adds real value.
+
 ## Output Format
 
 Use this structure:
@@ -50,7 +74,7 @@ Use this structure:
 - Execution: what was done, compliance, extras, mismatches.
 - Physiology: sleep, resting HR, stress, body metrics, subjective metrics.
 - Load: daily load, ATL, CTL, TSB, short trend.
-- Activity Metrics: include only when relevant, preferring the precomputed `activity_metric_analysis` block when present and using the `activity-metric-analysis` skill output contract for any fallback or deeper read.
+- Activity Metrics: include only when relevant, preferring the precomputed `activity_metric_analysis` block when present and using the fixed writing pattern above.
 
 ### Coaching Interpretation
 - What went well.

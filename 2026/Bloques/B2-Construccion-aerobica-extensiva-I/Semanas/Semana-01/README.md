@@ -35,9 +35,9 @@
 
 ### Lunes
 - Objetivo: abrir con soltura real tras el fin de semana de cierre de B1.
-- Sesion principal: paseo 40-55 minutos, bici Z1 60-90 minutos si hay buena frescura, o descanso activo.
+- Sesion principal: paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.
 - Complementario: pecho, triceps y hombro 25-30 minutos.
-- Observaciones: si el domingo aun pesa, convertir el dia en descanso casi total; la bici solo debe alargarse hasta 1h30 si sigue siendo claramente regenerativa.
+- Observaciones: si el domingo aun pesa, convertir el dia en descanso casi total; incluso en el extremo alto debe seguir siendo claramente regenerativa.
 
 ### Martes
 - Objetivo: recuperar una referencia aerobica comoda sin ambicion de crecimiento.
