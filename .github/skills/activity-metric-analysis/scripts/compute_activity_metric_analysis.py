@@ -293,6 +293,137 @@ RUNNING_DYNAMICS_METRICS = (
 )
 
 
+def build_performance_condition_signal(
+    summaries: dict[tuple[str, str], dict[str, Any]]
+) -> dict[str, Any] | None:
+    average_value = get_summary_value(summaries, "performance_condition", "average")
+    minimum_value = get_summary_value(summaries, "performance_condition", "minimum")
+    maximum_value = get_summary_value(summaries, "performance_condition", "maximum")
+    if average_value is None and minimum_value is None and maximum_value is None:
+        return None
+
+    status = "neutral"
+    notes: list[str] = []
+    if average_value is not None:
+        if average_value >= 2:
+            status = "positive"
+            notes.append(f"Average performance condition {average_value:.1f} points to a positive in-session freshness signal.")
+        elif average_value <= -2:
+            status = "negative"
+            notes.append(f"Average performance condition {average_value:.1f} points to a negative in-session freshness signal.")
+        else:
+            notes.append(f"Average performance condition {average_value:.1f} was broadly neutral.")
+
+    if minimum_value is not None and maximum_value is not None and minimum_value <= -3 and maximum_value >= 2:
+        status = "mixed"
+        notes.append(
+            f"The signal ranged from {minimum_value:.1f} to {maximum_value:.1f}, so freshness moved meaningfully during the activity."
+        )
+    elif maximum_value is not None and average_value is not None and maximum_value - average_value >= 3:
+        notes.append(f"Peak performance condition reached {maximum_value:.1f} despite a lower average signal.")
+    elif minimum_value is not None and average_value is not None and average_value - minimum_value >= 3:
+        notes.append(f"Lowest performance condition reached {minimum_value:.1f} despite a higher average signal.")
+
+    return {
+        "status": status,
+        "average": round_or_none(average_value, 2),
+        "minimum": round_or_none(minimum_value, 2),
+        "maximum": round_or_none(maximum_value, 2),
+        "notes": notes,
+    }
+
+
+def describe_performance_condition_level(value: float | None) -> str:
+    if value is None:
+        return "unavailable"
+    if value <= -1.5:
+        return "negative"
+    if value < 0.5:
+        return "neutral"
+    if value < 1.5:
+        return "mildly positive"
+    return "clearly positive"
+
+
+def build_performance_condition_evolution(
+    readings: list[dict[str, Any]],
+    signal: dict[str, Any] | None,
+) -> str | None:
+    valid_rows = [row for row in readings if row.get("raw_value") is not None]
+    if len(valid_rows) < 6:
+        if signal is None:
+            return None
+        status = signal.get("status") or "neutral"
+        average = signal.get("average")
+        if average is not None:
+            return f"Performance Condition was {status} overall, averaging {average:.1f}."
+        return f"Performance Condition was {status} overall."
+
+    elapsed_values = [float(row.get("elapsed_seconds") if row.get("elapsed_seconds") is not None else row.get("sample_index") or 0) for row in valid_rows]
+    total_elapsed = max(elapsed_values) if elapsed_values else 0.0
+    if total_elapsed <= 0:
+        total_elapsed = float(len(valid_rows))
+
+    phase_labels = ("early", "middle", "late")
+    phase_values: dict[str, list[float]] = {label: [] for label in phase_labels}
+    for row, elapsed_seconds in zip(valid_rows, elapsed_values):
+        fraction = elapsed_seconds / total_elapsed if total_elapsed > 0 else 0.0
+        if fraction < 1 / 3:
+            phase_values["early"].append(float(row["raw_value"]))
+        elif fraction < 2 / 3:
+            phase_values["middle"].append(float(row["raw_value"]))
+        else:
+            phase_values["late"].append(float(row["raw_value"]))
+
+    phase_means = {
+        label: (round(mean(values), 2) if values else None)
+        for label, values in phase_values.items()
+    }
+    early_mean = phase_means["early"]
+    middle_mean = phase_means["middle"]
+    late_mean = phase_means["late"]
+    maximum = signal.get("maximum") if signal is not None else None
+    minimum = signal.get("minimum") if signal is not None else None
+
+    sentences: list[str] = []
+    if early_mean is not None and middle_mean is not None and late_mean is not None:
+        sentences.append(
+            "Performance Condition opened "
+            f"{describe_performance_condition_level(early_mean)} in the early phase ({early_mean:.1f}), "
+            f"moved to {describe_performance_condition_level(middle_mean)} through the middle phase ({middle_mean:.1f}), "
+            f"and finished {describe_performance_condition_level(late_mean)} late ({late_mean:.1f})."
+        )
+
+    if early_mean is not None and middle_mean is not None and late_mean is not None:
+        if early_mean < 0 and middle_mean >= 1.5 and late_mean >= 0.5:
+            sentences.append(
+                "This pattern usually means the athlete was not especially sharp at the start, then settled well into the work and held a manageable internal cost without a late collapse."
+            )
+        elif early_mean >= 1.5 and late_mean < 0.5:
+            sentences.append(
+                "This pattern points to a strong start that faded back toward neutral late, which is more compatible with accumulating internal cost than with durable freshness."
+            )
+        elif middle_mean >= 1.5 and late_mean >= 1.0:
+            sentences.append(
+                "This pattern supports reading the session as internally manageable once underway, with freshness staying positive through most of the useful work."
+            )
+        elif late_mean < 0:
+            sentences.append(
+                "This pattern is more cautionary because the signal faded into negative territory late in the activity."
+            )
+        else:
+            sentences.append(
+                "This pattern looks mostly neutral, so Performance Condition adds context but does not materially change the broader execution read."
+            )
+
+    if minimum is not None and maximum is not None and maximum - minimum >= 4:
+        sentences.append(
+            f"The full range from {minimum:.1f} to {maximum:.1f} was wide enough that the signal should be read as a trajectory, not as one fixed readiness score."
+        )
+
+    return " ".join(sentences) if sentences else None
+
+
 def get_summary_value(
     summaries: dict[tuple[str, str], dict[str, Any]], metric_name: str, summary_kind: str = "average"
 ) -> float | None:
@@ -960,6 +1091,7 @@ def build_analysis(
     summaries: dict[tuple[str, str], dict[str, Any]],
     hr_readings: list[dict[str, Any]],
     power_readings: list[dict[str, Any]],
+    performance_condition_readings: list[dict[str, Any]],
     speed_readings: list[dict[str, Any]],
     vertical_speed_readings: list[dict[str, Any]],
     elevation_readings: list[dict[str, Any]],
@@ -1102,6 +1234,13 @@ def build_analysis(
     if zone_results:
         metric_sources.append("zones")
     running_dynamics = build_running_dynamics_summary(activity, summaries)
+    performance_condition_signal = build_performance_condition_signal(summaries)
+    performance_condition_evolution = build_performance_condition_evolution(
+        performance_condition_readings,
+        performance_condition_signal,
+    )
+    if performance_condition_signal is not None or performance_condition_evolution is not None:
+        metric_sources.append("performance_condition")
     if running_dynamics is not None:
         metric_sources.append("running_dynamics")
 
@@ -1165,6 +1304,8 @@ def build_analysis(
         "dominant_hr_zone": dominant_hr_zone,
         "dominant_power_zone": dominant_power_zone,
         "zone_execution_notes": zone_execution_notes,
+        "performance_condition_signal": performance_condition_signal,
+        "performance_condition_evolution": performance_condition_evolution,
         "running_dynamics": running_dynamics,
         "efficiency_flags": efficiency_flags,
         "activity_efficiency": activity_efficiency,
@@ -1180,12 +1321,13 @@ def compute_activity_metric_analysis(connection: sqlite3.Connection, activity_id
     summaries = load_metric_summaries(connection, activity_id)
     hr_readings = load_metric_readings(connection, activity_id, "heart_rate")
     power_readings = load_metric_readings(connection, activity_id, "power")
+    performance_condition_readings = load_metric_readings(connection, activity_id, "performance_condition")
     speed_readings = load_metric_readings(connection, activity_id, "speed")
     vertical_speed_readings = load_metric_readings(connection, activity_id, "vertical_speed")
     elevation_readings = load_metric_readings(connection, activity_id, "elevation")
     zone_results = load_zone_results(connection, activity_id)
     zone_buckets = load_zone_buckets(connection, activity_id)
-    return build_analysis(connection, activity, summaries, hr_readings, power_readings, speed_readings, vertical_speed_readings, elevation_readings, zone_results, zone_buckets)
+    return build_analysis(connection, activity, summaries, hr_readings, power_readings, performance_condition_readings, speed_readings, vertical_speed_readings, elevation_readings, zone_results, zone_buckets)
 
 
 def build_metric_verdict(execution_vs_plan: str, intensity_execution: str, aerobic_status: str, pacing_status: str, late_session_fade: str) -> str:

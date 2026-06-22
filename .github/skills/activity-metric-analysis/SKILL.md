@@ -35,10 +35,14 @@ This skill defines when and how to deepen a daily assessment with activity-level
 5. Produce only the metrics justified by the available data using:
    [metric-output-contract.md](./references/metric-output-contract.md)
 6. Return a concise structured metric-analysis block that supports the day-level conclusion.
-7. When available, include the richer technical sub-blocks for segment efforts and recent similar-session comparison, but keep them evidence-first and compact.
+7. When Garmin exposed Performance Condition credibly, include an explicit `performance_condition_evolution` paragraph that describes how the signal changed across the activity and what that pattern usually means.
+8. When available, include the richer technical sub-blocks for segment efforts and recent similar-session comparison, but keep them evidence-first and compact.
 
 ## Output Rule
 
 - Always separate observed metric facts from coaching interpretation.
 - Prefer a short structured block over a long freeform technical explanation.
 - If a metric cannot be computed credibly, mark it as unavailable and say why.
+- Treat Performance Condition as a secondary freshness hint: do not let it override drift, decoupling, load, or execution quality.
+- Read the trajectory, not just the average: a bad opening can recover, and a good opening can fade.
+- Give more weight to the late-session signal than to the first 10-20 minutes.

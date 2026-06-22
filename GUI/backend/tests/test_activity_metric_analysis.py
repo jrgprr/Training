@@ -163,6 +163,9 @@ class ActivityMetricAnalysisTests(unittest.TestCase):
             "INSERT INTO exec_activity_metric_summaries (activity_id, metric_name, summary_kind, trusted_value, summary_status) VALUES (?, ?, ?, ?, ?)",
             [
                 (1, "respiration_rate", "average", 22.0, "trusted"),
+                (1, "performance_condition", "average", 1.1, "trusted"),
+                (1, "performance_condition", "minimum", -3.0, "trusted"),
+                (1, "performance_condition", "maximum", 3.0, "trusted"),
                 (2, "respiration_rate", "average", 24.0, "trusted"),
                 (3, "respiration_rate", "average", 23.0, "trusted"),
             ],
@@ -210,6 +213,12 @@ class ActivityMetricAnalysisTests(unittest.TestCase):
                 (1, "heart_rate", 9, 119, None, 2700),
                 (1, "heart_rate", 10, 120, None, 3000),
                 (1, "heart_rate", 11, 121, None, 3300),
+                (1, "performance_condition", 0, -2, None, 0),
+                (1, "performance_condition", 1, -1, None, 300),
+                (1, "performance_condition", 2, 0, None, 600),
+                (1, "performance_condition", 3, 3, None, 900),
+                (1, "performance_condition", 4, 2, None, 1200),
+                (1, "performance_condition", 5, 1, None, 1500),
             ],
         )
 
@@ -263,6 +272,18 @@ class ActivityMetricAnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(efficiency["coasting_or_low_output_share"]["share"], 0.3333, places=4)
         self.assertAlmostEqual(efficiency["climbing_efficiency"]["vertical_rate_m_per_hour"]["current"], 400.0, places=1)
         self.assertAlmostEqual(efficiency["respiration_relationship"]["breaths_per_100w"]["current"], 14.67, places=2)
+        performance_condition = analysis["performance_condition_signal"]
+        assert performance_condition is not None
+        self.assertEqual(performance_condition["status"], "mixed")
+        self.assertAlmostEqual(performance_condition["average"], 1.1, places=2)
+        self.assertAlmostEqual(performance_condition["minimum"], -3.0, places=2)
+        self.assertAlmostEqual(performance_condition["maximum"], 3.0, places=2)
+        self.assertIn("performance_condition", analysis["data_quality"]["metric_sources"])
+        evolution = analysis["performance_condition_evolution"]
+        assert evolution is not None
+        self.assertIn("opened negative", evolution)
+        self.assertIn("middle phase", evolution)
+        self.assertIn("held a manageable internal cost", evolution)
 
     def test_walking_negative_hr_drift_is_not_flagged_as_poor(self) -> None:
         self.connection.execute(

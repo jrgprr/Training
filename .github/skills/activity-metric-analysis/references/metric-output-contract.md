@@ -13,7 +13,7 @@ Return a compact JSON-like analysis block conceptually shaped as follows.
 
 - `quality_status`: clean, limited, unreliable, or unavailable
 - `quality_notes`: key caveats
-- `metric_sources`: heart_rate, power, pace, respiration_rate, zones, segments, running_dynamics
+- `metric_sources`: heart_rate, power, pace, respiration_rate, performance_condition, zones, segments, running_dynamics
 
 ## Execution Versus Plan
 
@@ -145,6 +145,27 @@ Interpretation guidance:
 - Prefer cadence, ground contact time, vertical ratio, stride length, and performance condition first.
 - Mark the block as `partial` when Garmin omitted the full mechanical set.
 - Keep the notes observational and let the coaching summary decide overall significance.
+
+## Optional Performance Condition Signal
+
+When Garmin exposed performance condition credibly for any endurance discipline, you may add:
+
+- `performance_condition_signal.status`: positive, neutral, negative, or mixed
+- `performance_condition_signal.average`
+- `performance_condition_signal.minimum`
+- `performance_condition_signal.maximum`
+- `performance_condition_signal.notes`: concise observed facts, not long prose
+- `performance_condition_evolution`: one short paragraph explaining how the signal changed across the activity and what that pattern usually means
+
+Interpretation guidance:
+
+- Treat this as an in-session freshness hint, not as a primary verdict driver.
+- Use it to reinforce or question the broader read from load, drift, decoupling, and execution quality.
+- Mixed means the signal moved materially during the activity and should stay contextual rather than decisive.
+- Early negative values matter less than whether the signal improves once the session settles.
+- Rising into positive territory through the main work usually supports a reading of good settling and manageable internal cost.
+- A late drop back toward neutral or negative matters more than a rough first 10-20 minutes.
+- Stable late positive values support durability; late negative values are more cautionary.
 
 ## Coaching Summary
 
