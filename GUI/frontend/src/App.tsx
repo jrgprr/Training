@@ -397,6 +397,86 @@ type WeightMeasurementEntry = {
   measurement_source: string | null;
 };
 
+type ActivityMetricAnalysisPerformanceConditionSignal = {
+  status: string;
+  average: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  notes: string[];
+};
+
+type ActivityMetricAnalysis = {
+  performance_condition_signal: ActivityMetricAnalysisPerformanceConditionSignal | null;
+  performance_condition_evolution: string | null;
+};
+
+type ActivityWeatherSample = {
+  route_point_index: number;
+  sampled_at: string;
+  weather_hour: string;
+  elapsed_seconds: number | null;
+  distance_meters: number | null;
+  latitude_degrees: number;
+  longitude_degrees: number;
+  temperature_2m: number | null;
+  apparent_temperature: number | null;
+  precipitation: number | null;
+  rain: number | null;
+  snowfall: number | null;
+  weather_code: number | null;
+  cloud_cover: number | null;
+  wind_speed_10m: number | null;
+  wind_gusts_10m: number | null;
+  wind_direction_10m: number | null;
+  shortwave_radiation: number | null;
+};
+
+type ActivityWeatherSummary = {
+  temperature_mean: number | null;
+  temperature_min: number | null;
+  temperature_max: number | null;
+  apparent_temperature_mean: number | null;
+  precipitation_sum_est: number | null;
+  rain_sum_est: number | null;
+  snowfall_sum_est: number | null;
+  cloud_cover_mean: number | null;
+  wind_speed_mean: number | null;
+  wind_speed_max: number | null;
+  wind_gusts_max: number | null;
+  shortwave_radiation_mean: number | null;
+  dominant_weather_code: number | null;
+  sample_count: number;
+};
+
+type ActivityWeatherDetail = {
+  weather_enrichment_run_id: number;
+  activity_id: number;
+  provider_key: string;
+  provider_version: string;
+  provider_model: string | null;
+  sample_strategy: string;
+  requested_at: string;
+  status: string;
+  point_count: number;
+  sample_count: number;
+  notes: string | null;
+  metadata: {
+    sampling_interval_seconds?: number;
+    sampling_distance_meters?: number;
+    provider_model?: string;
+    queries?: Array<{
+      route_point_index: number;
+      weather_hour: string;
+      latitude: number;
+      longitude: number;
+      timezone?: string;
+      elevation?: number;
+    }>;
+  };
+  summary: ActivityWeatherSummary | null;
+  samples: ActivityWeatherSample[];
+};
+
 type ActivityDetail = {
   activity_id: number;
   season_id: number;
@@ -442,6 +522,8 @@ type ActivityDetail = {
   actual_summary: string | null;
   general_feeling: string | null;
   next_day_decision: string | null;
+  activity_metric_analysis?: ActivityMetricAnalysis | null;
+  weather?: ActivityWeatherDetail | null;
 };
 
 type ActivityZoneSummaryBasis = {
@@ -1566,6 +1648,21 @@ function toBadgeClass(status: string) {
   return `badge badge-${status}`;
 }
 
+function formatPerformanceConditionStatus(status: string | null | undefined) {
+  switch (status) {
+    case "positive":
+      return "Positiva";
+    case "negative":
+      return "Negativa";
+    case "mixed":
+      return "Mixta";
+    case "neutral":
+      return "Neutra";
+    default:
+      return "Sin clasificar";
+  }
+}
+
 function toHoursLabel(totalMinutes: number) {
   const totalHours = totalMinutes / 60;
   return Number.isInteger(totalHours) ? `${totalHours} h` : `${totalHours.toFixed(1)} h`;
@@ -1593,6 +1690,97 @@ function toMetricLabel(value: number | null, suffix = "") {
     return "-";
   }
   return `${Number.isInteger(value) ? value : value.toFixed(1)}${suffix}`;
+}
+
+function toCompactDateTimeLabel(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+  return new Date(value).toLocaleString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function toWeatherSampleDateTimeLabel(activityStartedAt: string | null, elapsedSeconds: number | null, fallbackValue: string | null) {
+  if (activityStartedAt && elapsedSeconds != null) {
+    const normalizedStart = activityStartedAt.includes("T") ? activityStartedAt : activityStartedAt.replace(" ", "T");
+    const start = new Date(normalizedStart);
+    if (!Number.isNaN(start.getTime())) {
+      return new Date(start.getTime() + elapsedSeconds * 1000).toLocaleString("es-ES", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "2-digit",
+      });
+    }
+  }
+  return toCompactDateTimeLabel(fallbackValue);
+}
+
+function toElapsedTimeLabel(totalSeconds: number | null) {
+  if (totalSeconds == null) {
+    return "-";
+  }
+  const rounded = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  }
+  return `${minutes} min`;
+}
+
+function toCardinalWindLabel(direction: number | null) {
+  if (direction == null) {
+    return "-";
+  }
+  const sectors = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+  const normalized = ((direction % 360) + 360) % 360;
+  const index = Math.round(normalized / 45) % sectors.length;
+  return `${sectors[index]} · ${Math.round(normalized)}°`;
+}
+
+function toWeatherCodeLabel(code: number | null) {
+  if (code == null) {
+    return "Sin clasificar";
+  }
+  const labels: Record<number, string> = {
+    0: "Despejado",
+    1: "Poco nuboso",
+    2: "Intervalos",
+    3: "Cubierto",
+    45: "Niebla",
+    48: "Niebla helada",
+    51: "Llovizna ligera",
+    53: "Llovizna",
+    55: "Llovizna intensa",
+    61: "Lluvia ligera",
+    63: "Lluvia",
+    65: "Lluvia intensa",
+    71: "Nieve ligera",
+    73: "Nieve",
+    75: "Nieve intensa",
+    77: "Granizo de nieve",
+    80: "Chubascos ligeros",
+    81: "Chubascos",
+    82: "Chubascos intensos",
+    85: "Nevadas ligeras",
+    86: "Nevadas intensas",
+    95: "Tormenta",
+    96: "Tormenta con granizo",
+    99: "Tormenta severa",
+  };
+  return labels[code] ?? `Codigo ${code}`;
+}
+
+function toTemperatureBandLabel(summary: ActivityWeatherSummary | null) {
+  if (!summary || summary.temperature_min == null || summary.temperature_max == null) {
+    return "-";
+  }
+  return `${toMetricLabel(summary.temperature_min, " °C")} / ${toMetricLabel(summary.temperature_max, " °C")}`;
 }
 
 function getOptionalDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
@@ -2553,6 +2741,7 @@ export default function App() {
   const [loadingBlockAssessment, setLoadingBlockAssessment] = useState(false);
   const [loadingWeeklyAssessment, setLoadingWeeklyAssessment] = useState(false);
   const [loadingWeightAssessment, setLoadingWeightAssessment] = useState(false);
+  const [loadingActivityWeather, setLoadingActivityWeather] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
@@ -3158,6 +3347,29 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setReplayingActivityQuality(false);
+    }
+  }
+
+  async function enrichSelectedActivityWeather(force = false) {
+    if (!selectedActivity) {
+      return;
+    }
+
+    try {
+      setLoadingActivityWeather(true);
+      setError(null);
+      setInfoMessage(null);
+      await postJson(`/api/activities/${selectedActivity.activity_id}/weather/enrich`, { force });
+      await loadActivityDetail(selectedActivity.activity_id);
+      setSubmissionMessage(
+        force
+          ? `Meteorologia recalculada para la actividad ${selectedActivity.activity_id}.`
+          : `Meteorologia cargada para la actividad ${selectedActivity.activity_id}.`,
+      );
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setLoadingActivityWeather(false);
     }
   }
 
@@ -4614,6 +4826,128 @@ export default function App() {
                 <article><span>RPE</span><strong>{toMetricLabel(selectedActivity.perceived_exertion)}</strong></article>
                 <article><span>Sesion planificada</span><strong>{selectedActivity.planned_session_id ?? "-"}</strong></article>
               </div>
+
+              <div className="activity-weather-card panel-subcard">
+                <div className="activity-weather-head">
+                  <div>
+                    <strong>Meteorologia de la actividad</strong>
+                    <p className="activity-dynamics-copy">Resumen meteorologico horario muestreado cada 15 min o 5 km sobre la ruta GPS persistida.</p>
+                  </div>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => void enrichSelectedActivityWeather(Boolean(selectedActivity.weather))}
+                    disabled={loadingActivityWeather}
+                  >
+                    {loadingActivityWeather
+                      ? (selectedActivity.weather ? "Recalculando..." : "Cargando...")
+                      : (selectedActivity.weather ? "Recalcular meteo" : "Cargar meteo")}
+                  </button>
+                </div>
+
+                {selectedActivity.weather?.summary ? (
+                  <>
+                    <div className="activity-weather-summary-grid">
+                      <article>
+                        <span>Condicion dominante</span>
+                        <strong>{toWeatherCodeLabel(selectedActivity.weather.summary.dominant_weather_code)}</strong>
+                        <small>{selectedActivity.weather.sample_count} muestras</small>
+                      </article>
+                      <article>
+                        <span>Temperatura media</span>
+                        <strong>{toMetricLabel(selectedActivity.weather.summary.temperature_mean, " °C")}</strong>
+                        <small>Rango: {toTemperatureBandLabel(selectedActivity.weather.summary)}</small>
+                      </article>
+                      <article>
+                        <span>Sensacion termica media</span>
+                        <strong>{toMetricLabel(selectedActivity.weather.summary.apparent_temperature_mean, " °C")}</strong>
+                        <small>Condicion percibida</small>
+                      </article>
+                      <article>
+                        <span>Precipitacion estimada</span>
+                        <strong>{toMetricLabel(selectedActivity.weather.summary.precipitation_sum_est, " mm")}</strong>
+                        <small>Lluvia: {toMetricLabel(selectedActivity.weather.summary.rain_sum_est, " mm")}</small>
+                      </article>
+                      <article>
+                        <span>Viento medio / max</span>
+                        <strong>{`${toMetricLabel(selectedActivity.weather.summary.wind_speed_mean, " km/h")} / ${toMetricLabel(selectedActivity.weather.summary.wind_speed_max, " km/h")}`}</strong>
+                        <small>Racha: {toMetricLabel(selectedActivity.weather.summary.wind_gusts_max, " km/h")}</small>
+                      </article>
+                      <article>
+                        <span>Nubosidad media</span>
+                        <strong>{toMetricLabel(selectedActivity.weather.summary.cloud_cover_mean, " %")}</strong>
+                        <small>Radiacion: {toMetricLabel(selectedActivity.weather.summary.shortwave_radiation_mean, " W/m²")}</small>
+                      </article>
+                    </div>
+
+                    <div className="activity-weather-timeline">
+                      <div className="activity-weather-timeline-head">
+                        <strong>Linea temporal de muestras</strong>
+                        <small>{selectedActivity.weather.metadata.sampling_interval_seconds != null && selectedActivity.weather.metadata.sampling_distance_meters != null
+                          ? `Paso objetivo: ${Math.round(selectedActivity.weather.metadata.sampling_interval_seconds / 60)} min o ${Math.round(selectedActivity.weather.metadata.sampling_distance_meters / 1000)} km`
+                          : "Muestras sobre puntos representativos de la ruta"}</small>
+                      </div>
+                      <div className="activity-weather-sample-list">
+                        {selectedActivity.weather.samples.map((sample) => (
+                          <article className="activity-weather-sample-item" key={`${sample.route_point_index}-${sample.sampled_at}`}>
+                            <div className="activity-weather-sample-head">
+                              <strong>{toWeatherSampleDateTimeLabel(selectedActivity.started_at, sample.elapsed_seconds, sample.sampled_at)}</strong>
+                              <span>{toWeatherCodeLabel(sample.weather_code)}</span>
+                            </div>
+                            <div className="activity-weather-sample-grid">
+                              <span>Tramo {sample.route_point_index}</span>
+                              <span>{toElapsedTimeLabel(sample.elapsed_seconds)}</span>
+                              <span>{toMetricLabel(sample.distance_meters != null ? sample.distance_meters / 1000 : null, " km")}</span>
+                              <span>{toMetricLabel(sample.temperature_2m, " °C")}</span>
+                              <span>{toMetricLabel(sample.apparent_temperature, " °C aparente")}</span>
+                              <span>{toMetricLabel(sample.precipitation, " mm")}</span>
+                              <span>{toMetricLabel(sample.wind_speed_10m, " km/h")}</span>
+                              <span>{toCardinalWindLabel(sample.wind_direction_10m)}</span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="activity-detail-notes">
+                    <p><strong>Sin meteorologia persistida.</strong> Usa el boton superior para consultar Open-Meteo y guardar un resumen horario sobre la ruta GPS de esta actividad.</p>
+                  </div>
+                )}
+              </div>
+
+              {(() => {
+                const performanceConditionSignal = selectedActivity.activity_metric_analysis?.performance_condition_signal;
+                const performanceConditionEvolution = selectedActivity.activity_metric_analysis?.performance_condition_evolution;
+                if (!performanceConditionEvolution) {
+                  return null;
+                }
+
+                return (
+                  <div className="activity-dynamics-card panel-subcard">
+                    <div className="activity-dynamics-head">
+                      <div>
+                        <strong>Performance Condition</strong>
+                        <p className="activity-dynamics-copy">Lectura narrativa de la evolucion del indicador de Garmin a lo largo de la actividad, usando la serie persistida en SQLite.</p>
+                      </div>
+                      {performanceConditionSignal?.status ? <span className="status-pill">{formatPerformanceConditionStatus(performanceConditionSignal.status)}</span> : null}
+                    </div>
+
+                    {performanceConditionSignal ? (
+                      <div className="activity-quality-meta">
+                        {performanceConditionSignal.average != null ? <span>Media: {toMetricLabel(performanceConditionSignal.average, " pts")}</span> : null}
+                        {performanceConditionSignal.minimum != null ? <span>Min: {toMetricLabel(performanceConditionSignal.minimum, " pts")}</span> : null}
+                        {performanceConditionSignal.maximum != null ? <span>Max: {toMetricLabel(performanceConditionSignal.maximum, " pts")}</span> : null}
+                      </div>
+                    ) : null}
+
+                    <div className="activity-dynamics-insights">
+                      <p>{performanceConditionEvolution}</p>
+                      {performanceConditionSignal?.notes?.length ? <p>{performanceConditionSignal.notes.join(" ")}</p> : null}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {(() => {
                 const runningDynamicsMetrics = getRunningDynamicsMetrics(selectedActivityQuality);
