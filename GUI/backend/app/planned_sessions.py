@@ -121,6 +121,15 @@ def replace_planned_session_structure(connection: sqlite3.Connection, session_ro
     _insert_planned_session_structure(connection, session_row)
 
 
+def sync_planned_session_structure(connection: sqlite3.Connection, session_row: dict[str, Any]) -> None:
+    planned_session_id = int(session_row["planned_session_id"])
+    existing = get_planned_session_activity_groups(connection, planned_session_id)
+    expected = build_legacy_activity_groups(session_row)
+    if _planned_session_groups_signature(existing) == _planned_session_groups_signature(expected):
+        return
+    replace_planned_session_structure(connection, session_row)
+
+
 def ensure_planned_session_structure(connection: sqlite3.Connection, session_row: dict[str, Any]) -> None:
     existing = connection.execute(
         "SELECT 1 FROM plan_session_activity_groups WHERE planned_session_id = ? LIMIT 1",
@@ -237,6 +246,37 @@ def get_planned_session_activity_groups(connection: sqlite3.Connection, planned_
             }
         )
     return groups
+
+
+def _planned_session_groups_signature(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    signature: list[dict[str, Any]] = []
+    for group in groups:
+        signature.append(
+            {
+                "group_role": group.get("group_role"),
+                "relation_mode": group.get("relation_mode"),
+                "is_optional": int(group.get("is_optional") or 0),
+                "summary_label": group.get("summary_label"),
+                "notes": group.get("notes"),
+                "items": [
+                    {
+                        "item_type": item.get("item_type"),
+                        "discipline_family": item.get("discipline_family"),
+                        "display_label": item.get("display_label"),
+                        "duration_min": item.get("duration_min"),
+                        "duration_max": item.get("duration_max"),
+                        "target_basis": item.get("target_basis"),
+                        "target_zone_min_code": item.get("target_zone_min_code"),
+                        "target_zone_max_code": item.get("target_zone_max_code"),
+                        "condition_key": item.get("condition_key"),
+                        "condition_value": item.get("condition_value"),
+                        "notes": item.get("notes"),
+                    }
+                    for item in group.get("items", [])
+                ],
+            }
+        )
+    return signature
 
 
 def build_legacy_activity_groups(session_row: dict[str, Any]) -> list[dict[str, Any]]:

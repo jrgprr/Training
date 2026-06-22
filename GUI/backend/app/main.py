@@ -14,7 +14,8 @@ from .activity_weather import backfill_activity_weather_batch, backfill_activity
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 from .load_engine import compute_activity_load, get_load_model_snapshot
-from .planned_sessions import ensure_planned_session_structure, get_planned_session_activity_groups
+from .planned_prescriptions import get_planned_session_prescription, sync_planned_session_prescription
+from .planned_sessions import get_planned_session_activity_groups, sync_planned_session_structure
 from .segments import get_segment_history, list_segments
 from .training_zones import accept_zone_metric_profile, accept_zone_refinement_proposal, get_activity_zone_detail, get_planned_session_zone_target, get_week_zone_comparison_summary, get_zone_proposal_detail, list_activity_zone_summaries, list_current_zone_metric_profiles, list_current_zone_profiles, list_session_zone_comparisons, list_zone_proposals
 
@@ -74,8 +75,17 @@ def attach_planned_activity_groups(rows: list[dict[str, Any]]) -> None:
         return
     with get_connection() as connection:
         for row in rows:
-            ensure_planned_session_structure(connection, row)
+            sync_planned_session_structure(connection, row)
             row["planned_activity_groups"] = get_planned_session_activity_groups(connection, int(row["planned_session_id"]))
+
+
+def attach_planned_prescriptions(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    with get_connection() as connection:
+        for row in rows:
+            sync_planned_session_prescription(connection, row)
+            row["planned_prescription"] = get_planned_session_prescription(connection, int(row["planned_session_id"]))
 
 
 def normalize_running_dynamics_metric_value(metric_name: str, value: float) -> float:
@@ -430,7 +440,8 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
             FROM link_plan_execution l
             JOIN exec_activities ea ON ea.activity_id = l.activity_id
         )
-        SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type,
+         SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_role,
+             ps.planned_type AS prescription_type, ps.planned_type,
                ps.objective AS planned_objective, ps.primary_session AS planned_session,
              ps.duration_min, ps.duration_max, ps.is_key_session,
              up.support_routine AS planned_support_routine,
@@ -501,6 +512,7 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         (week_id,),
     )
     attach_planned_activity_groups(rows)
+    attach_planned_prescriptions(rows)
 
     for row in rows:
         daily_review_id = row.get("daily_review_id")
@@ -1339,7 +1351,8 @@ def get_block_assessment_markdown(block_id: int) -> FileResponse:
 def get_sessions(week_id: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         """
-       SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_type, ps.objective,
+             SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_role,
+                     ps.planned_type AS prescription_type, ps.planned_type, ps.objective,
            ps.primary_session, ps.complementary_session, ps.intensity_class,
              up.support_routine AS planned_support_routine,
            ps.duration_min, ps.duration_max, ps.is_key_session
@@ -1354,9 +1367,32 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
         (week_id,),
     )
     attach_planned_activity_groups(rows)
+    attach_planned_prescriptions(rows)
     for row in rows:
         row["planned_zone_target"] = get_planned_session_zone_target(row["planned_session_id"])
     return ensure_entity_exists(rows, f"No se encontraron sesiones para la semana {week_id}.")
+
+
+@app.get("/api/planned-sessions/{planned_session_id}/prescription")
+def get_session_prescription(planned_session_id: int) -> dict[str, Any]:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT planned_session_id, planned_role, planned_type, objective, primary_session,
+                   complementary_session, notes, is_key_session, intensity_class,
+                   duration_min, duration_max, adjustment_rule, markdown_path
+            FROM plan_planned_sessions
+            WHERE planned_session_id = ?
+            """,
+            (planned_session_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"No se encontro la sesion planificada {planned_session_id}.")
+        sync_planned_session_prescription(connection, dict(row))
+        payload = get_planned_session_prescription(connection, planned_session_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe prescripcion estructurada para la sesion {planned_session_id}.")
+    return payload
 
 
 @app.get("/api/weeks/{week_id}/plan-vs-real")

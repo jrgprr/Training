@@ -67,7 +67,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10102;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Introducir el trabajo de core sin interferencia.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -103,7 +104,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10202;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Sostener el patron semanal con un dia ligero de core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -139,7 +141,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos y registro de potenc
 WHERE planned_session_id = 10302;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera y soporte general con foco en core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -175,7 +178,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10402;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera con menos carga y foco en core.',
     primary_session = 'Paseo suave 20-40 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -211,7 +215,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos.'
 WHERE planned_session_id = 10502;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Mantener fuerza estructurada ligera con foco en core.',
     primary_session = 'Paseo suave 20-45 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -247,7 +252,8 @@ SET complementary_session = 'Espalda y biceps 30-35 minutos y registrar potencia
 WHERE planned_session_id = 10602;
 
 UPDATE plan_planned_sessions
-SET planned_type = 'complementaria',
+SET planned_role = 'resistencia-aerobica-suave',
+    planned_type = 'complementaria',
     objective = 'Sostener el trabajo de core dentro del patron semanal sin generar fatiga residual.',
     primary_session = 'Paseo 20-45 minutos o descanso activo.',
     complementary_session = 'Core 30-35 minutos.',
@@ -274,35 +280,6 @@ UPDATE plan_planned_sessions
 SET complementary_session = 'Nutricion e hidratacion ordenadas y revision completa del bloque, sin fuerza.'
 WHERE planned_session_id = 10607;
 
-DELETE FROM plan_prescription_exercise_options
-WHERE prescription_exercise_id IN (
-    1010311, 1010312, 1010321, 1010322, 1010331, 1010332,
-    1020311, 1020312, 1020321, 1020322, 1020331, 1020332,
-    1030311, 1030312, 1030313, 1030321, 1030322, 1030331, 1030332,
-    1040311, 1040312, 1040321, 1040322, 1040323, 1040331, 1040332,
-    1050311, 1050312, 1050321, 1050322, 1050323, 1050331, 1050332,
-    1060311, 1060312, 1060313, 1060321, 1060322, 1060331, 1060332
-);
-
-DELETE FROM plan_prescription_exercises
-WHERE prescription_block_id IN (
-    101031, 101032, 101033,
-    102031, 102032, 102033,
-    103031, 103032, 103033,
-    104031, 104032, 104033,
-    105031, 105032, 105033,
-    106031, 106032, 106033
-);
-
-DELETE FROM plan_prescription_blocks
-WHERE prescription_block_id IN (
-    101031, 101032, 101033,
-    102031, 102032, 102033,
-    103031, 103032, 103033,
-    104031, 104032, 104033,
-    105031, 105032, 105033,
-    106031, 106032, 106033
-);
-
-DELETE FROM plan_session_prescriptions
-WHERE planned_session_id IN (10103, 10203, 10303, 10403, 10503, 10603);
+-- Legacy manual prescription cleanup is no longer needed.
+-- Canonical structured prescriptions are now regenerated deterministically
+-- from the updated planned-session rows by the planning seed loader.

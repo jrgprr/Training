@@ -15,6 +15,7 @@ BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.planned_prescriptions import build_structured_prescription, replace_planned_session_prescription
 from app.planned_sessions import delete_planned_session_structure, ensure_planned_session_structure_schema, replace_planned_session_structure
 
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
@@ -25,6 +26,7 @@ SNAPSHOT_COLUMNS = (
     "session_date",
     "day_name",
     "sequence_in_week",
+    "planned_role",
     "planned_type",
     "objective",
     "primary_session",
@@ -39,13 +41,17 @@ SNAPSHOT_COLUMNS = (
 )
 STRUCTURE_COLUMNS = (
     "planned_session_id",
+    "planned_role",
     "planned_type",
+    "notes",
     "primary_session",
     "complementary_session",
     "objective",
     "duration_min",
     "duration_max",
     "intensity_class",
+    "adjustment_rule",
+    "markdown_path",
 )
 
 
@@ -78,10 +84,17 @@ def snapshot_planned_sessions(connection: sqlite3.Connection) -> dict[int, tuple
     if table_exists is None:
         return {}
 
+    existing_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(plan_planned_sessions)").fetchall()
+    }
+    select_columns = [column for column in SNAPSHOT_COLUMNS if column in existing_columns]
     rows = connection.execute(
-        f"SELECT {', '.join(SNAPSHOT_COLUMNS)} FROM plan_planned_sessions ORDER BY planned_session_id"
+        f"SELECT {', '.join(select_columns)} FROM plan_planned_sessions ORDER BY planned_session_id"
     ).fetchall()
-    return {int(row["planned_session_id"]): tuple(row[column] for column in SNAPSHOT_COLUMNS[1:]) for row in rows}
+    return {
+        int(row["planned_session_id"]): tuple(row[column] for column in select_columns[1:])
+        for row in rows
+    }
 
 
 def get_changed_planned_session_ids(
@@ -119,6 +132,7 @@ def apply_seed_file(connection: sqlite3.Connection, seed_path: Path) -> dict[str
         if session_row is None:
             continue
         replace_planned_session_structure(connection, session_row)
+        replace_planned_session_prescription(connection, build_structured_prescription(session_row))
 
     return {
         "seed_path": str(seed_path),

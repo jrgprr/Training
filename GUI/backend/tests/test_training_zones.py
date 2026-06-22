@@ -1196,12 +1196,18 @@ class TrainingZoneComparisonTests(unittest.TestCase):
                 week_role TEXT,
                 objective_primary TEXT
             );
+            CREATE TABLE IF NOT EXISTS plan_user_profiles (
+                profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL UNIQUE,
+                support_routine TEXT
+            );
             CREATE TABLE IF NOT EXISTS plan_planned_sessions (
                 planned_session_id INTEGER PRIMARY KEY,
                 week_id INTEGER NOT NULL,
                 session_date TEXT NOT NULL,
                 day_name TEXT NOT NULL,
                 sequence_in_week INTEGER NOT NULL,
+                planned_role TEXT,
                 planned_type TEXT,
                 objective TEXT,
                 primary_session TEXT,
@@ -1251,13 +1257,16 @@ class TrainingZoneComparisonTests(unittest.TestCase):
             "INSERT INTO plan_meso_blocks (block_id, season_id, block_code, block_name, sequence_order) VALUES (10, 2026, 'B2', 'Aerobic', 2)"
         )
         connection.execute(
+            "INSERT INTO plan_user_profiles (profile_id, season_id, support_routine) VALUES (1, 2026, 'Movilidad 10 minutos')"
+        )
+        connection.execute(
             "INSERT INTO plan_micro_weeks (week_id, block_id, week_code, sequence_in_block, start_date, end_date, week_role, objective_primary) VALUES (20, 10, 'W20', 3, '2026-05-19', '2026-05-25', 'build', 'Aerobic consistency')"
         )
         connection.execute(
-            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (100, 20, '2026-05-20', 'Tue', 1, 'bicicleta-z2', 'Stay in Z2', 'Bike Z2', 90, 90, 1)"
+            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (100, 20, '2026-05-20', 'Tue', 1, 'resistencia-aerobica-principal', 'bicicleta-z2', 'Stay in Z2', 'Bike Z2', 90, 90, 1)"
         )
         connection.execute(
-            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (101, 20, '2026-05-22', 'Thu', 2, 'bicicleta-z2', 'Power Z2', 'Bike Z2 power', 75, 75, 0)"
+            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (101, 20, '2026-05-22', 'Thu', 2, 'resistencia-aerobica-secundaria', 'bicicleta-z2', 'Power Z2', 'Bike Z2 power', 75, 75, 0)"
         )
         connection.execute(
             "INSERT INTO plan_session_zone_targets (planned_zone_target_id, planned_session_id, target_basis, target_kind, source_kind, source_text, comparison_eligibility) VALUES (1, 100, 'heart_rate', 'single_zone', 'explicit', 'Z2', 'eligible')"
@@ -1452,12 +1461,18 @@ class PlannedZoneTargetTests(unittest.TestCase):
                 week_role TEXT,
                 objective_primary TEXT
             );
+            CREATE TABLE IF NOT EXISTS plan_user_profiles (
+                profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL UNIQUE,
+                support_routine TEXT
+            );
             CREATE TABLE IF NOT EXISTS plan_planned_sessions (
                 planned_session_id INTEGER PRIMARY KEY,
                 week_id INTEGER NOT NULL,
                 session_date TEXT NOT NULL,
                 day_name TEXT NOT NULL,
                 sequence_in_week INTEGER NOT NULL,
+                planned_role TEXT,
                 planned_type TEXT,
                 objective TEXT,
                 primary_session TEXT,
@@ -1536,16 +1551,19 @@ class PlannedZoneTargetTests(unittest.TestCase):
             "INSERT INTO plan_meso_blocks (block_id, season_id, block_code, block_name, sequence_order) VALUES (10, 2026, 'B2', 'Aerobic', 2)"
         )
         connection.execute(
+            "INSERT INTO plan_user_profiles (profile_id, season_id, support_routine) VALUES (1, 2026, 'Movilidad 10 minutos')"
+        )
+        connection.execute(
             "INSERT INTO plan_micro_weeks (week_id, block_id, week_code, sequence_in_block, start_date, end_date, week_role, objective_primary) VALUES (20, 10, 'W20', 3, '2026-05-19', '2026-05-25', 'build', 'Aerobic consistency')"
         )
         connection.execute(
-            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (200, 20, '2026-05-20', 'Tue', 1, 'bicicleta-z2', 'Stay aerobic in Z2', 'Bike Z2', 90, 90, 1)"
+            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (200, 20, '2026-05-20', 'Tue', 1, 'resistencia-aerobica-principal', 'bicicleta-z2', 'Stay aerobic in Z2', 'Bike Z2', 90, 90, 1)"
         )
         connection.execute(
-            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (201, 20, '2026-05-22', 'Thu', 2, 'intervals', 'Structured intervals', '3x5 Z4 after Z2 warmup', 75, 75, 0)"
+            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (201, 20, '2026-05-22', 'Thu', 2, 'potencia-aerobica', 'intervals', 'Structured intervals', '3x5 Z4 after Z2 warmup', 75, 75, 0)"
         )
         connection.execute(
-            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (202, 20, '2026-05-24', 'Sat', 3, 'bicicleta-aerobica', 'Comfortable aerobic ride', 'Bike easy', 120, 120, 0)"
+            "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (202, 20, '2026-05-24', 'Sat', 3, 'resistencia-aerobica-suave', 'bicicleta-aerobica', 'Comfortable aerobic ride', 'Bike easy', 120, 120, 0)"
         )
         connection.execute(
             "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, execution_notes) VALUES (1, 201, 'endurance', 'Threshold build', '15min Z2 + 3x5min Z4 + 10min Z2')"
@@ -1623,6 +1641,11 @@ class PlannedZoneTargetTests(unittest.TestCase):
         single_zone_row = next(row for row in sessions if row["planned_session_id"] == 200)
         no_zone_row = next(row for row in sessions if row["planned_session_id"] == 202)
         multi_segment_row = next(row for row in sessions if row["planned_session_id"] == 201)
+        self.assertEqual(single_zone_row["planned_role"], "resistencia-aerobica-principal")
+        self.assertEqual(single_zone_row["prescription_type"], "bicicleta-z2")
+        self.assertIsNotNone(single_zone_row["planned_prescription"])
+        self.assertEqual(single_zone_row["planned_prescription"]["blocks"][0]["target_zone_min_code"], "Z2")
+        self.assertEqual(single_zone_row["planned_prescription"]["blocks"][0]["duration_min"], 90)
         self.assertEqual(single_zone_row["planned_zone_target"]["target_kind"], "single_zone")
         self.assertIsNone(no_zone_row["planned_zone_target"])
         self.assertEqual(multi_segment_row["planned_zone_target"]["target_kind"], "multi_segment")

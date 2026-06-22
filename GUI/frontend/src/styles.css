@@ -566,6 +566,124 @@ textarea {
   background: rgba(15, 118, 110, 0.09);
 }
 
+.session-detail-surface {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.session-detail-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.session-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.session-detail-header h3,
+.session-role-section h4 {
+  margin: 0;
+}
+
+.session-detail-header p,
+.session-detail-copy p,
+.session-detail-copy small,
+.session-role-section-head small,
+.session-block-group-head small,
+.session-block-meta,
+.session-exercise-meta {
+  color: var(--muted);
+}
+
+.session-detail-header p,
+.session-block-card-head p,
+.session-detail-copy p,
+.session-detail-copy small {
+  margin: 6px 0 0;
+}
+
+.session-detail-meta,
+.session-block-badges,
+.session-block-meta,
+.session-exercise-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.session-detail-summary {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.session-detail-copy {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.session-detail-copy article,
+.session-block-group {
+  display: grid;
+  gap: 10px;
+}
+
+.session-detail-copy article {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid var(--line);
+}
+
+.session-role-section {
+  display: grid;
+  gap: 12px;
+}
+
+.session-linked-activity-card {
+  display: grid;
+  gap: 12px;
+}
+
+.session-linked-activity-head,
+.session-linked-activity-detail {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.session-linked-activity-detail p,
+.session-linked-activity-detail small {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.session-linked-activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.session-role-section-head,
+.session-block-group-head,
+.session-block-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.session-block-meta,
+.session-exercise-meta {
+  font-size: 0.88rem;
+}
+
 .prescription-block-list {
   display: grid;
   gap: 12px;

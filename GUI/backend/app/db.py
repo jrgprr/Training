@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .planned_prescriptions import sync_all_planned_session_prescriptions
 from .planned_sessions import ensure_planned_session_structure_schema, sync_all_planned_session_structures
 
 
@@ -352,6 +353,7 @@ CREATE TABLE IF NOT EXISTS plan_session_prescriptions (
     prescription_id INTEGER PRIMARY KEY,
     planned_session_id INTEGER NOT NULL UNIQUE,
     prescription_type TEXT NOT NULL DEFAULT 'other',
+    discipline_family TEXT,
     title TEXT,
     focus_primary TEXT,
     focus_secondary TEXT,
@@ -363,6 +365,8 @@ CREATE TABLE IF NOT EXISTS plan_session_prescriptions (
     cooldown_notes TEXT,
     execution_notes TEXT,
     adaptation_notes TEXT,
+    source_kind TEXT NOT NULL DEFAULT 'generated',
+    structure_version TEXT NOT NULL DEFAULT 'v1',
     source_markdown_path TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -373,11 +377,23 @@ CREATE TABLE IF NOT EXISTS plan_prescription_blocks (
     prescription_block_id INTEGER PRIMARY KEY,
     prescription_id INTEGER NOT NULL,
     sequence_order INTEGER NOT NULL,
+    block_role TEXT NOT NULL DEFAULT 'primary',
+    relation_group INTEGER NOT NULL DEFAULT 1,
+    relation_mode TEXT NOT NULL DEFAULT 'all_of',
+    is_optional INTEGER NOT NULL DEFAULT 0,
     block_type TEXT NOT NULL,
     block_name TEXT,
     objective TEXT,
     rounds INTEGER,
     rest_seconds INTEGER,
+    discipline_family TEXT,
+    duration_min INTEGER,
+    duration_max INTEGER,
+    target_basis TEXT,
+    target_zone_min_code TEXT,
+    target_zone_max_code TEXT,
+    condition_key TEXT,
+    condition_value TEXT,
     notes TEXT,
     FOREIGN KEY (prescription_id) REFERENCES plan_session_prescriptions (prescription_id),
     UNIQUE (prescription_id, sequence_order)
@@ -657,6 +673,8 @@ def initialize_database() -> None:
         connection.executescript(PRESCRIPTION_SCHEMA)
         connection.executescript(ZONE_SCHEMA)
         ensure_planned_session_structure_schema(connection)
+        _ensure_prescription_schema(connection)
+        _ensure_planned_session_role_schema(connection)
         _ensure_zone_schema(connection)
         _ensure_import_job_columns(connection)
         _ensure_daily_metric_columns(connection)
@@ -666,7 +684,107 @@ def initialize_database() -> None:
         _ensure_exec_activity_elevation_enrichment_schema(connection)
         _ensure_exec_activity_elevation_enrichment_schema(connection)
         sync_all_planned_session_structures(connection)
+        sync_all_planned_session_prescriptions(connection)
         normalize_existing_manual_activity_disciplines(connection)
+
+
+def _ensure_prescription_schema(connection: sqlite3.Connection) -> None:
+    expected_columns_by_table = {
+        "plan_session_prescriptions": {
+            "discipline_family": "ALTER TABLE plan_session_prescriptions ADD COLUMN discipline_family TEXT",
+            "source_kind": "ALTER TABLE plan_session_prescriptions ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'generated'",
+            "structure_version": "ALTER TABLE plan_session_prescriptions ADD COLUMN structure_version TEXT NOT NULL DEFAULT 'v1'",
+        },
+        "plan_prescription_blocks": {
+            "block_role": "ALTER TABLE plan_prescription_blocks ADD COLUMN block_role TEXT NOT NULL DEFAULT 'primary'",
+            "relation_group": "ALTER TABLE plan_prescription_blocks ADD COLUMN relation_group INTEGER NOT NULL DEFAULT 1",
+            "relation_mode": "ALTER TABLE plan_prescription_blocks ADD COLUMN relation_mode TEXT NOT NULL DEFAULT 'all_of'",
+            "is_optional": "ALTER TABLE plan_prescription_blocks ADD COLUMN is_optional INTEGER NOT NULL DEFAULT 0",
+            "discipline_family": "ALTER TABLE plan_prescription_blocks ADD COLUMN discipline_family TEXT",
+            "duration_min": "ALTER TABLE plan_prescription_blocks ADD COLUMN duration_min INTEGER",
+            "duration_max": "ALTER TABLE plan_prescription_blocks ADD COLUMN duration_max INTEGER",
+            "target_basis": "ALTER TABLE plan_prescription_blocks ADD COLUMN target_basis TEXT",
+            "target_zone_min_code": "ALTER TABLE plan_prescription_blocks ADD COLUMN target_zone_min_code TEXT",
+            "target_zone_max_code": "ALTER TABLE plan_prescription_blocks ADD COLUMN target_zone_max_code TEXT",
+            "condition_key": "ALTER TABLE plan_prescription_blocks ADD COLUMN condition_key TEXT",
+            "condition_value": "ALTER TABLE plan_prescription_blocks ADD COLUMN condition_value TEXT",
+        },
+    }
+    for table_name, expected_columns in expected_columns_by_table.items():
+        table_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        if table_exists is None:
+            continue
+        existing_columns = {
+            row["name"] for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for column_name, statement in expected_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(statement)
+
+
+def _ensure_planned_session_role_schema(connection: sqlite3.Connection) -> None:
+    session_table_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_planned_sessions'"
+    ).fetchone()
+    if session_table_exists is None:
+        return
+
+    existing_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(plan_planned_sessions)").fetchall()
+    }
+    if "planned_role" not in existing_columns:
+        connection.execute("ALTER TABLE plan_planned_sessions ADD COLUMN planned_role TEXT")
+
+    connection.execute(
+        """
+        UPDATE plan_planned_sessions
+        SET planned_role = CASE
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'descanso' THEN 'descanso'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'recuperacion' THEN 'recuperacion'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'activacion' THEN 'activacion-neuromuscular'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'fuerza' THEN 'desarrollo-de-fuerza'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'salida-larga' THEN 'resistencia-aerobica-extensiva'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'referencia-aerobica' THEN 'resistencia-aerobica-principal'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'intervals'
+              OR lower(coalesce(primary_session, '')) LIKE '%z4%'
+              OR lower(coalesce(primary_session, '')) LIKE '%z5%'
+              OR lower(coalesce(primary_session, '')) LIKE '%interval%'
+            THEN 'potencia-aerobica'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'bicicleta-aerobica' THEN 'resistencia-aerobica-suave'
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'bicicleta-z2' THEN
+                CASE
+                    WHEN coalesce(is_key_session, 0) = 1 THEN 'resistencia-aerobica-principal'
+                    ELSE 'resistencia-aerobica-secundaria'
+                END
+            WHEN lower(trim(coalesce(planned_type, ''))) = 'complementaria' THEN
+                CASE
+                    WHEN lower(coalesce(primary_session, '')) LIKE '%z2%' THEN 'resistencia-aerobica-secundaria'
+                    WHEN lower(coalesce(primary_session, '')) LIKE '%z4%'
+                      OR lower(coalesce(primary_session, '')) LIKE '%z5%'
+                      OR lower(coalesce(primary_session, '')) LIKE '%interval%'
+                    THEN 'potencia-aerobica'
+                    ELSE 'resistencia-aerobica-suave'
+                END
+            WHEN lower(coalesce(primary_session, '')) LIKE '%descanso activo%'
+              OR lower(coalesce(primary_session, '')) LIKE '%z1%'
+            THEN 'recuperacion'
+            WHEN coalesce(is_key_session, 0) = 1 THEN 'resistencia-aerobica-principal'
+            ELSE 'resistencia-aerobica-suave'
+        END
+        WHERE planned_role IS NULL OR trim(planned_role) = '' OR lower(trim(planned_role)) IN (
+            'activacion',
+            'complementaria',
+            'descanso',
+            'fuerza',
+            'recuperacion',
+            'referencia-aerobica',
+            'salida-larga'
+        )
+        """
+    )
 
 
 def _ensure_zone_schema(connection: sqlite3.Connection) -> None:

@@ -81,11 +81,12 @@ ON CONFLICT(week_id) DO UPDATE SET
 
 INSERT INTO plan_planned_sessions (
     planned_session_id, week_id, session_date, day_name, sequence_in_week,
+    planned_role,
     planned_type, objective, primary_session, complementary_session, notes,
     is_key_session, intensity_class, duration_min, duration_max, adjustment_rule, markdown_path
 ) VALUES
 (
-    20201, 202, '2026-06-22', 'Lunes', 1, 'recuperacion',
+    20201, 202, '2026-06-22', 'Lunes', 1, 'recuperacion', 'recuperacion',
     'Reabrir la semana con soltura y preparar bien la vuelta a una carga normal.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'El dia facil sigue siendo obligatorio para que el crecimiento empiece el martes y no el lunes; incluso en el extremo alto debe seguir siendo claramente regenerativa.',
@@ -93,7 +94,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20202, 202, '2026-06-23', 'Martes', 2, 'referencia-aerobica',
+    20202, 202, '2026-06-23', 'Martes', 2, 'resistencia-aerobica-principal', 'referencia-aerobica',
     'Retomar un dia extensivo normal entre semana.',
     'Bicicleta Z2 120-135 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Subir tiempo, no intensidad; debe sentirse como trabajo normal del bloque, no como test de reentrada.',
@@ -101,7 +102,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20203, 202, '2026-06-24', 'Miercoles', 3, 'complementaria',
+    20203, 202, '2026-06-24', 'Miercoles', 3, 'resistencia-aerobica-suave', 'complementaria',
     'Sostener la estructura sin dejar residuo.',
     'Paseo suave 20-45 minutos o descanso activo.', 'Core 25-30 minutos.',
     'Si el martes se ha sentido caro, dejar solo paseo muy corto o movilidad.',
@@ -109,7 +110,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20204, 202, '2026-06-25', 'Jueves', 4, 'bicicleta-z2',
+    20204, 202, '2026-06-25', 'Jueves', 4, 'resistencia-aerobica-principal', 'bicicleta-z2',
     'Repetir un segundo dia aerobico util ya dentro de una semana plenamente funcional.',
     'Bicicleta Z2 120-130 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'Dia para consolidar, no para competir con el martes.',
@@ -117,7 +118,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20205, 202, '2026-06-26', 'Viernes', 5, 'recuperacion',
+    20205, 202, '2026-06-26', 'Viernes', 5, 'recuperacion', 'recuperacion',
     'Proteger la salida larga y llegar con ganas.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Dia de recuperacion real; sesion principal y fuerza opcionales segun el estado de recuperacion. Incluso en el extremo alto debe seguir siendo claramente regenerativa y la fuerza debe omitirse si resta soltura para el sabado.',
@@ -125,7 +126,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20206, 202, '2026-06-27', 'Sabado', 6, 'salida-larga',
+    20206, 202, '2026-06-27', 'Sabado', 6, 'resistencia-aerobica-extensiva', 'salida-larga',
     'Consolidar una salida larga ya plenamente integrada en el bloque.',
     'Bicicleta 3h-3h15 en Z2.', 'Core 25-30 minutos y revision parcial de carga, hambre y piernas.',
     'Usar nutricion ordenada y no cerrar con sensacion de vaciado.',
@@ -133,7 +134,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20207, 202, '2026-06-28', 'Domingo', 7, 'complementaria',
+    20207, 202, '2026-06-28', 'Domingo', 7, 'resistencia-aerobica-suave', 'complementaria',
     'Sumar continuidad sin borrar el valor del sabado.',
     'Monte suave, paseo largo o bicicleta facil 2h-2h30.', 'Revision semanal y movilidad, sin fuerza.',
     'Si el sabado ya deja coste alto, reducir a 90-120 minutos o a paseo llano.',
@@ -141,7 +142,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-02/README.md'
 ),
 (
-    20301, 203, '2026-06-29', 'Lunes', 1, 'recuperacion',
+    20301, 203, '2026-06-29', 'Lunes', 1, 'recuperacion', 'recuperacion',
     'Mantener el patron de apertura con margen.',
     'Paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
     'Si el fin de semana fue caro, hacer del lunes un dia claramente mas vacio; incluso en el extremo alto debe sentirse claramente recuperadora.',
@@ -149,7 +150,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20302, 203, '2026-06-30', 'Martes', 2, 'referencia-aerobica',
+    20302, 203, '2026-06-30', 'Martes', 2, 'resistencia-aerobica-principal', 'referencia-aerobica',
     'Consolidar una referencia aerobica ya algo mas larga.',
     'Bicicleta Z2 120-135 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Registrar potencia media, frecuencia cardiaca media y sensacion para comparar estabilidad.',
@@ -157,7 +158,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20303, 203, '2026-07-01', 'Miercoles', 3, 'complementaria',
+    20303, 203, '2026-07-01', 'Miercoles', 3, 'resistencia-aerobica-suave', 'complementaria',
     'Sostener el bloque desde la ligereza, no desde el relleno.',
     'Paseo 25-45 minutos o descanso activo.', 'Core 25-30 minutos.',
     'Dia de absorcion real; si se alarga, pierde su funcion.',
@@ -165,7 +166,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20304, 203, '2026-07-02', 'Jueves', 4, 'bicicleta-z2',
+    20304, 203, '2026-07-02', 'Jueves', 4, 'resistencia-aerobica-principal', 'bicicleta-z2',
     'Repetir un segundo dia aerobico util sin deriva de ambicion.',
     'Bicicleta Z2 120-130 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'La prioridad es estabilidad de ejecucion, no mas vatios ni mas terreno.',
@@ -173,7 +174,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20305, 203, '2026-07-03', 'Viernes', 5, 'recuperacion',
+    20305, 203, '2026-07-03', 'Viernes', 5, 'recuperacion', 'recuperacion',
     'Llegar suelto al fin de semana largo.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Viernes de recuperacion; sesion principal y fuerza opcionales segun el estado de recuperacion. Si hace falta elegir, proteger primero la frescura del sabado y mantener la bici claramente regenerativa incluso en el extremo alto.',
@@ -181,7 +182,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20306, 203, '2026-07-04', 'Sabado', 6, 'salida-larga',
+    20306, 203, '2026-07-04', 'Sabado', 6, 'resistencia-aerobica-extensiva', 'salida-larga',
     'Hacer de la salida larga un elemento ya normal de la semana.',
     'Bicicleta 3h-3h30 en Z2 estable.', 'Core 25-30 minutos y revision de tolerancia global del bloque.',
     'La sesion debe sentirse larga pero gobernable; no perseguir dureza por terreno.',
@@ -189,7 +190,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20307, 203, '2026-07-05', 'Domingo', 7, 'complementaria',
+    20307, 203, '2026-07-05', 'Domingo', 7, 'resistencia-aerobica-suave', 'complementaria',
     'Mantener continuidad con un segundo dia aerobico claramente secundario.',
     'Paseo largo, monte suave o bicicleta facil 2h-2h30.', 'Movilidad y revision semanal, sin fuerza.',
     'Si el sabado deja arrastre, convertir en 90-120 minutos muy suaves o descanso activo.',
@@ -197,7 +198,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-03/README.md'
 ),
 (
-    20401, 204, '2026-07-06', 'Lunes', 1, 'recuperacion',
+    20401, 204, '2026-07-06', 'Lunes', 1, 'recuperacion', 'recuperacion',
     'Abrir con orden y no contaminar el empuje principal.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'El lunes no debe usarse para compensar nada del fin de semana anterior; incluso en el extremo alto mantenerla muy llana y claramente recuperadora.',
@@ -205,7 +206,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20402, 204, '2026-07-07', 'Martes', 2, 'referencia-aerobica',
+    20402, 204, '2026-07-07', 'Martes', 2, 'resistencia-aerobica-principal', 'referencia-aerobica',
     'Hacer un dia aerobico entre semana ya claramente productivo.',
     'Bicicleta Z2 120-140 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Subir tiempo, no dureza; evitar terreno que obligue a cambios de ritmo innecesarios.',
@@ -213,7 +214,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20403, 204, '2026-07-08', 'Miercoles', 3, 'complementaria',
+    20403, 204, '2026-07-08', 'Miercoles', 3, 'resistencia-aerobica-suave', 'complementaria',
     'Absorber el martes sin perder estructura.',
     'Paseo 25-45 minutos o descanso activo.', 'Core 25-30 minutos.',
     'Si el martes deja mas huella de la prevista, simplificar el dia todo lo posible.',
@@ -221,7 +222,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20404, 204, '2026-07-09', 'Jueves', 4, 'bicicleta-z2',
+    20404, 204, '2026-07-09', 'Jueves', 4, 'resistencia-aerobica-principal', 'bicicleta-z2',
     'Consolidar un segundo dia aerobico util dentro de la misma semana.',
     'Bicicleta Z2 120-135 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'El jueves debe sentirse como continuidad controlada, no como segundo pico.',
@@ -229,7 +230,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20405, 204, '2026-07-10', 'Viernes', 5, 'recuperacion',
+    20405, 204, '2026-07-10', 'Viernes', 5, 'recuperacion', 'recuperacion',
     'Llegar al sabado largo con piernas dispuestas.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Mantenerlo simple; viernes de recuperacion, con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo claramente facil y la fuerza debe omitirse si compromete la soltura del sabado, incluso en el extremo alto.',
@@ -237,7 +238,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20406, 204, '2026-07-11', 'Sabado', 6, 'salida-larga',
+    20406, 204, '2026-07-11', 'Sabado', 6, 'resistencia-aerobica-extensiva', 'salida-larga',
     'Ejecutar la salida larga mas importante del bloque.',
     'Bicicleta 3h-3h45 en Z2 estable.', 'Core 25-30 minutos y revision de nutricion, sensacion y deriva cardiaca.',
     'Si la sesion se desordena o pide demasiada voluntad, cortar antes del techo.',
@@ -245,7 +246,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20407, 204, '2026-07-12', 'Domingo', 7, 'complementaria',
+    20407, 204, '2026-07-12', 'Domingo', 7, 'resistencia-aerobica-suave', 'complementaria',
     'Cerrar con continuidad util pero subordinada.',
     'Monte suave, paseo largo o bicicleta facil 2h-2h30.', 'Movilidad y revision semanal, sin fuerza.',
     'Este dia no debe convertirse en segunda carga larga; si el sabado fue caro, bajar a 90-120 minutos como minimo efectivo.',
@@ -253,7 +254,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-04/README.md'
 ),
 (
-    20501, 205, '2026-07-13', 'Lunes', 1, 'recuperacion',
+    20501, 205, '2026-07-13', 'Lunes', 1, 'recuperacion', 'recuperacion',
     'Abrir la validacion con soltura.',
     'Paseo 60-120 minutos, bicicleta Z1 60-120 minutos o descanso activo.', 'Pecho, triceps y hombro 25-30 minutos.',
     'Si la semana 04 salio cara, recortar sin problema y priorizar frescura; incluso en el extremo alto la sesion debe seguir siendo muy facil.',
@@ -261,7 +262,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20502, 205, '2026-07-14', 'Martes', 2, 'referencia-aerobica',
+    20502, 205, '2026-07-14', 'Martes', 2, 'resistencia-aerobica-principal', 'referencia-aerobica',
     'Repetir una referencia aerobica comparable del bloque.',
     'Bicicleta Z2 120-130 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Importar mas la normalidad de la sesion que su tamano exacto.',
@@ -269,7 +270,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20503, 205, '2026-07-15', 'Miercoles', 3, 'complementaria',
+    20503, 205, '2026-07-15', 'Miercoles', 3, 'resistencia-aerobica-suave', 'complementaria',
     'Dejar respirar la semana sin perder estructura.',
     'Paseo 20-40 minutos o descanso activo.', 'Core 25-30 minutos.',
     'El dia debe sentirse ligero y recuperar confianza para el jueves.',
@@ -277,7 +278,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20504, 205, '2026-07-16', 'Jueves', 4, 'bicicleta-z2',
+    20504, 205, '2026-07-16', 'Jueves', 4, 'resistencia-aerobica-principal', 'bicicleta-z2',
     'Sumar un segundo dia aerobico util y comodo.',
     'Bicicleta Z2 120-125 minutos.', 'Pecho, triceps y hombro 25-30 minutos.',
     'No buscar crecimiento; si aparece pesadez, quedarse en el minimo efectivo.',
@@ -285,7 +286,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20505, 205, '2026-07-17', 'Viernes', 5, 'recuperacion',
+    20505, 205, '2026-07-17', 'Viernes', 5, 'recuperacion', 'recuperacion',
     'Proteger la salida larga final del bloque.',
     'Paseo 60-120 minutos o bicicleta Z1 60-120 minutos.', 'Espalda y biceps 25-30 minutos.',
     'Cualquier duda se resuelve bajando carga, no manteniendola; viernes de recuperacion con sesion principal y fuerza opcionales segun el estado de recuperacion. La bici debe seguir siendo muy facil y la fuerza debe omitirse si quita frescura para el sabado, incluso en el extremo alto.',
@@ -293,7 +294,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20506, 205, '2026-07-18', 'Sabado', 6, 'salida-larga',
+    20506, 205, '2026-07-18', 'Sabado', 6, 'resistencia-aerobica-extensiva', 'salida-larga',
     'Cerrar B2 con salida larga controlada y bien gobernada.',
     'Bicicleta 3h-4h en Z2.', 'Core 25-30 minutos y revision completa del bloque.',
     'Si el jueves o el viernes dejan carga inesperada, recortar al extremo bajo sin dudar.',
@@ -301,7 +302,7 @@ INSERT INTO plan_planned_sessions (
     '2026/Bloques/B2-Construccion-aerobica-extensiva-I/Semanas/Semana-05/README.md'
 ),
 (
-    20507, 205, '2026-07-19', 'Domingo', 7, 'complementaria',
+    20507, 205, '2026-07-19', 'Domingo', 7, 'resistencia-aerobica-suave', 'complementaria',
     'Dejar el bloque listo para entrar en absorcion.',
     'Paseo largo, monte muy suave o bicicleta facil 2h-2h30.', 'Movilidad, hidratacion y cierre del bloque, sin fuerza.',
     'El domingo debe seguir siendo ligero a nivel de coste; si el sabado deja deuda, recortar a 90-120 minutos.',
@@ -313,6 +314,7 @@ ON CONFLICT(planned_session_id) DO UPDATE SET
     session_date = excluded.session_date,
     day_name = excluded.day_name,
     sequence_in_week = excluded.sequence_in_week,
+    planned_role = excluded.planned_role,
     planned_type = excluded.planned_type,
     objective = excluded.objective,
     primary_session = excluded.primary_session,

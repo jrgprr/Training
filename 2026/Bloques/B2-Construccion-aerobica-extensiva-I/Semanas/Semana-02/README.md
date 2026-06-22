@@ -46,16 +46,16 @@
 - Observaciones: subir tiempo, no intensidad; debe sentirse como trabajo normal del bloque, no como test de reentrada.
 
 ### Miercoles
-- Objetivo: sostener la estructura sin dejar residuo.
-- Sesion principal: paseo suave 20-45 minutos o descanso activo.
-- Complementario: core 25-30 minutos.
-- Observaciones: si el martes se ha sentido caro, dejar solo paseo muy corto o movilidad.
-
-### Jueves
-- Objetivo: repetir un segundo dia aerobico util ya dentro de una semana plenamente funcional.
+- Objetivo: adelantar el segundo dia aerobico util para aprovechar la disponibilidad de bici sin comprimir mas la semana.
 - Sesion principal: bicicleta Z2 120-130 minutos.
 - Complementario: pecho, triceps y hombro 25-30 minutos.
-- Observaciones: dia para consolidar, no para competir con el martes.
+- Observaciones: el miercoles absorbe la bici prevista para el jueves; debe seguir sintiendose como dia de consolidacion aerobica, no como competicion con el lunes.
+
+### Jueves
+- Objetivo: usar el jueves como dia de descarga activa para absorber la bici del miercoles y seguir protegiendo el sabado.
+- Sesion principal: bicicleta Z1 75-105 minutos o descanso activo si las piernas no estan normales.
+- Complementario: core 25-30 minutos.
+- Observaciones: el jueves deja de ser segundo dia aerobico principal y pasa a ser dia de recuperacion activa; cortar sin problema si aparece fatiga residual.
 
 ### Viernes
 - Objetivo: proteger la salida larga y llegar con ganas.
