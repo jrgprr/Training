@@ -578,6 +578,76 @@ CREATE TABLE IF NOT EXISTS exec_activity_route_points (
     FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
 );
 
+CREATE TABLE IF NOT EXISTS exec_activity_weather_enrichment_runs (
+    weather_enrichment_run_id INTEGER PRIMARY KEY,
+    activity_id INTEGER NOT NULL,
+    provider_key TEXT NOT NULL,
+    provider_version TEXT NOT NULL,
+    provider_model TEXT,
+    sample_strategy TEXT NOT NULL,
+    source_route_fingerprint TEXT NOT NULL,
+    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status TEXT NOT NULL,
+    point_count INTEGER NOT NULL DEFAULT 0,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    metadata_json TEXT,
+    UNIQUE (activity_id, provider_key, provider_version, sample_strategy, source_route_fingerprint),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_activity_weather_samples (
+    weather_sample_id INTEGER PRIMARY KEY,
+    weather_enrichment_run_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    route_point_index INTEGER NOT NULL,
+    sampled_at TEXT NOT NULL,
+    weather_hour TEXT NOT NULL,
+    elapsed_seconds REAL,
+    distance_meters REAL,
+    latitude_degrees REAL NOT NULL,
+    longitude_degrees REAL NOT NULL,
+    temperature_2m REAL,
+    apparent_temperature REAL,
+    precipitation REAL,
+    rain REAL,
+    snowfall REAL,
+    weather_code INTEGER,
+    cloud_cover REAL,
+    wind_speed_10m REAL,
+    wind_gusts_10m REAL,
+    wind_direction_10m REAL,
+    shortwave_radiation REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (weather_enrichment_run_id, route_point_index),
+    FOREIGN KEY (weather_enrichment_run_id) REFERENCES exec_activity_weather_enrichment_runs (weather_enrichment_run_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS exec_activity_weather_summaries (
+    weather_summary_id INTEGER PRIMARY KEY,
+    weather_enrichment_run_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    temperature_mean REAL,
+    temperature_min REAL,
+    temperature_max REAL,
+    apparent_temperature_mean REAL,
+    precipitation_sum_est REAL,
+    rain_sum_est REAL,
+    snowfall_sum_est REAL,
+    cloud_cover_mean REAL,
+    wind_speed_mean REAL,
+    wind_speed_max REAL,
+    wind_gusts_max REAL,
+    shortwave_radiation_mean REAL,
+    dominant_weather_code INTEGER,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (weather_enrichment_run_id),
+    FOREIGN KEY (weather_enrichment_run_id) REFERENCES exec_activity_weather_enrichment_runs (weather_enrichment_run_id),
+    FOREIGN KEY (activity_id) REFERENCES exec_activities (activity_id)
+);
+
 CREATE TABLE IF NOT EXISTS exec_activity_elevation_enrichment_runs (
     enrichment_run_id INTEGER PRIMARY KEY,
     activity_id INTEGER NOT NULL,
@@ -694,6 +764,9 @@ CREATE TABLE IF NOT EXISTS exec_activity_metric_summaries (
 
 CREATE INDEX IF NOT EXISTS idx_exec_activity_metric_readings_activity_metric ON exec_activity_metric_readings (activity_id, metric_name);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_route_points_activity ON exec_activity_route_points (activity_id, point_index);
+CREATE INDEX IF NOT EXISTS idx_exec_activity_weather_runs_activity ON exec_activity_weather_enrichment_runs (activity_id, provider_key, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_exec_activity_weather_samples_activity ON exec_activity_weather_samples (activity_id, weather_enrichment_run_id, route_point_index);
+CREATE INDEX IF NOT EXISTS idx_exec_activity_weather_summary_activity ON exec_activity_weather_summaries (activity_id, weather_enrichment_run_id);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_runs_activity ON exec_activity_elevation_enrichment_runs (activity_id, provider_key, queried_at DESC);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_points_activity ON exec_activity_elevation_enrichment_points (activity_id, enrichment_run_id, point_index);
 CREATE INDEX IF NOT EXISTS idx_exec_activity_elevation_enrichments_activity ON exec_activity_elevation_enrichments (activity_id, provider_key, requested_at DESC);

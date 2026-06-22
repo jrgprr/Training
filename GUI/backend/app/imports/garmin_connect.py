@@ -1399,6 +1399,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     request = _request_from_cli_args(args)
     initialize_database()
 
+    from ..activity_weather import backfill_activity_weather_for_external_ids
     from .pipeline import GarminImportPipeline
     from .storage import GarminImportStorage
 
@@ -1450,13 +1451,35 @@ def run_cli(argv: list[str] | None = None) -> int:
             )
             raise
 
+        weather_summary: dict[str, Any] | None = None
+        weather_external_ids = [activity.external_activity_id for activity in batch.activities if activity.external_activity_id]
+        if weather_external_ids:
+            try:
+                weather_summary = backfill_activity_weather_for_external_ids(
+                    season_id=request.season_id,
+                    source_system="garmin",
+                    external_activity_ids=weather_external_ids,
+                )
+            except Exception as error:
+                weather_summary = {
+                    "activity_count": 0,
+                    "processed_count": 0,
+                    "completed_count": 0,
+                    "results": [],
+                    "status": "failed",
+                    "detail": str(error),
+                }
+
         print(
             json.dumps(
                 {
                     "status": "ok",
                     "mode": "apply",
                     "counts": batch.counts(),
-                    "metadata": batch.metadata.to_dict(),
+                    "metadata": {
+                        **batch.metadata.to_dict(),
+                        "weather_summary": weather_summary,
+                    },
                     "import_job": summary.to_dict(),
                 },
                 ensure_ascii=False,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .activity_quality import get_activity_quality
+from .activity_weather import backfill_activity_weather_batch, backfill_activity_weather_for_external_ids, enrich_activity_weather, get_activity_weather
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
 from .load_engine import compute_activity_load, get_load_model_snapshot
@@ -197,6 +199,21 @@ def get_activity_running_dynamics_history(activity_id: int, limit: int = 5) -> d
     }
 
 
+def get_activity_metric_analysis(activity_id: int) -> dict[str, Any] | None:
+    scripts_path = str(REPO_ROOT / ".github" / "skills" / "activity-metric-analysis" / "scripts")
+    try:
+        sys.path.insert(0, scripts_path)
+        from compute_activity_metric_analysis import compute_activity_metric_analysis  # type: ignore
+
+        with get_connection() as connection:
+            return compute_activity_metric_analysis(connection, activity_id)
+    except Exception:
+        return None
+    finally:
+        if scripts_path in sys.path:
+            sys.path.remove(scripts_path)
+
+
 def get_daily_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
     suffix = f"ps-{planned_session_id}" if planned_session_id is not None else "general"
     return REPO_ROOT / str(season_id) / DAILY_ASSESSMENT_ROOT_NAME / f"{review_date}-{suffix}.md"
@@ -229,6 +246,19 @@ class GarminConnectImportPayload(BaseModel):
 
 class ActivityQualityReplayPayload(BaseModel):
     source_mode: str = "canonical"
+
+
+class ActivityWeatherBackfillPayload(BaseModel):
+    activity_id: int | None = None
+    season_id: int | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    limit: int | None = None
+    force: bool = False
+
+
+class ActivityWeatherEnrichPayload(BaseModel):
+    force: bool = False
 
 
 class ZoneProposalAcceptancePayload(BaseModel):
@@ -839,6 +869,27 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
     counts["quality_runs_created"] = summary.breakdown.quality_runs_created
     counts["quality_runs_reused"] = summary.breakdown.quality_runs_reused
 
+    weather_summary: dict[str, Any] | None = None
+    weather_external_ids = [activity.external_activity_id for activity in batch.activities if activity.external_activity_id]
+    if weather_external_ids:
+        try:
+            weather_summary = backfill_activity_weather_for_external_ids(
+                season_id=request.season_id,
+                source_system="garmin",
+                external_activity_ids=weather_external_ids,
+            )
+            counts["weather_activities_processed"] = weather_summary["processed_count"]
+            counts["weather_activities_completed"] = weather_summary["completed_count"]
+        except Exception as error:
+            weather_summary = {
+                "activity_count": 0,
+                "processed_count": 0,
+                "completed_count": 0,
+                "results": [],
+                "status": "failed",
+                "detail": str(error),
+            }
+
     return {
         "status": "ok",
         "counts": counts,
@@ -862,6 +913,7 @@ def run_garmin_connect_import(payload: GarminConnectImportPayload) -> dict[str, 
                 "limited_activities": summary.breakdown.quality_limited_metrics,
                 "rule_version": batch.activities[0].quality_rule_version if batch.activities else None,
             },
+            "weather_summary": weather_summary,
         },
         "import_job": summary.to_dict(),
     }
@@ -953,6 +1005,8 @@ def get_activity(activity_id: int) -> dict[str, Any]:
     calculated_load = compute_activity_load(activity, season_id=int(activity["season_id"]))
     activity["calculated_training_load"] = round(float(calculated_load["load_value"]), 2)
     activity["calculated_training_load_source"] = calculated_load["load_source"]
+    activity["activity_metric_analysis"] = get_activity_metric_analysis(activity_id)
+    activity["weather"] = get_activity_weather(activity_id)
     return activity
 
 
@@ -1129,6 +1183,38 @@ def replay_activity_quality_endpoint(activity_id: int, payload: ActivityQualityR
     if result is None:
         raise HTTPException(status_code=404, detail=f"No existe la actividad {activity_id}.")
     return result
+
+
+@app.get("/api/activities/{activity_id}/weather")
+def get_activity_weather_endpoint(activity_id: int) -> dict[str, Any]:
+    payload = get_activity_weather(activity_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail=f"No existe enriquecimiento meteorologico para la actividad {activity_id}.")
+    return payload
+
+
+@app.post("/api/activities/{activity_id}/weather/enrich")
+def enrich_activity_weather_endpoint(activity_id: int, payload: ActivityWeatherEnrichPayload) -> dict[str, Any]:
+    try:
+        return enrich_activity_weather(activity_id, force=payload.force)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.post("/api/activities/weather/backfill")
+def backfill_activity_weather_endpoint(payload: ActivityWeatherBackfillPayload) -> dict[str, Any]:
+    if payload.activity_id is None and payload.season_id is None and payload.date_from is None and payload.date_to is None:
+        raise HTTPException(status_code=400, detail="Debes indicar activity_id o un rango/temporada para backfill meteorologico.")
+    return backfill_activity_weather_batch(
+        activity_id=payload.activity_id,
+        season_id=payload.season_id,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+        limit=payload.limit,
+        force=payload.force,
+    )
 
 
 @app.get("/api/activities/{activity_id}/zones")

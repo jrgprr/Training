@@ -106,11 +106,19 @@ class GarminConnectCliTests(unittest.TestCase):
         stderr = io.StringIO()
         with patch("app.imports.pipeline.GarminImportPipeline") as pipeline_cls, patch(
             "app.imports.storage.GarminImportStorage"
-        ) as storage_cls, redirect_stdout(stdout), redirect_stderr(stderr):
+        ) as storage_cls, patch(
+            "app.activity_weather.backfill_activity_weather_for_external_ids"
+        ) as weather_backfill, redirect_stdout(stdout), redirect_stderr(stderr):
             pipeline_cls.return_value.run.return_value = batch
             storage = storage_cls.return_value
             storage.start_import_job.return_value = 99
             storage.persist_batch.return_value = summary
+            weather_backfill.return_value = {
+                "activity_count": 1,
+                "processed_count": 1,
+                "completed_count": 1,
+                "results": [{"activity_id": 1, "status": "created_new_run", "sample_count": 2}],
+            }
 
             exit_code = run_cli(
                 ["--season", "2026", "--from", "2026-05-05", "--to", "2026-05-05", "--apply", "--no-daily-metrics"]
@@ -120,6 +128,11 @@ class GarminConnectCliTests(unittest.TestCase):
         storage.start_import_job.assert_called_once()
         storage.persist_batch.assert_called_once_with(batch, import_job_id=99)
         storage.fail_import_job.assert_not_called()
+        weather_backfill.assert_called_once_with(
+            season_id=2026,
+            source_system="garmin",
+            external_activity_ids=["123"],
+        )
         self.assertEqual(stderr.getvalue(), "")
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["status"], "ok")
@@ -127,6 +140,7 @@ class GarminConnectCliTests(unittest.TestCase):
         self.assertEqual(payload["import_job"]["import_job_id"], 99)
         self.assertEqual(payload["import_job"]["retry_suitability"], "safe_to_retry")
         self.assertEqual(payload["import_job"]["request_scope"]["season_id"], 2026)
+        self.assertEqual(payload["metadata"]["weather_summary"]["completed_count"], 1)
 
     def test_apply_marks_job_failed_when_fetch_errors(self) -> None:
         stdout = io.StringIO()
