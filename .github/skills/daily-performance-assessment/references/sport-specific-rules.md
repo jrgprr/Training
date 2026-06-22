@@ -5,6 +5,7 @@ Apply these rules after the general framework.
 ## Cycling
 
 - Power, normalized power, climbing load, and route repeatability matter more than raw duration alone.
+- When route or segment evidence is available, explicitly analyze the route demands and the key segment outcomes instead of treating them as optional color.
 - Do not treat an easy spin with low power and low HR as underperformance if the day was prescribed as recovery.
 - Repeated hard cycling days with still-negative TSB should push the recommendation toward absorption or caution.
 

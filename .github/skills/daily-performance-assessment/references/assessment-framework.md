@@ -41,14 +41,18 @@ When a dominant endurance session has `activity_metric_analysis`, write the tech
 
 1. Session control: execution versus plan, intensity control, zones, pacing stability, drift or decoupling, and late fade.
 2. Global efficiency: read `activity_efficiency` next, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, and `load_density`.
-3. Terrain and route-specific evidence: use climbing efficiency and segment history only when they help explain the session.
-4. Historical positioning: use recent similar-session comparison last to position the day against recent norms.
+3. Performance condition signal: when `performance_condition_signal` exists, note whether it was positive, neutral, negative, or mixed and whether that supports or questions the broader freshness read.
+4. Terrain and route-specific evidence: make the route and segment analysis explicit whenever that evidence exists. Summarize the route demands, climbing structure, repeated-route context, and the most explanatory segment findings when they help explain the session.
+5. Historical positioning: use recent similar-session comparison last to position the day against recent norms.
 
 Interpretation guidance:
 
 - Explain what the session was before explaining how it compares to other sessions.
+- If route or segment evidence exists, do not leave it as an implied backdrop. State clearly whether terrain, climbs, or repeated segments explain the cost, pacing, or quality of the session.
 - For recovery days, explicitly separate correct containment from accidental underperformance.
 - Use efficiency metrics to sharpen the read, not to replace the broader day-level conclusion.
+- Treat performance condition as a secondary Garmin freshness hint, not as a primary decision surface.
+- When performance condition is mixed, report that variability as context rather than forcing a simple positive or negative verdict.
 
 ## 6. Classify The Day
 

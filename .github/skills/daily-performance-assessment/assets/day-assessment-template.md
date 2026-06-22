@@ -11,7 +11,8 @@
 - Activity Metrics:
   Start with session control.
   Continue with global efficiency.
-  Add terrain and segments only when they materially explain the session.
+  Mention performance condition when present and say whether it reinforces or questions the broader read.
+  Make terrain, route, and segment analysis explicit when that evidence exists and materially explains the session.
   Close with recent similar-session comparison.
 
 ## Coaching Interpretation
