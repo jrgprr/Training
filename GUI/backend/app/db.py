@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS staging_garmin_activities (
     normalized_power REAL,
     training_load REAL,
     avg_pace_seconds_per_km REAL,
+    power_sensor_profile TEXT,
+    power_sensor_manufacturer TEXT,
+    power_sensor_label TEXT,
+    power_sensor_metadata_json TEXT,
     raw_payload_path TEXT,
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -676,6 +680,8 @@ def initialize_database() -> None:
         _ensure_zone_schema(connection)
         _ensure_import_job_columns(connection)
         _ensure_daily_metric_columns(connection)
+        _ensure_staging_garmin_activity_sensor_columns(connection)
+        _ensure_exec_activity_sensor_columns(connection)
         _ensure_exec_activity_quality_schema(connection)
         _ensure_exec_activity_route_points_schema(connection)
         _ensure_exec_activity_weather_schema(connection)
@@ -988,6 +994,48 @@ def _ensure_exec_activity_segment_columns(connection: sqlite3.Connection) -> Non
         "segment_data_status": "ALTER TABLE exec_activities ADD COLUMN segment_data_status TEXT NOT NULL DEFAULT 'not_checked'",
         "segment_effort_count": "ALTER TABLE exec_activities ADD COLUMN segment_effort_count INTEGER NOT NULL DEFAULT 0",
         "segment_checked_at": "ALTER TABLE exec_activities ADD COLUMN segment_checked_at TEXT",
+    }
+    for column_name, statement in expected_columns.items():
+        if column_name not in existing_columns:
+            connection.execute(statement)
+
+
+def _ensure_staging_garmin_activity_sensor_columns(connection: sqlite3.Connection) -> None:
+    staging_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'staging_garmin_activities'"
+    ).fetchone()
+    if staging_exists is None:
+        return
+    existing_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(staging_garmin_activities)").fetchall()
+    }
+    expected_columns = {
+        "power_sensor_profile": "ALTER TABLE staging_garmin_activities ADD COLUMN power_sensor_profile TEXT",
+        "power_sensor_manufacturer": "ALTER TABLE staging_garmin_activities ADD COLUMN power_sensor_manufacturer TEXT",
+        "power_sensor_label": "ALTER TABLE staging_garmin_activities ADD COLUMN power_sensor_label TEXT",
+        "power_sensor_metadata_json": "ALTER TABLE staging_garmin_activities ADD COLUMN power_sensor_metadata_json TEXT",
+    }
+    for column_name, statement in expected_columns.items():
+        if column_name not in existing_columns:
+            connection.execute(statement)
+
+
+def _ensure_exec_activity_sensor_columns(connection: sqlite3.Connection) -> None:
+    exec_activities_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exec_activities'"
+    ).fetchone()
+    if exec_activities_exists is None:
+        return
+    existing_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(exec_activities)").fetchall()
+    }
+    expected_columns = {
+        "power_sensor_profile": "ALTER TABLE exec_activities ADD COLUMN power_sensor_profile TEXT",
+        "power_sensor_manufacturer": "ALTER TABLE exec_activities ADD COLUMN power_sensor_manufacturer TEXT",
+        "power_sensor_label": "ALTER TABLE exec_activities ADD COLUMN power_sensor_label TEXT",
+        "power_sensor_metadata_json": "ALTER TABLE exec_activities ADD COLUMN power_sensor_metadata_json TEXT",
     }
     for column_name, statement in expected_columns.items():
         if column_name not in existing_columns:

@@ -587,6 +587,10 @@ type ActivityDetail = {
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
   subjective_feeling: string | null;
+  power_sensor_profile: string | null;
+  power_sensor_manufacturer: string | null;
+  power_sensor_label: string | null;
+  power_sensor_metadata_json: string | null;
   stress_avg: number | null;
   stress_max: number | null;
   spo2_sleep_avg: number | null;
@@ -706,6 +710,10 @@ type ActivityListItem = {
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
   subjective_feeling: string | null;
+  power_sensor_profile: string | null;
+  power_sensor_manufacturer: string | null;
+  power_sensor_label: string | null;
+  power_sensor_metadata_json: string | null;
   raw_payload_path: string | null;
   notes: string | null;
   quality_status: string | null;
@@ -1049,6 +1057,10 @@ if (false) {
     avg_pace_seconds_per_km: null,
     perceived_exertion: 7,
     subjective_feeling: null,
+    power_sensor_profile: "pedal_power_meter",
+    power_sensor_manufacturer: "GARMIN",
+    power_sensor_label: "GARMIN 006-B2787-00 fit:2787 serial:3996467079",
+    power_sensor_metadata_json: '{"antplusDeviceType":"BIKE_POWER","fitProductNumber":2787,"manufacturer":"GARMIN"}',
     raw_payload_path: "/tmp/123.tcx",
     notes: null,
     quality_status: "filtered",
@@ -2345,6 +2357,19 @@ function toPowerSummary(activity: ActivityDetail) {
     parts.push(`${toPowerLabel(activity.normalized_power)} NP`);
   }
   return parts.length > 0 ? parts.join(" · ") : "-";
+}
+
+function toPowerSensorProfileLabel(profile: string | null) {
+  if (!profile) {
+    return "-";
+  }
+  if (profile === "pedal_power_meter") {
+    return "Potenciometro de pedal";
+  }
+  if (profile === "non_pedal_bike_power_meter") {
+    return "Potenciometro no pedal";
+  }
+  return profile.replace(/_/g, " ");
 }
 
 function toTrainingLoadHeading(_activity: Pick<ActivityDetail, "source_system" | "calculated_training_load_source">) {
@@ -5291,6 +5316,7 @@ export default function App() {
                 <span>Actividad #{selectedActivity.activity_id}</span>
                 <span>Origen: {toSourceLabel(selectedActivity.source_system)}</span>
                 {selectedActivity.external_activity_id ? <span>Externa: {selectedActivity.external_activity_id}</span> : null}
+                {selectedActivity.power_sensor_manufacturer ? <span>Sensor: {selectedActivity.power_sensor_manufacturer}</span> : null}
               </div>
 
               <div className="activity-detail-grid">
@@ -5303,6 +5329,7 @@ export default function App() {
                 {isHeartRateRelevant(selectedActivity) ? <article><span>FC media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_hr, " bpm")} / ${toMetricLabel(selectedActivity.max_hr, " bpm")}`}</strong></article> : null}
                 {selectedActivity.avg_respiration_rate != null || selectedActivity.max_respiration_rate != null ? <article><span>Resp media/max</span><strong>{`${toMetricLabel(selectedActivity.avg_respiration_rate, " rpm resp")} / ${toMetricLabel(selectedActivity.max_respiration_rate, " rpm resp")}`}</strong></article> : null}
                 {isPowerRelevant(selectedActivity) ? <article><span>Potencia</span><strong>{toPowerSummary(selectedActivity)}</strong></article> : null}
+                {selectedActivity.power_sensor_profile || selectedActivity.power_sensor_label ? <article><span>Sensor de potencia</span><strong>{selectedActivity.power_sensor_label ?? selectedActivity.power_sensor_manufacturer ?? "-"}</strong><small>{toPowerSensorProfileLabel(selectedActivity.power_sensor_profile)}</small></article> : null}
                 {selectedActivity.calculated_training_load != null ? <article><span>{toTrainingLoadHeading(selectedActivity)}</span><strong>{toMetricLabel(selectedActivity.calculated_training_load)}</strong><small>{toTrainingLoadSourceLabel(selectedActivity.calculated_training_load_source)}</small></article> : null}
                 {selectedActivity.avg_pace_seconds_per_km != null && isPaceDiscipline(selectedActivity.discipline) ? <article><span>Ritmo medio</span><strong>{toPaceLabel(selectedActivity.avg_pace_seconds_per_km)}</strong></article> : null}
                 <article><span>RPE</span><strong>{toMetricLabel(selectedActivity.perceived_exertion)}</strong></article>

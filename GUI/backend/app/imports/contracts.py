@@ -62,6 +62,10 @@ class NormalizedActivity:
     quality_checked_at: str | None = None
     quality_decision_count: int = 0
     quality_limited_metric_count: int = 0
+    power_sensor_profile: str | None = None
+    power_sensor_manufacturer: str | None = None
+    power_sensor_label: str | None = None
+    power_sensor_metadata_json: str | None = None
     source_reading_fingerprint: str | None = None
     source_file: str | None = None
     raw_payload_path: str | None = None

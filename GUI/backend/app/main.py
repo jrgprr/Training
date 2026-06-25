@@ -973,7 +973,9 @@ def get_activity(activity_id: int) -> dict[str, Any]:
                ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
-                             ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                     ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                     ea.power_sensor_profile, ea.power_sensor_manufacturer,
+                     ea.power_sensor_label, ea.power_sensor_metadata_json,
                              (
                                      SELECT trusted_value
                                      FROM exec_activity_metric_summaries summary
@@ -1028,7 +1030,9 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
                ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
-               ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                             ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                         ea.power_sensor_profile, ea.power_sensor_manufacturer,
+                         ea.power_sensor_label, ea.power_sensor_metadata_json,
              ea.raw_payload_path, ea.notes,
              ea.quality_status, ea.quality_checked_at, ea.quality_rule_version,
              ea.quality_decision_count, ea.quality_limited_metric_count,

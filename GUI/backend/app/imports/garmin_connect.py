@@ -147,6 +147,24 @@ class GarminConnectAdapter:
     }
     HIKING_NAME_HINTS = ("senderismo", "hiking", "trek", "trekking")
     CYCLING_DISCIPLINES = {"road_biking", "indoor_cycling", "mountain_biking", "cycling"}
+    PEDAL_POWER_DYNAMIC_KEYS = {
+        "leftPowerPhaseStart",
+        "leftPowerPhaseEnd",
+        "leftPowerPhasePeakStart",
+        "leftPowerPhasePeakEnd",
+        "rightPowerPhaseStart",
+        "rightPowerPhaseEnd",
+        "rightPowerPhasePeakStart",
+        "rightPowerPhasePeakEnd",
+        "directLeftPowerPhaseStart",
+        "directLeftPowerPhaseEnd",
+        "directLeftPowerPhasePeakStart",
+        "directLeftPowerPhasePeakEnd",
+        "directRightPowerPhaseStart",
+        "directRightPowerPhaseEnd",
+        "directRightPowerPhasePeakStart",
+        "directRightPowerPhasePeakEnd",
+    }
     def __init__(self, configuration: GarminConnectConfiguration | None = None) -> None:
         self.configuration = configuration or GarminConnectConfiguration.from_environment()
         self._client: Garmin | None = None
@@ -330,6 +348,71 @@ class GarminConnectAdapter:
             source_file=None,
             raw_payload_path=None,
             notes=metadata.get("deviceName") if isinstance(metadata, dict) else None,
+        )
+
+    @classmethod
+    def _extract_power_sensor(cls, payload: dict[str, Any]) -> dict[str, Any] | None:
+        metadata = payload.get("metadataDTO") or {}
+        sensors = metadata.get("sensors") if isinstance(metadata, dict) else None
+        if not isinstance(sensors, list):
+            return None
+        for sensor in sensors:
+            if not isinstance(sensor, dict):
+                continue
+            device_type = str(sensor.get("antplusDeviceType") or sensor.get("deviceType") or "").strip().upper()
+            if device_type == "BIKE_POWER":
+                return sensor
+        return None
+
+    @classmethod
+    def _has_pedal_power_dynamics(cls, summary_payload: dict[str, Any] | None, detail_payload: dict[str, Any] | None) -> bool:
+        summary = summary_payload.get("summaryDTO") if isinstance(summary_payload, dict) else None
+        if isinstance(summary, dict) and any(key in summary for key in cls.PEDAL_POWER_DYNAMIC_KEYS):
+            return True
+        metric_descriptors = detail_payload.get("metricDescriptors") if isinstance(detail_payload, dict) else None
+        if not isinstance(metric_descriptors, list):
+            return False
+        descriptor_keys = {
+            str(item.get("key") or "")
+            for item in metric_descriptors
+            if isinstance(item, dict)
+        }
+        return any(key in descriptor_keys for key in cls.PEDAL_POWER_DYNAMIC_KEYS)
+
+    @classmethod
+    def _format_power_sensor_label(cls, sensor_payload: dict[str, Any]) -> str | None:
+        manufacturer = str(sensor_payload.get("manufacturer") or "").strip()
+        sku = str(sensor_payload.get("sku") or "").strip()
+        fit_product_number = cls._normalize_integer(sensor_payload.get("fitProductNumber"))
+        serial_number = str(sensor_payload.get("serialNumber") or "").strip()
+        parts = [part for part in (manufacturer, sku or None) if part]
+        if fit_product_number is not None:
+            parts.append(f"fit:{fit_product_number}")
+        if serial_number:
+            parts.append(f"serial:{serial_number}")
+        if not parts:
+            return None
+        return " ".join(parts)
+
+    @classmethod
+    def _apply_power_sensor_metadata(
+        cls,
+        activity: NormalizedActivity,
+        summary_payload: dict[str, Any] | None,
+        detail_payload: dict[str, Any] | None,
+    ) -> None:
+        if not isinstance(summary_payload, dict):
+            return
+        sensor_payload = cls._extract_power_sensor(summary_payload)
+        if sensor_payload is None:
+            return
+        activity.power_sensor_manufacturer = str(sensor_payload.get("manufacturer") or "").strip() or None
+        activity.power_sensor_label = cls._format_power_sensor_label(sensor_payload)
+        activity.power_sensor_metadata_json = json.dumps(sensor_payload, ensure_ascii=True, sort_keys=True)
+        activity.power_sensor_profile = (
+            "pedal_power_meter"
+            if cls._has_pedal_power_dynamics(summary_payload, detail_payload)
+            else "non_pedal_bike_power_meter"
         )
 
     @classmethod
@@ -1237,6 +1320,12 @@ class GarminConnectAdapter:
         artifact_failures = 0
         for activity in activities:
             activity_detail_stream_payload: dict[str, Any] | None = None
+            activity_summary_payload: dict[str, Any] | None = None
+            if activity.external_activity_id:
+                try:
+                    activity_summary_payload = client.get_activity(activity.external_activity_id) or {}
+                except Exception:
+                    activity_summary_payload = None
             if activity.external_activity_id and activity.discipline in self.CYCLING_DISCIPLINES:
                 try:
                     segment_list_payload = client.connectapi(f"/segment-service/segment/list/{activity.external_activity_id}")
@@ -1255,6 +1344,7 @@ class GarminConnectAdapter:
                 except Exception:
                     activity_detail_stream_payload = None
                 self._apply_segment_details(client, activity, detail_payload, segment_list_payload)
+                self._apply_power_sensor_metadata(activity, activity_summary_payload, detail_payload)
             else:
                 self._apply_segment_details(None, activity, None, None)
                 if activity.external_activity_id:
@@ -1264,6 +1354,7 @@ class GarminConnectAdapter:
                         )
                     except Exception:
                         activity_detail_stream_payload = None
+                self._apply_power_sensor_metadata(activity, activity_summary_payload, None)
             activity.metric_readings = normalize_metric_readings_from_activity_detail(activity_detail_stream_payload)
             activity.route_points = normalize_route_points_from_activity_detail(activity_detail_stream_payload)
             try:

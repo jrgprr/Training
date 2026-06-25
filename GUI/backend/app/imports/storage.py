@@ -11,7 +11,7 @@ from ..activity_quality import (
     normalize_metric_readings_from_tcx_artifact,
     normalize_route_points_from_tcx_artifact,
 )
-from ..db import _ensure_exec_activity_elevation_enrichment_schema, _ensure_exec_activity_quality_schema, _ensure_exec_activity_route_points_schema, _ensure_exec_activity_segment_columns, get_connection
+from ..db import _ensure_exec_activity_elevation_enrichment_schema, _ensure_exec_activity_quality_schema, _ensure_exec_activity_route_points_schema, _ensure_exec_activity_segment_columns, _ensure_exec_activity_sensor_columns, _ensure_staging_garmin_activity_sensor_columns, get_connection
 from ..planned_prescriptions import collect_matching_family_groups
 from ..training_zones import persist_accepted_zone_profile as persist_zone_profile_record
 from ..training_zones import persist_activity_zone_results
@@ -1199,6 +1199,8 @@ class GarminImportStorage:
 
         with get_connection() as connection:
             self._ensure_segment_storage_schema(connection)
+            _ensure_staging_garmin_activity_sensor_columns(connection)
+            _ensure_exec_activity_sensor_columns(connection)
             self._ensure_quality_storage_schema(connection)
             self._ensure_route_point_storage_schema(connection)
             if import_job_id is None:
@@ -1280,8 +1282,9 @@ class GarminImportStorage:
                             import_job_id, season_id, source_system, external_activity_id, activity_date,
                             started_at, discipline, activity_type, duration_seconds, distance_meters,
                             ascent_meters, calories, avg_hr, max_hr, avg_power, normalized_power,
-                            training_load, avg_pace_seconds_per_km, raw_payload_path, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            training_load, avg_pace_seconds_per_km, power_sensor_profile, power_sensor_manufacturer,
+                            power_sensor_label, power_sensor_metadata_json, raw_payload_path, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             import_job_id,
@@ -1302,6 +1305,10 @@ class GarminImportStorage:
                             activity.normalized_power,
                             activity.training_load,
                             activity.avg_pace_seconds_per_km,
+                            activity.power_sensor_profile,
+                            activity.power_sensor_manufacturer,
+                            activity.power_sensor_label,
+                            activity.power_sensor_metadata_json,
                             activity.raw_payload_path,
                             activity.notes,
                         ),
@@ -1314,9 +1321,10 @@ class GarminImportStorage:
                             calories, avg_hr, max_hr, avg_power, normalized_power, training_load,
                             avg_pace_seconds_per_km, segment_data_status, segment_effort_count, segment_checked_at,
                             quality_status, quality_checked_at, quality_rule_version, quality_decision_count,
-                            quality_limited_metric_count,
+                            quality_limited_metric_count, power_sensor_profile, power_sensor_manufacturer,
+                            power_sensor_label, power_sensor_metadata_json,
                             raw_payload_path, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(source_system, external_activity_id) DO UPDATE SET
                             activity_date = excluded.activity_date,
                             started_at = excluded.started_at,
@@ -1340,6 +1348,10 @@ class GarminImportStorage:
                             quality_rule_version = excluded.quality_rule_version,
                             quality_decision_count = excluded.quality_decision_count,
                             quality_limited_metric_count = excluded.quality_limited_metric_count,
+                            power_sensor_profile = excluded.power_sensor_profile,
+                            power_sensor_manufacturer = excluded.power_sensor_manufacturer,
+                            power_sensor_label = excluded.power_sensor_label,
+                            power_sensor_metadata_json = excluded.power_sensor_metadata_json,
                             raw_payload_path = excluded.raw_payload_path,
                             notes = excluded.notes
                         """,
@@ -1369,6 +1381,10 @@ class GarminImportStorage:
                             activity.quality_rule_version,
                             activity.quality_decision_count,
                             activity.quality_limited_metric_count,
+                            activity.power_sensor_profile,
+                            activity.power_sensor_manufacturer,
+                            activity.power_sensor_label,
+                            activity.power_sensor_metadata_json,
                             activity.raw_payload_path,
                             activity.notes,
                         ),

@@ -241,6 +241,26 @@ class ActivityQualityAdapterTests(unittest.TestCase):
                     }
                 ]
 
+            def get_activity(self, activity_id):
+                return {
+                    "activityId": int(activity_id),
+                    "metadataDTO": {
+                        "sensors": [
+                            {
+                                "manufacturer": "GARMIN",
+                                "sku": "006-B2787-00",
+                                "serialNumber": 3996467079,
+                                "fitProductNumber": 2787,
+                                "sourceType": "ANTPLUS",
+                                "antplusDeviceType": "BIKE_POWER",
+                            }
+                        ]
+                    },
+                    "summaryDTO": {
+                        "leftPowerPhaseStart": 14.0,
+                    },
+                }
+
             def connectapi(self, path):
                 if path == "/segment-service/segment/list/123":
                     return []
@@ -274,6 +294,10 @@ class ActivityQualityAdapterTests(unittest.TestCase):
         self.assertEqual(len(activities), 1)
         self.assertEqual(len(artifact_paths), 1)
         self.assertEqual(artifact_failures, 0)
+        self.assertEqual(activities[0].power_sensor_profile, "pedal_power_meter")
+        self.assertEqual(activities[0].power_sensor_manufacturer, "GARMIN")
+        self.assertIn("006-B2787-00", activities[0].power_sensor_label or "")
+        self.assertIn('"fitProductNumber": 2787', activities[0].power_sensor_metadata_json or "")
 
         heart_rate_readings = [reading for reading in activities[0].metric_readings if reading.metric_name == "heart_rate"]
         power_readings = [reading for reading in activities[0].metric_readings if reading.metric_name == "power"]
@@ -793,6 +817,67 @@ class ActivityQualityStorageTests(unittest.TestCase):
                     ).fetchone()["total"]
 
                 self.assertEqual(route_point_count, 2)
+
+    def test_persist_batch_stores_power_sensor_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch(
+                "app.db.normalize_existing_manual_activity_disciplines"
+            ), patch.object(GarminImportStorage, "_auto_link_garmin_activities", return_value=(0, 0)):
+                initialize_database()
+                create_minimal_exec_tables(database_path)
+                storage = GarminImportStorage()
+
+                batch = GarminImportBatch(
+                    request=GarminImportRequest(
+                        season_id=2026,
+                        date_from="2026-06-25",
+                        date_to="2026-06-25",
+                        include_daily_metrics=False,
+                    ),
+                    metadata=ImportFetchMetadata(
+                        source_system="garmin",
+                        source_label="garminconnect",
+                        date_from="2026-06-25",
+                        date_to="2026-06-25",
+                    ),
+                    activities=[
+                        NormalizedActivity(
+                            external_activity_id="sensor-1",
+                            activity_date="2026-06-25",
+                            started_at="2026-06-25T08:00:00",
+                            discipline="road_biking",
+                            activity_type="Recovery ride",
+                            duration_seconds=1800,
+                            distance_meters=12000,
+                            ascent_meters=180,
+                            calories=320,
+                            avg_hr=120,
+                            max_hr=140,
+                            avg_power=132,
+                            normalized_power=145,
+                            training_load=32,
+                            avg_pace_seconds_per_km=None,
+                            power_sensor_profile="pedal_power_meter",
+                            power_sensor_manufacturer="GARMIN",
+                            power_sensor_label="GARMIN 006-B2787-00 fit:2787 serial:3996467079",
+                            power_sensor_metadata_json='{"antplusDeviceType":"BIKE_POWER","fitProductNumber":2787,"manufacturer":"GARMIN"}',
+                        )
+                    ],
+                    daily_metrics=[],
+                )
+
+                storage.persist_batch(batch)
+
+                with storage_connection(database_path) as connection:
+                    activity_row = connection.execute(
+                        "SELECT power_sensor_profile, power_sensor_manufacturer, power_sensor_label, power_sensor_metadata_json FROM exec_activities WHERE activity_id = 1"
+                    ).fetchone()
+
+                self.assertEqual(activity_row["power_sensor_profile"], "pedal_power_meter")
+                self.assertEqual(activity_row["power_sensor_manufacturer"], "GARMIN")
+                self.assertIn("006-B2787-00", activity_row["power_sensor_label"])
+                self.assertIn('"fitProductNumber":2787', activity_row["power_sensor_metadata_json"])
 
     def test_persist_batch_marks_quality_limited_when_all_hr_samples_are_excluded(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
