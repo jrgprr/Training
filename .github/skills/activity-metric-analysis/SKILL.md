@@ -37,6 +37,7 @@ This skill defines when and how to deepen a daily assessment with activity-level
 6. Return a concise structured metric-analysis block that supports the day-level conclusion.
 7. When Garmin exposed Performance Condition credibly, include an explicit `performance_condition_evolution` paragraph that describes how the signal changed across the activity and what that pattern usually means.
 8. When available, include the richer technical sub-blocks for segment efforts and recent similar-session comparison, but keep them evidence-first and compact.
+9. When segment evidence exists, explicitly compare the current execution of each material segment against previous executions of that same segment and state whether the segment was faster, slower, steadier, or more costly than prior comparable passes.
 
 ## Output Rule
 
@@ -46,3 +47,4 @@ This skill defines when and how to deepen a daily assessment with activity-level
 - Treat Performance Condition as a secondary freshness hint: do not let it override drift, decoupling, load, or execution quality.
 - Read the trajectory, not just the average: a bad opening can recover, and a good opening can fade.
 - Give more weight to the late-session signal than to the first 10-20 minutes.
+- Do not mention segment efforts only as isolated facts; when prior executions exist, say explicitly how the current segment compared with that segment's own history.

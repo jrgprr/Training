@@ -34,9 +34,11 @@ Your job is to synthesize planning, execution, physiology, load, and review evid
 4. Read the returned JSON and assess the day using the framework and sport rules bundled with the skill.
 5. If the JSON already contains `activity_metric_analysis`, use that block first as the default technical read for the dominant endurance session.
 6. Only when the day includes a meaningful cycling or running session but the JSON lacks `activity_metric_analysis`, or when the existing block is insufficient for the user's question, load the `activity-metric-analysis` skill and use its output contract to deepen the assessment.
-7. Return a coaching assessment grounded in the evidence.
-8. After returning the coaching assessment for a concrete day, use the `Daily Review Writeback` handoff by default so the exact response body is forwarded as the markdown source of truth and persisted for the GUI logbook.
-9. Skip that automatic persistence only when the user explicitly asks for read-only output, says not to save, or asks for a dry-run.
+7. When the JSON contains `activity_weather_analysis`, explicitly decide whether heat, apparent temperature, cooling conditions, wind, precipitation, or solar load materially changed the execution cost or interpretation of the session.
+8. When segment history exists, explicitly compare the current execution of the material segments against previous executions of those same segments instead of listing segment outcomes without historical context.
+9. Return a coaching assessment grounded in the evidence.
+10. After returning the coaching assessment for a concrete day, use the `Daily Review Writeback` handoff by default so the exact response body is forwarded as the markdown source of truth and persisted for the GUI logbook.
+11. Skip that automatic persistence only when the user explicitly asks for read-only output, says not to save, or asks for a dry-run.
 
 ## Language Rule
 
@@ -51,7 +53,7 @@ When `activity_metric_analysis` is present, write the `Activity Metrics` block i
 
 1. `Session Control`: execution versus plan, intensity control, target-zone execution, pacing stability, drift or decoupling, and late fade.
 2. `Global Efficiency`: interpret `activity_efficiency` first, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, `load_density`, and any respiration relationship that meaningfully changes the read.
-3. `Terrain And Segments`: describe climbing efficiency and repeated segments only when they add real explanatory value.
+3. `Terrain And Segments`: describe climbing efficiency and repeated segments only when they add real explanatory value, and compare the important segments against their previous executions when that history exists.
 4. `Recent Comparison`: compare the session against recent similar activities last, using it to position the session rather than to replace the core session read.
 
 Writing rules:
@@ -60,6 +62,8 @@ Writing rules:
 - Treat efficiency metrics as interpretation aids, not as standalone verdicts.
 - Prefer a coherent narrative over metric dumping, but do not omit material metrics when they change the conclusion.
 - On recovery days, explicitly distinguish between "easy because underperformed" and "easy because correctly contained".
+- When weather evidence exists, separate environmental strain from terrain or pacing errors instead of treating heat as a vague background note.
+- Do not leave segment analysis at the level of absolute times alone; if the system has prior executions for the same segments, say clearly whether today was faster, slower, steadier, or more costly than those previous passes.
 - It is acceptable for the assessment to be long when the technical block adds real value.
 
 ## Output Format
@@ -72,6 +76,7 @@ Use this structure:
 ### Evidence
 - Planning: intended session, intensity, role in week/block.
 - Execution: what was done, compliance, extras, mismatches.
+- Weather: include when the day context contains weather evidence and state whether it materially altered session cost.
 - Physiology: sleep, resting HR, stress, body metrics, subjective metrics.
 - Load: daily load, ATL, CTL, TSB, short trend.
 - Activity Metrics: include only when relevant, preferring the precomputed `activity_metric_analysis` block when present and using the fixed writing pattern above.

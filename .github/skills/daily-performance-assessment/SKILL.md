@@ -29,10 +29,12 @@ This skill packages the workflow, script, and reference material needed to asses
 6. When the dominant endurance session is cycling, running, or a meaningful walking-like session but `activity_metric_analysis` is absent, or when execution quality is still unclear, load the `activity-metric-analysis` skill and incorporate its structured outputs.
 7. In the `Activity Metrics` section, use this fixed order when the data exists: session control, global efficiency, performance condition signal, terrain and segments, then recent similar-session comparison.
 8. When route, terrain, climbing, or segment evidence exists for the dominant endurance session, make that technical analysis explicit instead of leaving it implicit. Summarize the route demands, repeated-route context, and the most explanatory segment findings whenever they materially help explain execution cost, control, or progression.
-9. In the global-efficiency part, treat `activity_efficiency` as the primary interpretation surface when available, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, `load_density`, and any meaningful respiration relationship.
-10. When `activity_metric_analysis.analysis.performance_condition_signal` is present, mention it explicitly as a secondary freshness hint. Use it to reinforce or question the broader read from execution quality, drift, decoupling, load, and physiology, not as a standalone verdict driver.
-11. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
-12. Format the answer using:
+9. When segment history is available, explicitly compare the current execution of the material segments against previous executions of those same segments rather than mentioning the segment times in isolation.
+10. In the global-efficiency part, treat `activity_efficiency` as the primary interpretation surface when available, especially `efficiency_factor`, `variability_index`, `target_zone_compliance`, `load_density`, and any meaningful respiration relationship.
+11. When `activity_metric_analysis.analysis.performance_condition_signal` is present, mention it explicitly as a secondary freshness hint. Use it to reinforce or question the broader read from execution quality, drift, decoupling, load, and physiology, not as a standalone verdict driver.
+12. When `activity_weather_analysis` exists for the dominant session, explicitly judge whether heat, apparent temperature, cooling conditions, wind, precipitation, or solar load materially changed execution cost, decoupling, or plan compliance.
+13. Write the full assessment in English, translating Spanish source evidence into natural English unless a direct quote is necessary.
+14. Format the answer using:
    [day-assessment-template.md](./assets/day-assessment-template.md)
 
 ## Required Evidence Domains
@@ -45,7 +47,8 @@ This skill packages the workflow, script, and reference material needed to asses
 - Weekly context when available.
 - Quality and zone evidence when available.
 - Activity-level metric interpretation, preferring `activity_metric_analysis` from the day context when available and falling back to the support skill when a deeper endurance read is justified.
-- Explicit route and segment analysis when route shape, climbing structure, repeated-route context, or segment history materially explain the session.
+- Activity-level weather interpretation when `activity_weather_analysis` or per-activity weather summaries are available.
+- Explicit route and segment analysis when route shape, climbing structure, repeated-route context, or segment history materially explain the session, including direct comparison against prior executions of the same segments when available.
 - Treat `walking`, `hiking`, `trail_walking`, and `nordic_walking` as eligible only when they exceed 45 minutes or 50 modeled load.
 
 ## Decision Rules

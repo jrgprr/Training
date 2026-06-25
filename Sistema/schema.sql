@@ -147,42 +147,6 @@ CREATE TABLE IF NOT EXISTS plan_session_prescriptions (
     FOREIGN KEY (planned_session_id) REFERENCES plan_planned_sessions (planned_session_id)
 );
 
-CREATE TABLE IF NOT EXISTS plan_session_activity_groups (
-    activity_group_id INTEGER PRIMARY KEY,
-    planned_session_id INTEGER NOT NULL,
-    group_role TEXT NOT NULL,
-    relation_group INTEGER NOT NULL,
-    relation_mode TEXT NOT NULL DEFAULT 'one_of',
-    is_optional INTEGER NOT NULL DEFAULT 0,
-    summary_label TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (planned_session_id, relation_group),
-    FOREIGN KEY (planned_session_id) REFERENCES plan_planned_sessions (planned_session_id)
-);
-
-CREATE TABLE IF NOT EXISTS plan_session_activity_items (
-    activity_item_id INTEGER PRIMARY KEY,
-    activity_group_id INTEGER NOT NULL,
-    sequence_order INTEGER NOT NULL,
-    item_type TEXT NOT NULL,
-    discipline_family TEXT,
-    display_label TEXT,
-    duration_min INTEGER,
-    duration_max INTEGER,
-    target_basis TEXT,
-    target_zone_min_code TEXT,
-    target_zone_max_code TEXT,
-    condition_key TEXT,
-    condition_value TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (activity_group_id, sequence_order),
-    FOREIGN KEY (activity_group_id) REFERENCES plan_session_activity_groups (activity_group_id)
-);
-
 CREATE TABLE IF NOT EXISTS plan_prescription_blocks (
     prescription_block_id INTEGER PRIMARY KEY,
     prescription_id INTEGER NOT NULL,
@@ -1019,8 +983,6 @@ CREATE INDEX IF NOT EXISTS idx_plan_blocks_season_order ON plan_meso_blocks (sea
 CREATE INDEX IF NOT EXISTS idx_plan_weeks_block_order ON plan_micro_weeks (block_id, sequence_in_block);
 CREATE INDEX IF NOT EXISTS idx_plan_sessions_week_day ON plan_planned_sessions (week_id, session_date);
 CREATE INDEX IF NOT EXISTS idx_plan_prescriptions_session ON plan_session_prescriptions (planned_session_id);
-CREATE INDEX IF NOT EXISTS idx_plan_session_activity_groups_session ON plan_session_activity_groups (planned_session_id, relation_group);
-CREATE INDEX IF NOT EXISTS idx_plan_session_activity_items_group ON plan_session_activity_items (activity_group_id, sequence_order);
 CREATE INDEX IF NOT EXISTS idx_plan_prescription_blocks_prescription ON plan_prescription_blocks (prescription_id, sequence_order);
 CREATE INDEX IF NOT EXISTS idx_plan_prescription_exercises_block ON plan_prescription_exercises (prescription_block_id, sequence_order);
 CREATE INDEX IF NOT EXISTS idx_exec_activities_date ON exec_activities (season_id, activity_date);

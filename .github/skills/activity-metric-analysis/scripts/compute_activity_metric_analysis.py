@@ -63,6 +63,75 @@ def fetch_all(connection: sqlite3.Connection, query: str, params: tuple[Any, ...
     return [row_to_dict(row) for row in connection.execute(query, params).fetchall() if row is not None]
 
 
+def load_prescription_target(connection: sqlite3.Connection, planned_session_id: int | None) -> dict[str, Any] | None:
+    if planned_session_id is None:
+        return None
+    rows = fetch_all(
+        connection,
+        """
+        SELECT pb.sequence_order,
+               pb.block_role,
+               pb.block_name,
+               pb.duration_min,
+               pb.duration_max,
+               pb.target_basis,
+               pb.target_zone_min_code,
+               pb.target_zone_max_code
+        FROM plan_session_prescriptions pr
+        JOIN plan_prescription_blocks pb ON pb.prescription_id = pr.prescription_id
+        WHERE pr.planned_session_id = ?
+        ORDER BY pb.relation_group, pb.sequence_order
+        """,
+        (planned_session_id,),
+    )
+    if not rows:
+        return None
+
+    targeted_rows = [
+        row
+        for row in rows
+        if row.get("target_basis")
+        and row.get("target_zone_min_code")
+        and row.get("target_zone_max_code")
+    ]
+    if not targeted_rows:
+        return None
+
+    target_basis = str(targeted_rows[0]["target_basis"])
+    zone_pairs = [
+        (str(row["target_zone_min_code"]), str(row["target_zone_max_code"]))
+        for row in targeted_rows
+    ]
+    unique_zone_pairs = list(dict.fromkeys(zone_pairs))
+    target_kind = "single_zone" if len(unique_zone_pairs) == 1 and unique_zone_pairs[0][0] == unique_zone_pairs[0][1] else "multi_segment"
+
+    summary_parts: list[str] = []
+    for row in targeted_rows:
+        label = str(row.get("block_name") or "block").strip()
+        zone_min = str(row["target_zone_min_code"])
+        zone_max = str(row["target_zone_max_code"])
+        zone_label = zone_min if zone_min == zone_max else f"{zone_min}-{zone_max}"
+        duration_min = row.get("duration_min")
+        duration_max = row.get("duration_max")
+        duration_label = None
+        if duration_min and duration_max:
+            duration_label = f"{duration_min}-{duration_max} minutos" if duration_min != duration_max else f"{duration_min} minutos"
+        elif duration_min:
+            duration_label = f"{duration_min} minutos"
+        if duration_label:
+            summary_parts.append(f"{label} {zone_label} {duration_label}")
+        else:
+            summary_parts.append(f"{label} {zone_label}")
+
+    return {
+        "target_basis": target_basis,
+        "target_kind": target_kind,
+        "target_zone_min_code": unique_zone_pairs[0][0],
+        "target_zone_max_code": unique_zone_pairs[0][1],
+        "source_text": "; ".join(summary_parts),
+    }
+
+
 def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> dict[str, Any]:
     activity = fetch_one(
         connection,
@@ -75,11 +144,13 @@ def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> d
                l.planned_session_id,
                ps.primary_session, ps.objective, ps.duration_min, ps.duration_max,
                ps.intensity_class,
-               zt.target_basis, zt.target_kind, zt.source_text
+               pr.title AS prescription_title,
+               pr.estimated_duration_min,
+               pr.estimated_duration_max
         FROM exec_activities ea
         LEFT JOIN link_plan_execution l ON l.activity_id = ea.activity_id
         LEFT JOIN plan_planned_sessions ps ON ps.planned_session_id = l.planned_session_id
-        LEFT JOIN plan_session_zone_targets zt ON zt.planned_session_id = ps.planned_session_id
+        LEFT JOIN plan_session_prescriptions pr ON pr.planned_session_id = ps.planned_session_id
         WHERE ea.activity_id = ?
         ORDER BY l.link_id DESC
         LIMIT 1
@@ -88,6 +159,15 @@ def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> d
     )
     if activity is None:
         raise ValueError(f"Activity {activity_id} not found")
+    prescription_target = load_prescription_target(connection, int(activity["planned_session_id"])) if activity.get("planned_session_id") is not None else None
+    if prescription_target is not None:
+        activity.update(prescription_target)
+        if prescription_target.get("source_text"):
+            activity["primary_session"] = prescription_target.get("source_text")
+        if activity.get("duration_min") is None and activity.get("estimated_duration_min") is not None:
+            activity["duration_min"] = activity.get("estimated_duration_min")
+        if activity.get("duration_max") is None and activity.get("estimated_duration_max") is not None:
+            activity["duration_max"] = activity.get("estimated_duration_max")
     return activity
 
 

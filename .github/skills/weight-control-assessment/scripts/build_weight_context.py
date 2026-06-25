@@ -13,6 +13,11 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
+BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.planned_prescriptions import get_planned_session_prescription, project_planned_session_row_from_prescription
 
 
 def parse_args() -> argparse.Namespace:
@@ -365,6 +370,9 @@ def main() -> int:
             """,
             (week_context["week_id"],),
         )
+        for session in current_week_sessions:
+            prescription = get_planned_session_prescription(connection, int(session["planned_session_id"]))
+            session.update(project_planned_session_row_from_prescription(session, prescription))
     weight_summary = summarize_weight_history(
         weight_history,
         target_weight=float(profile["target_weight_kg"]) if profile and profile.get("target_weight_kg") is not None else None,

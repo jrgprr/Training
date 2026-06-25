@@ -15,8 +15,7 @@ BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.planned_prescriptions import build_structured_prescription, replace_planned_session_prescription
-from app.planned_sessions import delete_planned_session_structure, ensure_planned_session_structure_schema, replace_planned_session_structure
+from app.planned_prescriptions import delete_planned_session_prescription, get_planned_session_prescription
 
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
 SCHEMA_PATH = REPO_ROOT / "Sistema" / "schema.sql"
@@ -36,20 +35,6 @@ SNAPSHOT_COLUMNS = (
     "intensity_class",
     "duration_min",
     "duration_max",
-    "adjustment_rule",
-    "markdown_path",
-)
-STRUCTURE_COLUMNS = (
-    "planned_session_id",
-    "planned_role",
-    "planned_type",
-    "notes",
-    "primary_session",
-    "complementary_session",
-    "objective",
-    "duration_min",
-    "duration_max",
-    "intensity_class",
     "adjustment_rule",
     "markdown_path",
 )
@@ -110,14 +95,6 @@ def get_changed_planned_session_ids(
     return (deleted_ids, upserted_ids)
 
 
-def fetch_structure_source_row(connection: sqlite3.Connection, planned_session_id: int) -> dict[str, Any] | None:
-    row = connection.execute(
-        f"SELECT {', '.join(STRUCTURE_COLUMNS)} FROM plan_planned_sessions WHERE planned_session_id = ?",
-        (planned_session_id,),
-    ).fetchone()
-    return dict(row) if row is not None else None
-
-
 def apply_seed_file(connection: sqlite3.Connection, seed_path: Path) -> dict[str, Any]:
     before = snapshot_planned_sessions(connection)
     connection.executescript(seed_path.read_text(encoding="utf-8"))
@@ -125,14 +102,18 @@ def apply_seed_file(connection: sqlite3.Connection, seed_path: Path) -> dict[str
     deleted_ids, upserted_ids = get_changed_planned_session_ids(before, after)
 
     for planned_session_id in deleted_ids:
-        delete_planned_session_structure(connection, planned_session_id)
+        delete_planned_session_prescription(connection, planned_session_id)
 
     for planned_session_id in upserted_ids:
-        session_row = fetch_structure_source_row(connection, planned_session_id)
-        if session_row is None:
-            continue
-        replace_planned_session_structure(connection, session_row)
-        replace_planned_session_prescription(connection, build_structured_prescription(session_row))
+        prescription = get_planned_session_prescription(connection, planned_session_id)
+        if prescription is None:
+            raise ValueError(
+                f"Seed must define canonical prescription rows for planned_session_id {planned_session_id}; plain-text regeneration is disabled."
+            )
+        connection.execute(
+            "UPDATE plan_planned_sessions SET primary_session = NULL, complementary_session = NULL WHERE planned_session_id = ?",
+            (planned_session_id,),
+        )
 
     return {
         "seed_path": str(seed_path),
@@ -148,7 +129,6 @@ def main() -> int:
 
     with connect(database_path) as connection:
         ensure_base_planning_schema(connection)
-        ensure_planned_session_structure_schema(connection)
         results = [apply_seed_file(connection, seed_path) for seed_path in seed_paths]
 
     print(

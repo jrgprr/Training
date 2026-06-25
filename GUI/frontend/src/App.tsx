@@ -2758,14 +2758,6 @@ function formatZoneComparisonStatusLabel(status: string) {
   return status;
 }
 
-function formatZoneComparisonLabel(item: ZoneComparisonItem) {
-  const targetLabel = item.target_zone_min_code && item.target_zone_max_code && item.target_zone_min_code !== item.target_zone_max_code
-    ? `${item.target_zone_min_code}-${item.target_zone_max_code}`
-    : item.target_zone_min_code ?? item.target_zone_max_code ?? "sin objetivo";
-  const dominantLabel = item.dominant_zone_code ?? "sin resultado";
-  return `${formatZoneBasisLabel(item.metric_basis)} ${targetLabel} · ${formatZoneComparisonStatusLabel(item.comparison_status)} · ${dominantLabel}`;
-}
-
 function formatZoneBoundaryLabel(boundary: ZoneProfileBoundary) {
   const zoneLabel = boundary.zone_name && boundary.zone_name !== boundary.zone_code
     ? `${boundary.zone_code} ${boundary.zone_name}`
@@ -4832,15 +4824,6 @@ export default function App() {
                             Ver sesion estructurada
                           </button>
                           {row.planned_support_routine ? <small>Soporte opcional diario: {row.planned_support_routine}</small> : null}
-                          {row.zone_comparison && row.zone_comparison.length > 0 ? (
-                            <div className="zone-chip-list">
-                              {row.zone_comparison.map((item, index) => (
-                                <span key={`${row.planned_session_id}-${item.metric_basis}-${index}`} className={`zone-pill zone-pill-${item.comparison_status}`}>
-                                  {formatZoneComparisonLabel(item)}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
                         </td>
                         <td>
                           {rowActivities.length > 0 ? (

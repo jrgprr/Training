@@ -54,12 +54,25 @@ class ActivityMetricAnalysisTests(unittest.TestCase):
                 duration_max INTEGER,
                 intensity_class TEXT
             );
-            CREATE TABLE plan_session_zone_targets (
-                planned_zone_target_id INTEGER PRIMARY KEY,
+            CREATE TABLE plan_session_prescriptions (
+                prescription_id INTEGER PRIMARY KEY,
                 planned_session_id INTEGER,
+                title TEXT,
+                estimated_duration_min INTEGER,
+                estimated_duration_max INTEGER
+            );
+            CREATE TABLE plan_prescription_blocks (
+                prescription_block_id INTEGER PRIMARY KEY,
+                prescription_id INTEGER,
+                sequence_order INTEGER,
+                relation_group INTEGER,
+                block_role TEXT,
+                block_name TEXT,
+                duration_min INTEGER,
+                duration_max INTEGER,
                 target_basis TEXT,
-                target_kind TEXT,
-                source_text TEXT
+                target_zone_min_code TEXT,
+                target_zone_max_code TEXT
             );
             CREATE TABLE exec_activity_metric_summaries (
                 activity_id INTEGER,
@@ -151,8 +164,12 @@ class ActivityMetricAnalysisTests(unittest.TestCase):
             (101, "Bicicleta Z1 60-90 minutos.", "Recuperacion aerobica", 60, 90, "muy suave"),
         )
         self.connection.execute(
-            "INSERT INTO plan_session_zone_targets (planned_zone_target_id, planned_session_id, target_basis, target_kind, source_text) VALUES (?, ?, ?, ?, ?)",
-            (1, 101, "heart_rate", "single_zone", "Bicicleta Z1 60-90 minutos."),
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, title, estimated_duration_min, estimated_duration_max) VALUES (?, ?, ?, ?, ?)",
+            (1, 101, "Bicicleta Z1 60-90 minutos.", 60, 90),
+        )
+        self.connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, relation_group, block_role, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, 1, 1, 1, "primary", "bicicleta", 60, 90, "heart_rate", "Z1", "Z1"),
         )
         self.connection.execute(
             "INSERT INTO link_plan_execution (link_id, planned_session_id, activity_id, compliance_status) VALUES (?, ?, ?, ?)",

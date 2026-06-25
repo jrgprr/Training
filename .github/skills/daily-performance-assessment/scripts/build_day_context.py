@@ -12,6 +12,12 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
+BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.planned_prescriptions import get_planned_session_prescription, project_planned_session_row_from_prescription
+from app.activity_weather import get_activity_weather
 
 ENDURANCE_DISCIPLINES = {
     "cycling",
@@ -207,6 +213,110 @@ def load_activity_modeled_load(connection: sqlite3.Connection, activity_id: int,
             sys.path.remove(backend_path)
 
 
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def load_activity_weather(activity_id: int) -> dict[str, Any] | None:
+    try:
+        return get_activity_weather(activity_id)
+    except Exception as exc:  # pragma: no cover - defensive fallback for runtime environments
+        return {"error": f"Unable to load activity weather: {exc}"}
+
+
+def summarize_weather_impact(weather: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not weather or not isinstance(weather, dict):
+        return None
+    summary = weather.get("summary")
+    if not isinstance(summary, dict):
+        return None
+
+    temperature_mean = _as_float(summary.get("temperature_mean"))
+    temperature_max = _as_float(summary.get("temperature_max"))
+    apparent_temperature_mean = _as_float(summary.get("apparent_temperature_mean"))
+    cloud_cover_mean = _as_float(summary.get("cloud_cover_mean"))
+    wind_speed_mean = _as_float(summary.get("wind_speed_mean"))
+    shortwave_radiation_mean = _as_float(summary.get("shortwave_radiation_mean"))
+    rain_sum_est = _as_float(summary.get("rain_sum_est"))
+
+    if all(value is None for value in (temperature_mean, temperature_max, apparent_temperature_mean)):
+        return None
+
+    heat_level = "neutral"
+    if (
+        (apparent_temperature_mean is not None and apparent_temperature_mean >= 35.0)
+        or (temperature_max is not None and temperature_max >= 35.0)
+        or (temperature_mean is not None and temperature_mean >= 30.0)
+    ):
+        heat_level = "high"
+    elif (
+        (apparent_temperature_mean is not None and apparent_temperature_mean >= 30.0)
+        or (temperature_max is not None and temperature_max >= 32.0)
+        or (temperature_mean is not None and temperature_mean >= 26.0)
+    ):
+        heat_level = "moderate"
+    elif (
+        (temperature_max is not None and temperature_max >= 28.0)
+        or (temperature_mean is not None and temperature_mean >= 22.0)
+    ):
+        heat_level = "warm"
+
+    cooling_level = "normal"
+    if (
+        (wind_speed_mean is None or wind_speed_mean < 10.0)
+        and (cloud_cover_mean is None or cloud_cover_mean < 40.0)
+        and (shortwave_radiation_mean is not None and shortwave_radiation_mean >= 250.0)
+    ):
+        cooling_level = "limited"
+    elif wind_speed_mean is not None and wind_speed_mean >= 18.0:
+        cooling_level = "supportive"
+
+    moisture_context = "dry"
+    if rain_sum_est is not None and rain_sum_est >= 1.0:
+        moisture_context = "wet"
+    elif rain_sum_est is not None and rain_sum_est > 0:
+        moisture_context = "light_precipitation"
+
+    notes: list[str] = []
+    if heat_level == "high":
+        notes.append("Hot conditions likely elevated cardiovascular strain and hydration demand.")
+    elif heat_level == "moderate":
+        notes.append("Warm conditions likely added meaningful heat cost.")
+    elif heat_level == "warm":
+        notes.append("Mild warm-weather strain may have contributed to perceived cost.")
+
+    if cooling_level == "limited":
+        notes.append("Low wind with clear sun limited on-bike cooling.")
+    elif cooling_level == "supportive":
+        notes.append("Wind support likely improved cooling despite the ambient conditions.")
+
+    if moisture_context == "wet":
+        notes.append("Rain exposure may have affected comfort, traction, and thermal balance.")
+
+    return {
+        "heat_level": heat_level,
+        "cooling_level": cooling_level,
+        "moisture_context": moisture_context,
+        "temperature_mean": temperature_mean,
+        "temperature_max": temperature_max,
+        "apparent_temperature_mean": apparent_temperature_mean,
+        "wind_speed_mean": wind_speed_mean,
+        "cloud_cover_mean": cloud_cover_mean,
+        "shortwave_radiation_mean": shortwave_radiation_mean,
+        "analysis_notes": notes,
+    }
+
+
+def enrich_activities_with_weather(activities: list[dict[str, Any]]) -> None:
+    for activity in activities:
+        weather = load_activity_weather(int(activity["activity_id"]))
+        if weather is not None:
+            activity["weather"] = weather
+            activity["weather_analysis"] = summarize_weather_impact(weather)
+
+
 def main() -> int:
     args = parse_args()
     target_date = parse_iso_date(args.date).isoformat()
@@ -238,20 +348,21 @@ def main() -> int:
                mw.week_id, mw.week_code, mw.week_role, mw.start_date AS week_start_date,
                mw.end_date AS week_end_date, mw.target_volume_hours_min, mw.target_volume_hours_max,
                mb.block_id, mb.block_code, mb.block_name, mb.phase_name,
-               zt.target_basis, zt.target_kind, zt.source_text, zt.comparison_eligibility,
                pr.prescription_type, pr.title AS prescription_title, pr.focus_primary,
                pr.focus_secondary, pr.estimated_duration_min, pr.estimated_duration_max,
                pr.target_rpe_min, pr.target_rpe_max, pr.execution_notes, pr.adaptation_notes
         FROM plan_planned_sessions ps
         JOIN plan_micro_weeks mw ON mw.week_id = ps.week_id
         JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
-        LEFT JOIN plan_session_zone_targets zt ON zt.planned_session_id = ps.planned_session_id
         LEFT JOIN plan_session_prescriptions pr ON pr.planned_session_id = ps.planned_session_id
         WHERE ps.session_date = ?
         ORDER BY ps.sequence_in_week, ps.planned_session_id
         """,
         (target_date,),
     )
+    for session in planned_sessions:
+        prescription = get_planned_session_prescription(connection, int(session["planned_session_id"]))
+        session.update(project_planned_session_row_from_prescription(session, prescription))
 
     linked_rows = fetch_all(
         connection,
@@ -356,6 +467,7 @@ def main() -> int:
         if modeled_load is not None:
             activity["modeled_load_value"] = modeled_load.get("load_value")
             activity["modeled_load_source"] = modeled_load.get("load_source")
+    enrich_activities_with_weather(day_activities)
     for activity in recent_activities:
         activity["zone_summaries"] = zone_summaries.get(int(activity["activity_id"]), [])
 
@@ -367,6 +479,14 @@ def main() -> int:
             "selected_activity_id": int(metric_activity["activity_id"]),
             "trigger_reasons": metric_trigger_reasons,
             "analysis": load_activity_metric_analysis(connection, int(metric_activity["activity_id"])),
+        }
+    activity_weather_analysis = None
+    if metric_activity is not None:
+        activity_weather_analysis = {
+            "selected_activity_id": int(metric_activity["activity_id"]),
+            "trigger_reasons": metric_trigger_reasons,
+            "weather": metric_activity.get("weather"),
+            "analysis": metric_activity.get("weather_analysis"),
         }
 
     payload = {
@@ -386,6 +506,7 @@ def main() -> int:
         "daily_metrics": day_metrics,
         "load_model": load_model,
         "activity_metric_analysis": activity_metric_analysis,
+        "activity_weather_analysis": activity_weather_analysis,
         "day_activities": day_activities,
         "recent_activities": recent_activities,
         "available_data": {
@@ -397,6 +518,8 @@ def main() -> int:
             "has_weekly_review": weekly_review is not None,
             "has_load_model": load_model is not None,
             "has_activity_metric_analysis": activity_metric_analysis is not None,
+            "day_activity_weather_count": sum(1 for activity in day_activities if activity.get("weather") is not None),
+            "has_activity_weather_analysis": activity_weather_analysis is not None and activity_weather_analysis.get("analysis") is not None,
         },
     }
 

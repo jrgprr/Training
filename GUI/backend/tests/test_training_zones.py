@@ -40,8 +40,8 @@ class TrainingZoneSchemaTests(unittest.TestCase):
             "zone_refinement_evidence",
             "exec_activity_zone_results",
             "exec_activity_zone_buckets",
-            "plan_session_zone_targets",
-            "plan_session_zone_segments",
+            "plan_session_prescriptions",
+            "plan_prescription_blocks",
         }.issubset(table_names))
 
     def test_list_current_zone_profiles_groups_boundaries_by_basis(self) -> None:
@@ -1269,16 +1269,16 @@ class TrainingZoneComparisonTests(unittest.TestCase):
             "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (101, 20, '2026-05-22', 'Thu', 2, 'resistencia-aerobica-secundaria', 'bicicleta-z2', 'Power Z2', 'Bike Z2 power', 75, 75, 0)"
         )
         connection.execute(
-            "INSERT INTO plan_session_zone_targets (planned_zone_target_id, planned_session_id, target_basis, target_kind, source_kind, source_text, comparison_eligibility) VALUES (1, 100, 'heart_rate', 'single_zone', 'explicit', 'Z2', 'eligible')"
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, estimated_duration_min, estimated_duration_max) VALUES (1, 100, 'bicicleta-z2', 'Bike Z2', 90, 90)"
         )
         connection.execute(
-            "INSERT INTO plan_session_zone_segments (planned_zone_target_id, sequence_order, segment_label, target_zone_min_code, target_zone_max_code) VALUES (1, 1, 'Main block', 'Z2', 'Z2')"
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (1, 1, 1, 'primary', 1, 'all_of', 0, 'endurance', 'bicicleta', 90, 90, 'heart_rate', 'Z2', 'Z2')"
         )
         connection.execute(
-            "INSERT INTO plan_session_zone_targets (planned_zone_target_id, planned_session_id, target_basis, target_kind, source_kind, source_text, comparison_eligibility) VALUES (2, 101, 'power', 'single_zone', 'explicit', 'Z2', 'eligible')"
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, estimated_duration_min, estimated_duration_max) VALUES (2, 101, 'bicicleta-z2', 'Bike Z2 power', 75, 75)"
         )
         connection.execute(
-            "INSERT INTO plan_session_zone_segments (planned_zone_target_id, sequence_order, segment_label, target_zone_min_code, target_zone_max_code) VALUES (2, 1, 'Main block', 'Z2', 'Z2')"
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (2, 2, 1, 'primary', 1, 'all_of', 0, 'endurance', 'bicicleta', 75, 75, 'power', 'Z2', 'Z2')"
         )
         connection.execute(
             "INSERT INTO exec_activities (activity_id, season_id, source_system, external_activity_id, activity_date, started_at, discipline, activity_type, duration_seconds, avg_hr, avg_power, normalized_power, perceived_exertion, quality_status) VALUES (500, 2026, 'garmin', '500', '2026-05-20', '2026-05-20T08:00:00Z', 'road_biking', 'Ride', 5400, 148, 210, 212, 4, 'filtered')"
@@ -1503,12 +1503,24 @@ class PlannedZoneTargetTests(unittest.TestCase):
                 prescription_block_id INTEGER PRIMARY KEY,
                 prescription_id INTEGER NOT NULL,
                 sequence_order INTEGER NOT NULL,
+                block_role TEXT NOT NULL DEFAULT 'primary',
+                relation_group INTEGER NOT NULL DEFAULT 1,
+                relation_mode TEXT NOT NULL DEFAULT 'all_of',
+                is_optional INTEGER NOT NULL DEFAULT 0,
                 block_type TEXT NOT NULL,
                 block_name TEXT,
                 objective TEXT,
                 rounds INTEGER,
                 rest_seconds INTEGER,
-                notes TEXT
+                notes TEXT,
+                discipline_family TEXT,
+                duration_min INTEGER,
+                duration_max INTEGER,
+                target_basis TEXT,
+                target_zone_min_code TEXT,
+                target_zone_max_code TEXT,
+                condition_key TEXT,
+                condition_value TEXT
             );
             CREATE TABLE IF NOT EXISTS plan_prescription_exercises (
                 prescription_exercise_id INTEGER PRIMARY KEY,
@@ -1566,11 +1578,32 @@ class PlannedZoneTargetTests(unittest.TestCase):
             "INSERT INTO plan_planned_sessions (planned_session_id, week_id, session_date, day_name, sequence_in_week, planned_role, planned_type, objective, primary_session, duration_min, duration_max, is_key_session) VALUES (202, 20, '2026-05-24', 'Sat', 3, 'resistencia-aerobica-suave', 'bicicleta-aerobica', 'Comfortable aerobic ride', 'Bike easy', 120, 120, 0)"
         )
         connection.execute(
-            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, execution_notes) VALUES (1, 201, 'endurance', 'Threshold build', '15min Z2 + 3x5min Z4 + 10min Z2')"
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, estimated_duration_min, estimated_duration_max, execution_notes) VALUES (1, 200, 'endurance', 'Aerobic ride', 90, 90, 'Hold Z2 throughout')"
+        )
+        connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (1, 1, 1, 'primary', 1, 'all_of', 0, 'endurance', 'bicicleta', 90, 90, 'heart_rate', 'Z2', 'Z2')"
+        )
+        connection.execute(
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, estimated_duration_min, estimated_duration_max, execution_notes) VALUES (2, 201, 'endurance', 'Threshold build', 75, 75, '15min Z2 + 3x5min Z4 + 10min Z2')"
+        )
+        connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (2, 2, 1, 'primary', 1, 'all_of', 0, 'warmup', 'warmup', 15, 15, 'heart_rate', 'Z2', 'Z2')"
+        )
+        connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (3, 2, 2, 'primary', 1, 'all_of', 0, 'interval', 'intervals', 15, 15, 'heart_rate', 'Z4', 'Z4')"
+        )
+        connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max, target_basis, target_zone_min_code, target_zone_max_code) VALUES (4, 2, 3, 'primary', 1, 'all_of', 0, 'cooldown', 'cooldown', 10, 10, 'heart_rate', 'Z2', 'Z2')"
+        )
+        connection.execute(
+            "INSERT INTO plan_session_prescriptions (prescription_id, planned_session_id, prescription_type, title, estimated_duration_min, estimated_duration_max, execution_notes) VALUES (3, 202, 'endurance', 'Easy ride', 120, 120, 'Comfortable aerobic ride')"
+        )
+        connection.execute(
+            "INSERT INTO plan_prescription_blocks (prescription_block_id, prescription_id, sequence_order, block_role, relation_group, relation_mode, is_optional, block_type, block_name, duration_min, duration_max) VALUES (5, 3, 1, 'primary', 1, 'all_of', 0, 'endurance', 'bicicleta', 120, 120)"
         )
         connection.commit()
 
-    def test_get_planned_session_zone_target_returns_explicit_single_zone_and_persists_it(self) -> None:
+    def test_get_planned_session_zone_target_returns_explicit_single_zone(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "training.sqlite"
             with patch("app.db.get_database_path", return_value=database_path), patch("app.db.normalize_existing_manual_activity_disciplines"):
@@ -1579,21 +1612,13 @@ class PlannedZoneTargetTests(unittest.TestCase):
                     self._create_planned_zone_context(connection)
 
                 payload = get_planned_session_zone_target(200)
-                with sqlite3.connect(database_path) as connection:
-                    connection.row_factory = sqlite3.Row
-                    stored_target = connection.execute(
-                        "SELECT target_basis, target_kind, source_kind, source_text FROM plan_session_zone_targets WHERE planned_session_id = 200"
-                    ).fetchone()
-                    stored_segments = connection.execute(
-                        "SELECT sequence_order, target_zone_min_code, target_zone_max_code FROM plan_session_zone_segments WHERE planned_zone_target_id = (SELECT planned_zone_target_id FROM plan_session_zone_targets WHERE planned_session_id = 200) ORDER BY sequence_order"
-                    ).fetchall()
 
         assert payload is not None
         self.assertEqual(payload["target_kind"], "single_zone")
         self.assertEqual(payload["target_basis"], "heart_rate")
         self.assertEqual(payload["segments"][0]["target_zone_min_code"], "Z2")
-        self.assertEqual(stored_target["source_kind"], "derived")
-        self.assertEqual(stored_segments[0]["target_zone_max_code"], "Z2")
+        self.assertEqual(payload["source_kind"], "prescription")
+        self.assertEqual(payload["segments"][0]["target_zone_max_code"], "Z2")
 
     def test_get_planned_session_zone_target_returns_multi_segment_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1620,13 +1645,8 @@ class PlannedZoneTargetTests(unittest.TestCase):
                     self._create_planned_zone_context(connection)
 
                 payload = get_planned_session_zone_target(202)
-                with sqlite3.connect(database_path) as connection:
-                    target_count = connection.execute(
-                        "SELECT COUNT(*) FROM plan_session_zone_targets WHERE planned_session_id = 202"
-                    ).fetchone()[0]
 
         self.assertIsNone(payload)
-        self.assertEqual(target_count, 0)
 
     def test_session_endpoint_exposes_planned_zone_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

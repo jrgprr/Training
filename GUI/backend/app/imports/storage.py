@@ -12,7 +12,7 @@ from ..activity_quality import (
     normalize_route_points_from_tcx_artifact,
 )
 from ..db import _ensure_exec_activity_elevation_enrichment_schema, _ensure_exec_activity_quality_schema, _ensure_exec_activity_route_points_schema, _ensure_exec_activity_segment_columns, get_connection
-from ..planned_sessions import collect_matching_family_groups
+from ..planned_prescriptions import collect_matching_family_groups
 from ..training_zones import persist_accepted_zone_profile as persist_zone_profile_record
 from ..training_zones import persist_activity_zone_results
 

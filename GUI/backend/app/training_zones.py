@@ -10,6 +10,7 @@ from typing import Any
 from .activity_quality import ActivityQualityEvaluation
 from .db import get_connection
 from .imports.contracts import NormalizedActivity, NormalizedMetricReading
+from .planned_prescriptions import derive_zone_target_from_prescription, get_planned_session_prescription
 
 
 SUPPORTED_ZONE_BASES = {
@@ -46,8 +47,6 @@ SUPPORTED_ZONE_MODELS = {
     "heart_rate": {"heart_rate_reserve_5_zone"},
     "power": {"ftp_coggan_7_zone"},
 }
-
-ZONE_CODE_PATTERN = re.compile(r"\bZ([1-9][0-9]*)\b", re.IGNORECASE)
 
 
 def normalize_zone_basis(metric_basis: str | None) -> str | None:
@@ -439,39 +438,8 @@ def list_current_zone_profiles(season_id: int, discipline: str) -> dict[str, Any
 
 def get_planned_session_zone_target(planned_session_id: int) -> dict[str, Any] | None:
     with get_connection() as connection:
-        payload = _load_planned_session_zone_target(connection, planned_session_id)
-        if payload is not None:
-            return payload
-
-        session_row = connection.execute(
-            """
-            SELECT ps.planned_session_id,
-                   ps.planned_type,
-                   ps.objective,
-                   ps.primary_session,
-                   ps.complementary_session,
-                   prescription.title,
-                   prescription.focus_primary,
-                   prescription.focus_secondary,
-                   prescription.execution_notes,
-                   prescription.adaptation_notes
-            FROM plan_planned_sessions ps
-            LEFT JOIN plan_session_prescriptions prescription
-              ON prescription.planned_session_id = ps.planned_session_id
-            WHERE ps.planned_session_id = ?
-            """,
-            (planned_session_id,),
-        ).fetchone()
-        if session_row is None:
-            return None
-
-        extracted_target = _extract_planned_zone_target(dict(session_row))
-        if extracted_target is None:
-            return None
-
-        target_id = _persist_planned_zone_target(connection, planned_session_id, extracted_target)
-        connection.commit()
-        return _load_planned_session_zone_target(connection, planned_session_id, target_id=target_id)
+        prescription = get_planned_session_prescription(connection, planned_session_id)
+        return derive_zone_target_from_prescription(prescription)
 
 
 def get_active_zone_profile_for_date(
@@ -902,76 +870,83 @@ def accept_zone_refinement_proposal(
 
 def list_session_zone_comparisons(week_id: int) -> dict[int, list[dict[str, Any]]]:
     with get_connection() as connection:
-        rows = connection.execute(
+        session_rows = connection.execute(
             """
-            SELECT planned.planned_session_id,
-                   planned.session_date,
-                   target.target_basis,
-                   target.target_kind,
-                   target.comparison_eligibility,
-                   link.activity_id,
-                   result.calculation_status,
-                   result.dominant_zone_code,
-                   result.dominant_zone_share,
-                   MIN(CASE WHEN segment.target_zone_min_code GLOB 'Z[0-9]*' THEN CAST(SUBSTR(segment.target_zone_min_code, 2) AS INTEGER) END) AS target_zone_min_index,
-                   MAX(CASE WHEN segment.target_zone_max_code GLOB 'Z[0-9]*' THEN CAST(SUBSTR(segment.target_zone_max_code, 2) AS INTEGER) END) AS target_zone_max_index,
-                   COUNT(DISTINCT any_result.activity_zone_result_id) AS any_result_count
-            FROM plan_planned_sessions planned
-            LEFT JOIN plan_session_zone_targets target ON target.planned_session_id = planned.planned_session_id
-            LEFT JOIN plan_session_zone_segments segment ON segment.planned_zone_target_id = target.planned_zone_target_id
-            LEFT JOIN link_plan_execution link ON link.planned_session_id = planned.planned_session_id
-            LEFT JOIN exec_activity_zone_results result
-              ON result.activity_id = link.activity_id
-             AND result.metric_basis = target.target_basis
-            LEFT JOIN exec_activity_zone_results any_result
-              ON any_result.activity_id = link.activity_id
-            WHERE planned.week_id = ?
-              AND target.planned_session_id IS NOT NULL
-            GROUP BY planned.planned_session_id,
-                     planned.session_date,
-                     target.target_basis,
-                     target.target_kind,
-                     target.comparison_eligibility,
-                     link.activity_id,
-                     result.activity_zone_result_id,
-                     result.calculation_status,
-                     result.dominant_zone_code,
-                     result.dominant_zone_share
-            ORDER BY planned.planned_session_id, target.target_basis
+            SELECT planned_session_id, session_date
+            FROM plan_planned_sessions
+            WHERE week_id = ?
+            ORDER BY planned_session_id
             """,
             (week_id,),
         ).fetchall()
 
-    payload: dict[int, list[dict[str, Any]]] = {}
-    for row in rows:
-        metric_basis = row["target_basis"]
-        min_index = row["target_zone_min_index"]
-        max_index = row["target_zone_max_index"]
-        item = {
-            "planned_session_id": row["planned_session_id"],
-            "session_date": row["session_date"],
-            "metric_basis": metric_basis,
-            "target_kind": row["target_kind"],
-            "comparison_eligibility": row["comparison_eligibility"],
-            "target_zone_min_code": _zone_code_from_index(min_index),
-            "target_zone_max_code": _zone_code_from_index(max_index),
-            "activity_id": row["activity_id"],
-            "calculation_status": row["calculation_status"],
-            "dominant_zone_code": row["dominant_zone_code"],
-            "dominant_zone_share": row["dominant_zone_share"],
-        }
-        item["comparison_status"] = _resolve_session_zone_comparison_status(
-            target_basis=metric_basis,
-            comparison_eligibility=row["comparison_eligibility"],
-            activity_id=row["activity_id"],
-            calculation_status=row["calculation_status"],
-            target_kind=row["target_kind"],
-            dominant_zone_code=row["dominant_zone_code"],
-            target_zone_min_index=min_index,
-            target_zone_max_index=max_index,
-            any_result_count=row["any_result_count"],
-        )
-        payload.setdefault(int(row["planned_session_id"]), []).append(item)
+        payload: dict[int, list[dict[str, Any]]] = {}
+        for session_row in session_rows:
+            planned_session_id = int(session_row["planned_session_id"])
+            prescription = get_planned_session_prescription(connection, planned_session_id)
+            target = derive_zone_target_from_prescription(prescription)
+            if target is None:
+                continue
+
+            segments = target.get("segments") or []
+            min_index = min(
+                (_zone_index_from_code(segment.get("target_zone_min_code")) for segment in segments),
+                default=None,
+            )
+            max_index = max(
+                (_zone_index_from_code(segment.get("target_zone_max_code")) for segment in segments),
+                default=None,
+            )
+            link_row = connection.execute(
+                "SELECT activity_id FROM link_plan_execution WHERE planned_session_id = ? ORDER BY link_id DESC LIMIT 1",
+                (planned_session_id,),
+            ).fetchone()
+            activity_id = int(link_row["activity_id"]) if link_row is not None and link_row["activity_id"] is not None else None
+            result_row = None
+            any_result_count = 0
+            if activity_id is not None:
+                result_row = connection.execute(
+                    """
+                    SELECT calculation_status, dominant_zone_code, dominant_zone_share
+                    FROM exec_activity_zone_results
+                    WHERE activity_id = ? AND metric_basis = ?
+                    ORDER BY activity_zone_result_id DESC
+                    LIMIT 1
+                    """,
+                    (activity_id, target.get("target_basis")),
+                ).fetchone()
+                any_result_count = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM exec_activity_zone_results WHERE activity_id = ?",
+                        (activity_id,),
+                    ).fetchone()[0]
+                )
+
+            item = {
+                "planned_session_id": planned_session_id,
+                "session_date": session_row["session_date"],
+                "metric_basis": target.get("target_basis"),
+                "target_kind": target.get("target_kind"),
+                "comparison_eligibility": target.get("comparison_eligibility"),
+                "target_zone_min_code": _zone_code_from_index(min_index),
+                "target_zone_max_code": _zone_code_from_index(max_index),
+                "activity_id": activity_id,
+                "calculation_status": result_row["calculation_status"] if result_row is not None else None,
+                "dominant_zone_code": result_row["dominant_zone_code"] if result_row is not None else None,
+                "dominant_zone_share": result_row["dominant_zone_share"] if result_row is not None else None,
+            }
+            item["comparison_status"] = _resolve_session_zone_comparison_status(
+                target_basis=target.get("target_basis"),
+                comparison_eligibility=target.get("comparison_eligibility"),
+                activity_id=activity_id,
+                calculation_status=item["calculation_status"],
+                target_kind=target.get("target_kind"),
+                dominant_zone_code=item["dominant_zone_code"],
+                target_zone_min_index=min_index,
+                target_zone_max_index=max_index,
+                any_result_count=any_result_count,
+            )
+            payload.setdefault(planned_session_id, []).append(item)
     return payload
 
 
@@ -1287,219 +1262,6 @@ def _next_iso_date(iso_date: str) -> str:
 
 def _iso_date_portion(timestamp_or_date: str) -> str:
     return timestamp_or_date[:10]
-
-
-def _load_planned_session_zone_target(
-    connection: Any,
-    planned_session_id: int,
-    *,
-    target_id: int | None = None,
-) -> dict[str, Any] | None:
-    query = """
-        SELECT planned_zone_target_id,
-               planned_session_id,
-               target_basis,
-               target_kind,
-               source_kind,
-               source_text,
-               comparison_eligibility
-        FROM plan_session_zone_targets
-        WHERE planned_session_id = ?
-    """
-    parameters: tuple[Any, ...] = (planned_session_id,)
-    if target_id is not None:
-        query += " AND planned_zone_target_id = ?"
-        parameters = (planned_session_id, target_id)
-    row = connection.execute(query, parameters).fetchone()
-    if row is None:
-        return None
-    segments = connection.execute(
-        """
-        SELECT sequence_order,
-               segment_label,
-               target_zone_min_code,
-               target_zone_max_code,
-               target_duration_seconds_min,
-               target_duration_seconds_max,
-               notes
-        FROM plan_session_zone_segments
-        WHERE planned_zone_target_id = ?
-        ORDER BY sequence_order
-        """,
-        (row["planned_zone_target_id"],),
-    ).fetchall()
-    return {
-        "planned_zone_target_id": row["planned_zone_target_id"],
-        "planned_session_id": row["planned_session_id"],
-        "target_basis": row["target_basis"],
-        "target_kind": row["target_kind"],
-        "source_kind": row["source_kind"],
-        "source_text": row["source_text"],
-        "comparison_eligibility": row["comparison_eligibility"],
-        "segments": [dict(segment) for segment in segments],
-    }
-
-
-def _extract_planned_zone_target(session_row: dict[str, Any]) -> dict[str, Any] | None:
-    source_candidates = [
-        session_row.get("execution_notes"),
-        session_row.get("primary_session"),
-        session_row.get("objective"),
-        session_row.get("title"),
-        session_row.get("focus_primary"),
-        session_row.get("focus_secondary"),
-        session_row.get("adaptation_notes"),
-        session_row.get("complementary_session"),
-        session_row.get("planned_type"),
-    ]
-    selected_source_text: str | None = None
-    selected_zone_codes: list[str] = []
-    for candidate in source_candidates:
-        if not isinstance(candidate, str) or not candidate.strip():
-            continue
-        candidate_text = candidate.strip()
-        candidate_zone_codes = [f"Z{match.group(1)}" for match in ZONE_CODE_PATTERN.finditer(candidate_text)]
-        if candidate_zone_codes:
-            selected_source_text = candidate_text
-            selected_zone_codes = candidate_zone_codes
-            break
-    if selected_source_text is None:
-        return None
-
-    source_text = selected_source_text
-    zone_codes = selected_zone_codes
-    unique_zone_codes = list(dict.fromkeys(zone_codes))
-
-    target_basis = _infer_planned_zone_basis(source_text)
-    if len(unique_zone_codes) == 1:
-        zone_code = unique_zone_codes[0]
-        return {
-            "target_basis": target_basis,
-            "target_kind": "single_zone",
-            "source_kind": "derived",
-            "source_text": source_text,
-            "comparison_eligibility": "eligible",
-            "segments": [
-                {
-                    "sequence_order": 1,
-                    "segment_label": "Derived target",
-                    "target_zone_min_code": zone_code,
-                    "target_zone_max_code": zone_code,
-                    "target_duration_seconds_min": None,
-                    "target_duration_seconds_max": None,
-                    "notes": None,
-                }
-            ],
-        }
-
-    return {
-        "target_basis": target_basis,
-        "target_kind": "multi_segment",
-        "source_kind": "derived",
-        "source_text": source_text,
-        "comparison_eligibility": "limited",
-        "segments": [
-            {
-                "sequence_order": index,
-                "segment_label": f"Derived segment {index}",
-                "target_zone_min_code": zone_code,
-                "target_zone_max_code": zone_code,
-                "target_duration_seconds_min": None,
-                "target_duration_seconds_max": None,
-                "notes": None,
-            }
-            for index, zone_code in enumerate(zone_codes, start=1)
-        ],
-    }
-
-
-def _infer_planned_zone_basis(source_text: str) -> str:
-    normalized = source_text.lower()
-    if "power" in normalized or "ftp" in normalized or "watts" in normalized:
-        return "power"
-    return "heart_rate"
-
-
-def _persist_planned_zone_target(connection: Any, planned_session_id: int, payload: dict[str, Any]) -> int:
-    existing_row = connection.execute(
-        "SELECT planned_zone_target_id FROM plan_session_zone_targets WHERE planned_session_id = ?",
-        (planned_session_id,),
-    ).fetchone()
-    if existing_row is not None:
-        connection.execute(
-            "DELETE FROM plan_session_zone_segments WHERE planned_zone_target_id = ?",
-            (existing_row["planned_zone_target_id"],),
-        )
-        connection.execute(
-            """
-            UPDATE plan_session_zone_targets
-            SET target_basis = ?,
-                target_kind = ?,
-                source_kind = ?,
-                source_text = ?,
-                comparison_eligibility = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE planned_zone_target_id = ?
-            """,
-            (
-                payload["target_basis"],
-                payload["target_kind"],
-                payload["source_kind"],
-                payload["source_text"],
-                payload["comparison_eligibility"],
-                existing_row["planned_zone_target_id"],
-            ),
-        )
-        target_id = int(existing_row["planned_zone_target_id"])
-    else:
-        cursor = connection.execute(
-            """
-            INSERT INTO plan_session_zone_targets (
-                planned_session_id,
-                target_basis,
-                target_kind,
-                source_kind,
-                source_text,
-                comparison_eligibility
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                planned_session_id,
-                payload["target_basis"],
-                payload["target_kind"],
-                payload["source_kind"],
-                payload["source_text"],
-                payload["comparison_eligibility"],
-            ),
-        )
-        target_id = int(cursor.lastrowid)
-
-    for segment in payload["segments"]:
-        connection.execute(
-            """
-            INSERT INTO plan_session_zone_segments (
-                planned_zone_target_id,
-                sequence_order,
-                segment_label,
-                target_zone_min_code,
-                target_zone_max_code,
-                target_duration_seconds_min,
-                target_duration_seconds_max,
-                notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                target_id,
-                segment["sequence_order"],
-                segment["segment_label"],
-                segment["target_zone_min_code"],
-                segment["target_zone_max_code"],
-                segment["target_duration_seconds_min"],
-                segment["target_duration_seconds_max"],
-                segment["notes"],
-            ),
-        )
-    return target_id
 
 
 def _zone_code_from_index(zone_index: int | None) -> str | None:

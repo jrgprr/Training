@@ -3,83 +3,67 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from .planned_sessions import build_legacy_activity_groups
+WALKING_DISCIPLINES = {"walking", "hiking", "trail_walking", "nordic_walking"}
+CYCLING_DISCIPLINES = {"cycling", "road_biking", "indoor_cycling", "mountain_biking"}
+RUNNING_DISCIPLINES = {"running", "trail_running", "treadmill_running", "track_running"}
+STRENGTH_KEYWORDS = {
+    "fuerza",
+    "core",
+    "pecho",
+    "triceps",
+    "hombro",
+    "espalda",
+    "biceps",
+    "pierna",
+    "piernas",
+    "gluteo",
+    "gluteos",
+    "torso",
+}
+MOBILITY_KEYWORDS = {"yoga", "movilidad", "estiramientos", "flexibilidad", "elasticidad"}
 
 
-PRESCRIPTION_SOURCE_COLUMNS = (
-    "planned_session_id",
-    "planned_role",
-    "planned_type",
-    "objective",
-    "primary_session",
-    "complementary_session",
-    "notes",
-    "is_key_session",
-    "intensity_class",
-    "duration_min",
-    "duration_max",
-    "adjustment_rule",
-    "markdown_path",
-)
-
-
-def sync_all_planned_session_prescriptions(connection: sqlite3.Connection) -> None:
-    session_table_exists = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_planned_sessions'"
-    ).fetchone()
-    if session_table_exists is None:
-        return
-
-    rows = connection.execute(
-        f"SELECT {', '.join(PRESCRIPTION_SOURCE_COLUMNS)} FROM plan_planned_sessions ORDER BY planned_session_id"
-    ).fetchall()
-    for row in rows:
-        sync_planned_session_prescription(connection, dict(row))
-
-
-def sync_planned_session_prescription(connection: sqlite3.Connection, session_row: dict[str, Any]) -> None:
-    prescription = build_structured_prescription(session_row)
-    current = get_planned_session_prescription(connection, int(session_row["planned_session_id"]))
-    if _prescription_signature(current) == _prescription_signature(prescription):
-        return
-    replace_planned_session_prescription(connection, prescription)
-
-
-def replace_planned_session_prescription(connection: sqlite3.Connection, prescription: dict[str, Any]) -> None:
-    planned_session_id = int(prescription["planned_session_id"])
+def delete_planned_session_prescription(connection: sqlite3.Connection, planned_session_id: int) -> None:
     existing_row = connection.execute(
         "SELECT prescription_id FROM plan_session_prescriptions WHERE planned_session_id = ?",
         (planned_session_id,),
     ).fetchone()
-    if existing_row is not None:
-        prescription_id = int(existing_row["prescription_id"])
-        block_rows = connection.execute(
-            "SELECT prescription_block_id FROM plan_prescription_blocks WHERE prescription_id = ?",
-            (prescription_id,),
+    if existing_row is None:
+        return
+
+    prescription_id = int(existing_row["prescription_id"])
+    block_rows = connection.execute(
+        "SELECT prescription_block_id FROM plan_prescription_blocks WHERE prescription_id = ?",
+        (prescription_id,),
+    ).fetchall()
+    block_ids = [int(row["prescription_block_id"]) for row in block_rows]
+    if block_ids:
+        placeholders = ", ".join("?" for _ in block_ids)
+        exercise_rows = connection.execute(
+            f"SELECT prescription_exercise_id FROM plan_prescription_exercises WHERE prescription_block_id IN ({placeholders})",
+            tuple(block_ids),
         ).fetchall()
-        block_ids = [int(row["prescription_block_id"]) for row in block_rows]
-        if block_ids:
-            placeholders = ", ".join("?" for _ in block_ids)
-            exercise_rows = connection.execute(
-                f"SELECT prescription_exercise_id FROM plan_prescription_exercises WHERE prescription_block_id IN ({placeholders})",
-                tuple(block_ids),
-            ).fetchall()
-            exercise_ids = [int(row["prescription_exercise_id"]) for row in exercise_rows]
-            if exercise_ids:
-                exercise_placeholders = ", ".join("?" for _ in exercise_ids)
-                connection.execute(
-                    f"DELETE FROM plan_prescription_exercise_options WHERE prescription_exercise_id IN ({exercise_placeholders})",
-                    tuple(exercise_ids),
-                )
-                connection.execute(
-                    f"DELETE FROM plan_prescription_exercises WHERE prescription_exercise_id IN ({exercise_placeholders})",
-                    tuple(exercise_ids),
-                )
+        exercise_ids = [int(row["prescription_exercise_id"]) for row in exercise_rows]
+        if exercise_ids:
+            exercise_placeholders = ", ".join("?" for _ in exercise_ids)
             connection.execute(
-                f"DELETE FROM plan_prescription_blocks WHERE prescription_block_id IN ({placeholders})",
-                tuple(block_ids),
+                f"DELETE FROM plan_prescription_exercise_options WHERE prescription_exercise_id IN ({exercise_placeholders})",
+                tuple(exercise_ids),
             )
-        connection.execute("DELETE FROM plan_session_prescriptions WHERE prescription_id = ?", (prescription_id,))
+            connection.execute(
+                f"DELETE FROM plan_prescription_exercises WHERE prescription_exercise_id IN ({exercise_placeholders})",
+                tuple(exercise_ids),
+            )
+        connection.execute(
+            f"DELETE FROM plan_prescription_blocks WHERE prescription_block_id IN ({placeholders})",
+            tuple(block_ids),
+        )
+    connection.execute("DELETE FROM plan_session_prescriptions WHERE prescription_id = ?", (prescription_id,))
+
+
+def replace_planned_session_prescription(connection: sqlite3.Connection, prescription: dict[str, Any]) -> None:
+    planned_session_id = int(prescription["planned_session_id"])
+    delete_planned_session_prescription(connection, planned_session_id)
 
     cursor = connection.execute(
         """
@@ -273,106 +257,244 @@ def get_planned_session_prescription(connection: sqlite3.Connection, planned_ses
     return payload
 
 
-def build_structured_prescription(session_row: dict[str, Any]) -> dict[str, Any]:
-    groups = build_legacy_activity_groups(session_row)
-    blocks: list[dict[str, Any]] = []
-    top_level_discipline_family: str | None = None
-    global_sequence_order = 1
-    for relation_group, group in enumerate(groups, start=1):
-        for sequence_order, item in enumerate(group.get("items", []), start=1):
-            if top_level_discipline_family is None and item.get("discipline_family") is not None:
-                top_level_discipline_family = str(item.get("discipline_family"))
-            blocks.append(
-                {
-                    "sequence_order": global_sequence_order,
-                    "block_role": group.get("group_role") or "primary",
-                    "relation_group": relation_group,
-                    "relation_mode": group.get("relation_mode") or "all_of",
-                    "is_optional": int(group.get("is_optional") or 0),
-                    "block_type": item.get("item_type") or "other",
-                    "block_name": _build_block_name(item),
-                    "objective": session_row.get("objective") if sequence_order == 1 and relation_group == 1 else None,
-                    "rounds": None,
-                    "rest_seconds": None,
-                    "discipline_family": item.get("discipline_family"),
-                    "duration_min": item.get("duration_min"),
-                    "duration_max": item.get("duration_max"),
-                    "target_basis": item.get("target_basis"),
-                    "target_zone_min_code": item.get("target_zone_min_code"),
-                    "target_zone_max_code": item.get("target_zone_max_code"),
-                    "condition_key": item.get("condition_key"),
-                    "condition_value": item.get("condition_value"),
-                    "notes": item.get("notes") or group.get("notes"),
-                    "exercises": _build_block_exercises(item),
-                }
-            )
-            global_sequence_order += 1
+def build_activity_groups_from_prescription(prescription: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if prescription is None:
+        return []
+
+    groups_by_key: dict[tuple[int, str], dict[str, Any]] = {}
+    groups: list[dict[str, Any]] = []
+    for block in prescription.get("blocks", []):
+        relation_group = int(block.get("relation_group") or 1)
+        group_role = str(block.get("block_role") or "primary")
+        group_key = (relation_group, group_role)
+        group = groups_by_key.get(group_key)
+        if group is None:
+            group = {
+                "activity_group_id": None,
+                "planned_session_id": prescription.get("planned_session_id"),
+                "group_role": group_role,
+                "relation_group": relation_group,
+                "relation_mode": block.get("relation_mode") or "all_of",
+                "is_optional": int(block.get("is_optional") or 0),
+                "summary_label": None,
+                "notes": None,
+                "items": [],
+            }
+            groups_by_key[group_key] = group
+            groups.append(group)
+        group["items"].append(
+            {
+                "activity_item_id": None,
+                "sequence_order": int(block.get("sequence_order") or len(group["items"]) + 1),
+                "item_type": block.get("block_type") or "other",
+                "discipline_family": block.get("discipline_family"),
+                "display_label": block.get("block_name"),
+                "duration_min": block.get("duration_min"),
+                "duration_max": block.get("duration_max"),
+                "target_basis": block.get("target_basis"),
+                "target_zone_min_code": block.get("target_zone_min_code"),
+                "target_zone_max_code": block.get("target_zone_max_code"),
+                "condition_key": block.get("condition_key"),
+                "condition_value": block.get("condition_value"),
+                "notes": block.get("notes"),
+            }
+        )
+    return groups
+
+
+def render_prescription_block(block: dict[str, Any]) -> str:
+    label = str(block.get("block_name") or block.get("block_type") or "block").strip()
+    zone_min = block.get("target_zone_min_code")
+    zone_max = block.get("target_zone_max_code")
+    duration_min = block.get("duration_min")
+    duration_max = block.get("duration_max")
+
+    parts = [label]
+    if zone_min:
+        if zone_min == zone_max or not zone_max:
+            parts.append(str(zone_min))
+        else:
+            parts.append(f"{zone_min}-{zone_max}")
+    if duration_min is not None and duration_max is not None:
+        if duration_min == duration_max:
+            parts.append(f"{duration_min} minutos")
+        else:
+            parts.append(f"{duration_min}-{duration_max} minutos")
+    elif duration_min is not None:
+        parts.append(f"{duration_min} minutos")
+    return " ".join(str(part) for part in parts if part)
+
+
+def render_prescription_summary(prescription: dict[str, Any] | None, *, group_role: str | None = None) -> str | None:
+    if prescription is None:
+        return None
+
+    grouped_blocks: dict[int, list[dict[str, Any]]] = {}
+    for block in prescription.get("blocks", []):
+        if group_role is not None and str(block.get("block_role") or "primary") != group_role:
+            continue
+        grouped_blocks.setdefault(int(block.get("relation_group") or 1), []).append(block)
+
+    rendered_groups: list[str] = []
+    for relation_group in sorted(grouped_blocks):
+        blocks = sorted(grouped_blocks[relation_group], key=lambda block: int(block.get("sequence_order") or 0))
+        if not blocks:
+            continue
+        separator = " o " if str(blocks[0].get("relation_mode") or "all_of") == "one_of" else " + "
+        rendered_groups.append(separator.join(render_prescription_block(block) for block in blocks))
+
+    summary = " + ".join(part for part in rendered_groups if part)
+    return summary or None
+
+
+def derive_zone_target_from_prescription(prescription: dict[str, Any] | None) -> dict[str, Any] | None:
+    if prescription is None:
+        return None
+    targeted_blocks = [
+        block
+        for block in prescription.get("blocks", [])
+        if block.get("target_basis")
+        and block.get("target_zone_min_code")
+        and block.get("target_zone_max_code")
+        and str(block.get("block_role") or "primary") == "primary"
+    ]
+    if not targeted_blocks:
+        return None
+
+    target_bases = list(dict.fromkeys(str(block["target_basis"]) for block in targeted_blocks))
+    target_basis = target_bases[0] if len(target_bases) == 1 else "mixed"
+    target_kind = "single_zone"
+    if len(targeted_blocks) > 1:
+        target_kind = "multi_segment"
+    elif targeted_blocks[0].get("target_zone_min_code") != targeted_blocks[0].get("target_zone_max_code"):
+        target_kind = "multi_segment"
+
+    segments = []
+    for index, block in enumerate(sorted(targeted_blocks, key=lambda item: int(item.get("sequence_order") or 0)), start=1):
+        duration_min = block.get("duration_min")
+        duration_max = block.get("duration_max")
+        segments.append(
+            {
+                "sequence_order": index,
+                "segment_label": block.get("block_name") or block.get("block_type") or f"Block {index}",
+                "target_zone_min_code": block.get("target_zone_min_code"),
+                "target_zone_max_code": block.get("target_zone_max_code"),
+                "target_duration_seconds_min": int(duration_min) * 60 if duration_min is not None else None,
+                "target_duration_seconds_max": int(duration_max) * 60 if duration_max is not None else None,
+                "notes": block.get("notes"),
+            }
+        )
 
     return {
-        "planned_session_id": int(session_row["planned_session_id"]),
-        "prescription_type": str(session_row.get("planned_type") or "other"),
-        "discipline_family": top_level_discipline_family,
-        "title": session_row.get("primary_session"),
-        "focus_primary": session_row.get("planned_role") or session_row.get("objective"),
-        "focus_secondary": session_row.get("complementary_session"),
-        "estimated_duration_min": session_row.get("duration_min"),
-        "estimated_duration_max": session_row.get("duration_max"),
-        "target_rpe_min": None,
-        "target_rpe_max": None,
-        "warmup_notes": None,
-        "cooldown_notes": None,
-        "execution_notes": session_row.get("notes"),
-        "adaptation_notes": session_row.get("adjustment_rule"),
-        "source_kind": "generated",
-        "structure_version": "v1",
-        "source_markdown_path": session_row.get("markdown_path"),
-        "blocks": blocks,
+        "planned_session_id": prescription.get("planned_session_id"),
+        "target_basis": target_basis,
+        "target_kind": target_kind,
+        "source_kind": "prescription",
+        "source_text": render_prescription_summary(prescription, group_role="primary"),
+        "comparison_eligibility": "eligible" if target_kind == "single_zone" and target_basis != "mixed" else "limited",
+        "segments": segments,
     }
 
 
-def _build_block_name(item: dict[str, Any]) -> str:
-    label = str(item.get("display_label") or "").strip()
-    if label:
-        return label
-    discipline_family = item.get("discipline_family")
-    if discipline_family == "cycling":
-        return "bicicleta"
-    if discipline_family == "walking":
-        return "paseo"
-    if discipline_family == "running":
-        return "carrera"
-    return str(item.get("item_type") or "bloque")
-
-
-def _build_block_exercises(item: dict[str, Any]) -> list[dict[str, Any]]:
-    if item.get("item_type") != "strength":
-        return []
-    label = _build_block_name(item)
-    return [
-        {
-            "sequence_order": 1,
-            "exercise_name": label,
-            "movement_pattern": None,
-            "equipment": None,
-            "unilateral_mode": "none",
-            "sets_count": None,
-            "reps_min": None,
-            "reps_max": None,
-            "hold_seconds_min": None,
-            "hold_seconds_max": None,
-            "distance_meters": None,
-            "target_rpe_min": None,
-            "target_rpe_max": None,
-            "target_rir_min": None,
-            "target_rir_max": None,
-            "tempo": None,
-            "load_guidance": None,
-            "optional_flag": 0,
-            "substitution_group": None,
-            "notes": None,
-            "options": [],
-        }
+def derive_planned_role_from_prescription(session_row: dict[str, Any], prescription: dict[str, Any] | None) -> str:
+    planned_type = str(session_row.get("planned_type") or "").strip().lower()
+    is_key_session = int(session_row.get("is_key_session") or 0) == 1
+    primary_blocks = [
+        block
+        for block in (prescription or {}).get("blocks", [])
+        if str(block.get("block_role") or "primary") == "primary"
     ]
+    zone_codes = {
+        str(block.get("target_zone_min_code"))
+        for block in primary_blocks
+        if block.get("target_zone_min_code")
+    }
+    primary_families = {
+        str(block.get("discipline_family"))
+        for block in primary_blocks
+        if block.get("discipline_family")
+    }
+
+    if planned_type == "descanso":
+        return "descanso"
+    if planned_type == "recuperacion":
+        return "recuperacion"
+    if planned_type == "activacion":
+        return "activacion-neuromuscular"
+    if planned_type == "fuerza":
+        return "desarrollo-de-fuerza"
+    if planned_type == "salida-larga":
+        return "resistencia-aerobica-extensiva"
+    if planned_type == "referencia-aerobica":
+        return "resistencia-aerobica-principal"
+    if planned_type == "intervals":
+        return "potencia-aerobica"
+    if planned_type == "bicicleta-aerobica":
+        return "resistencia-aerobica-suave"
+    if planned_type == "bicicleta-z2":
+        return "resistencia-aerobica-principal" if is_key_session else "resistencia-aerobica-secundaria"
+    if planned_type == "complementaria":
+        if zone_codes & {"Z4", "Z5"}:
+            return "potencia-aerobica"
+        if "Z2" in zone_codes:
+            return "resistencia-aerobica-secundaria"
+        return "resistencia-aerobica-suave"
+
+    if zone_codes & {"Z4", "Z5"}:
+        return "potencia-aerobica"
+    if "Z2" in zone_codes:
+        return "resistencia-aerobica-principal" if is_key_session else "resistencia-aerobica-secundaria"
+    if "Z1" in zone_codes:
+        return "recuperacion"
+    if "strength_training" in primary_families:
+        return "desarrollo-de-fuerza"
+    return "resistencia-aerobica-principal" if is_key_session else "resistencia-aerobica-suave"
+
+
+def project_planned_session_row_from_prescription(session_row: dict[str, Any], prescription: dict[str, Any] | None) -> dict[str, Any]:
+    projected = dict(session_row)
+    if prescription is None:
+        projected.setdefault("planned_prescription", None)
+        projected.setdefault("planned_activity_groups", [])
+        return projected
+
+    projected["planned_prescription"] = prescription
+    projected["planned_activity_groups"] = build_activity_groups_from_prescription(prescription)
+    primary_summary = render_prescription_summary(prescription, group_role="primary")
+    support_summary = render_prescription_summary(prescription, group_role="support")
+    if primary_summary:
+        projected["primary_session"] = primary_summary
+    if support_summary:
+        projected["complementary_session"] = support_summary
+    if projected.get("duration_min") is None and prescription.get("estimated_duration_min") is not None:
+        projected["duration_min"] = prescription.get("estimated_duration_min")
+    if projected.get("duration_max") is None and prescription.get("estimated_duration_max") is not None:
+        projected["duration_max"] = prescription.get("estimated_duration_max")
+    target = derive_zone_target_from_prescription(prescription)
+    if target is not None:
+        projected["target_basis"] = target.get("target_basis")
+        projected["target_kind"] = target.get("target_kind")
+        projected["source_text"] = target.get("source_text")
+        projected["comparison_eligibility"] = target.get("comparison_eligibility")
+    return projected
+
+
+def collect_matching_family_groups(connection: sqlite3.Connection, session_row: dict[str, Any]) -> list[set[str]]:
+    planned_session_id = int(session_row["planned_session_id"])
+    prescription = get_planned_session_prescription(connection, planned_session_id)
+    if prescription is None:
+        return []
+    groups = build_activity_groups_from_prescription(prescription)
+    matching_groups: list[set[str]] = []
+    for group in groups:
+        families = {
+            str(item["discipline_family"])
+            for item in group["items"]
+            if item.get("discipline_family") in {"cycling", "walking", "running", "strength_training", "yoga"}
+        }
+        if families:
+            matching_groups.append(families)
+    return matching_groups
 
 
 def _prescription_signature(prescription: dict[str, Any] | None) -> dict[str, Any] | None:

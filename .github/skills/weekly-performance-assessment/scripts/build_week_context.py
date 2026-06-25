@@ -14,6 +14,11 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
 DAY_CONTEXT_SCRIPT = REPO_ROOT / ".github" / "skills" / "daily-performance-assessment" / "scripts" / "build_day_context.py"
+BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.planned_prescriptions import get_planned_session_prescription, project_planned_session_row_from_prescription
 
 
 def parse_args() -> argparse.Namespace:
@@ -131,6 +136,9 @@ def main() -> int:
         WHERE week_id = ?
         ORDER BY sequence_in_week, planned_session_id
     """, (week["week_id"],))
+    for session in planned_sessions:
+        prescription = get_planned_session_prescription(connection, int(session["planned_session_id"]))
+        session.update(project_planned_session_row_from_prescription(session, prescription))
     next_week = fetch_one(connection, """
         SELECT mw.week_id, mw.week_code, mw.week_role, mw.objective_primary, mw.start_date, mw.end_date,
                mw.target_volume_hours_min, mw.target_volume_hours_max,
@@ -151,6 +159,9 @@ def main() -> int:
             WHERE week_id = ?
             ORDER BY sequence_in_week, planned_session_id
         """, (next_week["week_id"],))
+        for session in next_week_sessions:
+            prescription = get_planned_session_prescription(connection, int(session["planned_session_id"]))
+            session.update(project_planned_session_row_from_prescription(session, prescription))
 
     metrics_bundle = load_weekly_metrics(int(week["week_id"]))
     day_bundles = [build_day_bundle(day, season_id, args.db) for day in iter_week_dates(str(week["start_date"]), str(week["end_date"]))]

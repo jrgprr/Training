@@ -15,6 +15,40 @@ from app.imports.pipeline import GarminImportPreview
 from app.imports.storage import GarminImportStorage, ImportJobSummary
 from app.imports.contracts import ImportJobBreakdown
 from app.main import get_import_job, get_import_jobs
+from app.planned_prescriptions import replace_planned_session_prescription
+
+
+def make_test_prescription(
+    planned_session_id: int,
+    prescription_type: str,
+    estimated_duration_min: int | None,
+    estimated_duration_max: int | None,
+    blocks: list[dict[str, object]],
+    *,
+    title: str | None = None,
+    focus_primary: str | None = None,
+    focus_secondary: str | None = None,
+) -> dict[str, object]:
+    return {
+        "planned_session_id": planned_session_id,
+        "prescription_type": prescription_type,
+        "discipline_family": None,
+        "title": title,
+        "focus_primary": focus_primary,
+        "focus_secondary": focus_secondary,
+        "estimated_duration_min": estimated_duration_min,
+        "estimated_duration_max": estimated_duration_max,
+        "target_rpe_min": None,
+        "target_rpe_max": None,
+        "warmup_notes": None,
+        "cooldown_notes": None,
+        "execution_notes": None,
+        "adaptation_notes": None,
+        "source_kind": "test",
+        "structure_version": "v1",
+        "source_markdown_path": None,
+        "blocks": blocks,
+    }
 
 
 class GarminConnectCliTests(unittest.TestCase):
@@ -240,35 +274,83 @@ class GarminImportStorageAutoLinkTests(unittest.TestCase):
                             "Z1",
                         ),
                     )
-                    primary_group_id = connection.execute(
-                        """
-                        INSERT INTO plan_session_activity_groups (
-                            planned_session_id, group_role, relation_group, relation_mode, is_optional
-                        ) VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (20101, "primary", 1, "one_of", 0),
-                    ).lastrowid
-                    support_group_id = connection.execute(
-                        """
-                        INSERT INTO plan_session_activity_groups (
-                            planned_session_id, group_role, relation_group, relation_mode, is_optional
-                        ) VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (20101, "support", 2, "all_of", 1),
-                    ).lastrowid
-                    connection.executemany(
-                        """
-                        INSERT INTO plan_session_activity_items (
-                            activity_group_id, sequence_order, item_type, discipline_family,
-                            display_label, duration_min, duration_max, target_basis,
-                            target_zone_min_code, target_zone_max_code
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        [
-                            (primary_group_id, 1, "endurance", "walking", "paseo", 60, 90, None, None, None),
-                            (primary_group_id, 2, "endurance", "cycling", "bicicleta", 60, 90, "heart_rate", "Z1", "Z1"),
-                            (support_group_id, 1, "strength", "strength_training", "fuerza ligera", 20, 20, None, None, None),
-                        ],
+                    replace_planned_session_prescription(
+                        connection,
+                        make_test_prescription(
+                            20101,
+                            "recuperacion",
+                            60,
+                            90,
+                            [
+                                {
+                                    "sequence_order": 1,
+                                    "block_role": "primary",
+                                    "relation_group": 1,
+                                    "relation_mode": "one_of",
+                                    "is_optional": 0,
+                                    "block_type": "endurance",
+                                    "block_name": "paseo",
+                                    "objective": "Soltar carga residual.",
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "walking",
+                                    "duration_min": 60,
+                                    "duration_max": 90,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                                {
+                                    "sequence_order": 2,
+                                    "block_role": "primary",
+                                    "relation_group": 1,
+                                    "relation_mode": "one_of",
+                                    "is_optional": 0,
+                                    "block_type": "endurance",
+                                    "block_name": "bicicleta",
+                                    "objective": None,
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "cycling",
+                                    "duration_min": 60,
+                                    "duration_max": 90,
+                                    "target_basis": "heart_rate",
+                                    "target_zone_min_code": "Z1",
+                                    "target_zone_max_code": "Z1",
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                                {
+                                    "sequence_order": 3,
+                                    "block_role": "support",
+                                    "relation_group": 2,
+                                    "relation_mode": "all_of",
+                                    "is_optional": 1,
+                                    "block_type": "strength",
+                                    "block_name": "fuerza ligera",
+                                    "objective": None,
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "strength_training",
+                                    "duration_min": 20,
+                                    "duration_max": 20,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                            ],
+                            title="recuperacion",
+                        ),
                     )
                     connection.executemany(
                         """
@@ -357,6 +439,62 @@ class GarminImportStorageAutoLinkTests(unittest.TestCase):
                             "Pecho, triceps y hombro 15-20 minutos.",
                         ),
                     )
+                    replace_planned_session_prescription(
+                        connection,
+                        make_test_prescription(
+                            10101,
+                            "activacion",
+                            45,
+                            60,
+                            [
+                                {
+                                    "sequence_order": 1,
+                                    "block_role": "primary",
+                                    "relation_group": 1,
+                                    "relation_mode": "one_of",
+                                    "is_optional": 0,
+                                    "block_type": "endurance",
+                                    "block_name": "paseo",
+                                    "objective": "Abrir la semana con fuerza ligera y sin fatiga.",
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "walking",
+                                    "duration_min": 45,
+                                    "duration_max": 60,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                                {
+                                    "sequence_order": 2,
+                                    "block_role": "support",
+                                    "relation_group": 2,
+                                    "relation_mode": "all_of",
+                                    "is_optional": 1,
+                                    "block_type": "strength",
+                                    "block_name": "fuerza ligera",
+                                    "objective": None,
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "strength_training",
+                                    "duration_min": 15,
+                                    "duration_max": 20,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                            ],
+                            title="activacion",
+                        ),
+                    )
                     connection.executemany(
                         """
                         INSERT INTO exec_activities (
@@ -441,6 +579,62 @@ class GarminImportStorageAutoLinkTests(unittest.TestCase):
                             "Mantener fuerza estructurada ligera con foco en core.",
                             "Paseo suave 20-45 minutos o descanso activo.",
                             "Core 15-20 minutos.",
+                        ),
+                    )
+                    replace_planned_session_prescription(
+                        connection,
+                        make_test_prescription(
+                            10503,
+                            "complementaria",
+                            20,
+                            45,
+                            [
+                                {
+                                    "sequence_order": 1,
+                                    "block_role": "primary",
+                                    "relation_group": 1,
+                                    "relation_mode": "one_of",
+                                    "is_optional": 0,
+                                    "block_type": "endurance",
+                                    "block_name": "paseo",
+                                    "objective": "Mantener fuerza estructurada ligera con foco en core.",
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "walking",
+                                    "duration_min": 20,
+                                    "duration_max": 45,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                                {
+                                    "sequence_order": 2,
+                                    "block_role": "support",
+                                    "relation_group": 2,
+                                    "relation_mode": "all_of",
+                                    "is_optional": 1,
+                                    "block_type": "strength",
+                                    "block_name": "core",
+                                    "objective": None,
+                                    "rounds": None,
+                                    "rest_seconds": None,
+                                    "discipline_family": "strength_training",
+                                    "duration_min": 15,
+                                    "duration_max": 20,
+                                    "target_basis": None,
+                                    "target_zone_min_code": None,
+                                    "target_zone_max_code": None,
+                                    "condition_key": None,
+                                    "condition_value": None,
+                                    "notes": None,
+                                    "exercises": [],
+                                },
+                            ],
+                            title="complementaria",
                         ),
                     )
                     connection.executemany(
@@ -857,6 +1051,8 @@ def create_minimal_exec_tables(connection):
             metric_date TEXT NOT NULL,
             source_system TEXT NOT NULL,
             weight_kg REAL,
+            weight_measured_at TEXT,
+            weight_measurement_source TEXT,
             body_fat_pct REAL,
             body_water_pct REAL,
             bone_mass_kg REAL,

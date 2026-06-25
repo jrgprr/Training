@@ -16,7 +16,7 @@ BACKEND_ROOT = REPO_ROOT / "GUI" / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.planned_sessions import ensure_planned_session_structure, get_planned_session_activity_groups
+from app.planned_prescriptions import build_activity_groups_from_prescription, get_planned_session_prescription, render_prescription_summary
 
 DEFAULT_DB = REPO_ROOT / "Sistema" / "training.sqlite"
 DAILY_ASSESSMENT_ROOT_NAME = "Daily-Assessment-Logbook"
@@ -190,7 +190,7 @@ def infer_planned_summary(connection: sqlite3.Connection, planned_session_id: in
     row = fetch_one(
         connection,
         """
-        SELECT planned_session_id, primary_session, objective
+        SELECT planned_session_id, objective
         FROM plan_planned_sessions
         WHERE planned_session_id = ?
         """,
@@ -198,12 +198,13 @@ def infer_planned_summary(connection: sqlite3.Connection, planned_session_id: in
     )
     if row is None:
         return None
-    ensure_planned_session_structure(connection, row)
-    groups = get_planned_session_activity_groups(connection, int(row["planned_session_id"]))
-    structured_summary = render_planned_activity_groups(groups)
-    primary_session = row.get("primary_session")
+    try:
+        prescription = get_planned_session_prescription(connection, int(row["planned_session_id"]))
+    except sqlite3.OperationalError:
+        prescription = None
+    structured_summary = render_prescription_summary(prescription, group_role="primary")
     objective = row.get("objective")
-    summary = structured_summary or primary_session or objective
+    summary = structured_summary or objective
     if summary and objective and objective not in summary:
         return f"{summary} Objetivo: {objective}"
     return summary
@@ -230,7 +231,7 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
     planned_session = fetch_one(
         connection,
         """
-        SELECT planned_session_id, planned_type, primary_session
+        SELECT planned_session_id, planned_type
         FROM plan_planned_sessions
         WHERE planned_session_id = ? AND session_date = ?
         """,
@@ -239,8 +240,24 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
     if planned_session is None:
         return None
 
-    ensure_planned_session_structure(connection, planned_session)
-    groups = get_planned_session_activity_groups(connection, int(planned_session["planned_session_id"]))
+    try:
+        prescription = get_planned_session_prescription(connection, int(planned_session["planned_session_id"]))
+    except sqlite3.OperationalError:
+        prescription = None
+    groups = build_activity_groups_from_prescription(prescription)
+    if not groups:
+        planned_type = str(planned_session.get("planned_type") or "")
+        inferred_family = "walking" if planned_type == "complementaria" else None
+        if inferred_family is not None:
+            groups = [
+                {
+                    "items": [
+                        {
+                            "discipline_family": inferred_family,
+                        }
+                    ]
+                }
+            ]
     target_groups = [
         {
             item.get("discipline_family")
@@ -278,54 +295,6 @@ def infer_activity_id(connection: sqlite3.Connection, review_date: str, planned_
         used_activity_ids.add(matched_activity_id)
         break
     return matched_activity_id
-
-
-def render_planned_activity_groups(groups: list[dict[str, Any]]) -> str | None:
-    if not groups:
-        return None
-    rendered_groups: list[str] = []
-    for group in groups:
-        item_labels = [render_planned_activity_item(item) for item in group.get("items", [])]
-        item_labels = [label for label in item_labels if label]
-        if not item_labels:
-            continue
-        separator = " + " if group.get("relation_mode") == "all_of" else " o "
-        rendered_groups.append(separator.join(item_labels))
-    return " + ".join(rendered_groups) if rendered_groups else None
-
-
-def render_planned_activity_item(item: dict[str, Any]) -> str | None:
-    label = str(item.get("display_label") or "").strip()
-    if label and "min" in label.lower():
-        return label
-
-    base_label = label or {
-        "cycling": "Bicicleta",
-        "running": "Carrera",
-        "strength_training": "Fuerza",
-        "walking": "Paseo",
-        "yoga": "Movilidad",
-    }.get(item.get("discipline_family"), "Descanso activo" if item.get("item_type") == "rest" else None)
-    if base_label is None:
-        return None
-
-    zone_min = item.get("target_zone_min_code")
-    zone_max = item.get("target_zone_max_code")
-    if zone_min and zone_max and zone_min != zone_max:
-        zone_label = f"{zone_min}-{zone_max}"
-    else:
-        zone_label = zone_min
-
-    duration_min = item.get("duration_min")
-    duration_max = item.get("duration_max")
-    if duration_min is None:
-        duration_label = None
-    elif duration_max is not None and duration_max != duration_min:
-        duration_label = f"{duration_min}-{duration_max} min"
-    else:
-        duration_label = f"{duration_min} min"
-
-    return " ".join(part for part in [base_label, zone_label, duration_label] if part)
 
 
 def ensure_activity_link(

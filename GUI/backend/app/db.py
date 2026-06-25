@@ -3,8 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from .planned_prescriptions import sync_all_planned_session_prescriptions
-from .planned_sessions import ensure_planned_session_structure_schema, sync_all_planned_session_structures
+from .planned_prescriptions import derive_planned_role_from_prescription, get_planned_session_prescription
 
 
 WEEKLY_REVIEW_SCHEMA = """
@@ -672,7 +671,6 @@ def initialize_database() -> None:
         connection.executescript(IMPORT_SCHEMA)
         connection.executescript(PRESCRIPTION_SCHEMA)
         connection.executescript(ZONE_SCHEMA)
-        ensure_planned_session_structure_schema(connection)
         _ensure_prescription_schema(connection)
         _ensure_planned_session_role_schema(connection)
         _ensure_zone_schema(connection)
@@ -683,9 +681,39 @@ def initialize_database() -> None:
         _ensure_exec_activity_weather_schema(connection)
         _ensure_exec_activity_elevation_enrichment_schema(connection)
         _ensure_exec_activity_elevation_enrichment_schema(connection)
-        sync_all_planned_session_structures(connection)
-        sync_all_planned_session_prescriptions(connection)
+        _drop_legacy_planning_artifacts(connection)
+        _clear_legacy_session_text_fields(connection)
         normalize_existing_manual_activity_disciplines(connection)
+
+
+def _drop_legacy_planning_artifacts(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        DROP TABLE IF EXISTS plan_session_zone_segments;
+        DROP TABLE IF EXISTS plan_session_zone_targets;
+        DROP TABLE IF EXISTS plan_session_activity_items;
+        DROP TABLE IF EXISTS plan_session_activity_groups;
+        """
+    )
+
+
+def _clear_legacy_session_text_fields(connection: sqlite3.Connection) -> None:
+    table_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_planned_sessions'"
+    ).fetchone()
+    if table_exists is None:
+        return
+    connection.execute(
+        """
+        UPDATE plan_planned_sessions
+        SET primary_session = NULL,
+            complementary_session = NULL
+        WHERE planned_session_id IN (
+            SELECT planned_session_id
+            FROM plan_session_prescriptions
+        )
+        """
+    )
 
 
 def _ensure_prescription_schema(connection: sqlite3.Connection) -> None:
@@ -738,42 +766,10 @@ def _ensure_planned_session_role_schema(connection: sqlite3.Connection) -> None:
     if "planned_role" not in existing_columns:
         connection.execute("ALTER TABLE plan_planned_sessions ADD COLUMN planned_role TEXT")
 
-    connection.execute(
+    rows = connection.execute(
         """
-        UPDATE plan_planned_sessions
-        SET planned_role = CASE
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'descanso' THEN 'descanso'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'recuperacion' THEN 'recuperacion'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'activacion' THEN 'activacion-neuromuscular'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'fuerza' THEN 'desarrollo-de-fuerza'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'salida-larga' THEN 'resistencia-aerobica-extensiva'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'referencia-aerobica' THEN 'resistencia-aerobica-principal'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'intervals'
-              OR lower(coalesce(primary_session, '')) LIKE '%z4%'
-              OR lower(coalesce(primary_session, '')) LIKE '%z5%'
-              OR lower(coalesce(primary_session, '')) LIKE '%interval%'
-            THEN 'potencia-aerobica'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'bicicleta-aerobica' THEN 'resistencia-aerobica-suave'
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'bicicleta-z2' THEN
-                CASE
-                    WHEN coalesce(is_key_session, 0) = 1 THEN 'resistencia-aerobica-principal'
-                    ELSE 'resistencia-aerobica-secundaria'
-                END
-            WHEN lower(trim(coalesce(planned_type, ''))) = 'complementaria' THEN
-                CASE
-                    WHEN lower(coalesce(primary_session, '')) LIKE '%z2%' THEN 'resistencia-aerobica-secundaria'
-                    WHEN lower(coalesce(primary_session, '')) LIKE '%z4%'
-                      OR lower(coalesce(primary_session, '')) LIKE '%z5%'
-                      OR lower(coalesce(primary_session, '')) LIKE '%interval%'
-                    THEN 'potencia-aerobica'
-                    ELSE 'resistencia-aerobica-suave'
-                END
-            WHEN lower(coalesce(primary_session, '')) LIKE '%descanso activo%'
-              OR lower(coalesce(primary_session, '')) LIKE '%z1%'
-            THEN 'recuperacion'
-            WHEN coalesce(is_key_session, 0) = 1 THEN 'resistencia-aerobica-principal'
-            ELSE 'resistencia-aerobica-suave'
-        END
+        SELECT planned_session_id, planned_type, is_key_session, planned_role
+        FROM plan_planned_sessions
         WHERE planned_role IS NULL OR trim(planned_role) = '' OR lower(trim(planned_role)) IN (
             'activacion',
             'complementaria',
@@ -783,8 +779,17 @@ def _ensure_planned_session_role_schema(connection: sqlite3.Connection) -> None:
             'referencia-aerobica',
             'salida-larga'
         )
+        ORDER BY planned_session_id
         """
-    )
+    ).fetchall()
+    for row in rows:
+        session_row = dict(row)
+        prescription = get_planned_session_prescription(connection, int(session_row["planned_session_id"]))
+        planned_role = derive_planned_role_from_prescription(session_row, prescription)
+        connection.execute(
+            "UPDATE plan_planned_sessions SET planned_role = ? WHERE planned_session_id = ?",
+            (planned_role, int(session_row["planned_session_id"])),
+        )
 
 
 def _ensure_zone_schema(connection: sqlite3.Connection) -> None:
