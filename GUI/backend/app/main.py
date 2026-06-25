@@ -439,7 +439,7 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
         )
          SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_role,
              ps.planned_type AS prescription_type, ps.planned_type,
-               ps.objective AS planned_objective, ps.primary_session AS planned_session,
+                             ps.objective AS planned_objective,
              ps.duration_min, ps.duration_max, ps.is_key_session,
              up.support_routine AS planned_support_routine,
              rr.daily_review_id, mb.season_id AS review_season_id,
@@ -512,7 +512,6 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
     attach_planned_prescriptions(rows)
 
     for row in rows:
-        row["planned_session"] = row.get("primary_session")
         daily_review_id = row.get("daily_review_id")
         review_season_id = row.get("review_season_id")
         markdown_available = False
@@ -973,7 +972,7 @@ def get_activity(activity_id: int) -> dict[str, Any]:
                ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
-                     ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                   ea.avg_pace_seconds_per_km, ea.perceived_exertion,
                      ea.power_sensor_profile, ea.power_sensor_manufacturer,
                      ea.power_sensor_label, ea.power_sensor_metadata_json,
                              (
@@ -1030,7 +1029,7 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
                ea.activity_date, ea.started_at, ea.discipline, ea.activity_type,
                ea.duration_seconds, ea.distance_meters, ea.ascent_meters, ea.calories,
                ea.avg_hr, ea.max_hr, ea.avg_power, ea.normalized_power, ea.training_load,
-                             ea.avg_pace_seconds_per_km, ea.perceived_exertion, ea.subjective_feeling,
+                             ea.avg_pace_seconds_per_km, ea.perceived_exertion,
                          ea.power_sensor_profile, ea.power_sensor_manufacturer,
                          ea.power_sensor_label, ea.power_sensor_metadata_json,
              ea.raw_payload_path, ea.notes,
@@ -1355,7 +1354,7 @@ def get_sessions(week_id: int) -> list[dict[str, Any]]:
         """
              SELECT ps.planned_session_id, ps.session_date, ps.day_name, ps.planned_role,
                      ps.planned_type AS prescription_type, ps.planned_type, ps.objective,
-           ps.primary_session, ps.complementary_session, ps.intensity_class,
+                     ps.intensity_class,
              up.support_routine AS planned_support_routine,
            ps.duration_min, ps.duration_max, ps.is_key_session
         FROM plan_planned_sessions

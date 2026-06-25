@@ -232,7 +232,6 @@ INSERT INTO plan_session_zone_targets (
     target_basis,
     target_kind,
     source_kind,
-    source_text,
     comparison_eligibility
 ) VALUES
 (
@@ -241,7 +240,6 @@ INSERT INTO plan_session_zone_targets (
     'heart_rate',
     'single_zone',
     'derived',
-    'Bicicleta Z2 120-130 minutos, estable y comparable.',
     'eligible'
 ),
 (
@@ -250,14 +248,12 @@ INSERT INTO plan_session_zone_targets (
     'heart_rate',
     'single_zone',
     'derived',
-    'Bicicleta Z2 120-130 minutos.',
     'eligible'
 )
 ON CONFLICT(planned_session_id) DO UPDATE SET
     target_basis = excluded.target_basis,
     target_kind = excluded.target_kind,
     source_kind = excluded.source_kind,
-    source_text = excluded.source_text,
     comparison_eligibility = excluded.comparison_eligibility;
 
 INSERT INTO plan_session_zone_segments (

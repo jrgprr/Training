@@ -328,25 +328,24 @@ ON CONFLICT(planned_session_id) DO UPDATE SET
     markdown_path = excluded.markdown_path;
 
 INSERT INTO plan_session_zone_targets (
-    planned_zone_target_id, planned_session_id, target_basis, target_kind, source_kind, source_text, comparison_eligibility
+    planned_zone_target_id, planned_session_id, target_basis, target_kind, source_kind, comparison_eligibility
 ) VALUES
-(22, 20202, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-135 minutos.', 'eligible'),
-(23, 20204, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-130 minutos.', 'eligible'),
-(24, 20206, 'heart_rate', 'single_zone', 'derived', 'Bicicleta 3h-3h15 en Z2.', 'eligible'),
-(25, 20302, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-135 minutos.', 'eligible'),
-(26, 20304, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-130 minutos.', 'eligible'),
-(27, 20306, 'heart_rate', 'single_zone', 'derived', 'Bicicleta 3h-3h30 en Z2 estable.', 'eligible'),
-(28, 20402, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-140 minutos.', 'eligible'),
-(29, 20404, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-135 minutos.', 'eligible'),
-(30, 20406, 'heart_rate', 'single_zone', 'derived', 'Bicicleta 3h-3h45 en Z2 estable.', 'eligible'),
-(31, 20502, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-130 minutos.', 'eligible'),
-(32, 20504, 'heart_rate', 'single_zone', 'derived', 'Bicicleta Z2 120-125 minutos.', 'eligible'),
-(33, 20506, 'heart_rate', 'single_zone', 'derived', 'Bicicleta 3h-4h en Z2.', 'eligible')
+(22, 20202, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(23, 20204, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(24, 20206, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(25, 20302, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(26, 20304, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(27, 20306, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(28, 20402, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(29, 20404, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(30, 20406, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(31, 20502, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(32, 20504, 'heart_rate', 'single_zone', 'derived', 'eligible'),
+(33, 20506, 'heart_rate', 'single_zone', 'derived', 'eligible')
 ON CONFLICT(planned_session_id) DO UPDATE SET
     target_basis = excluded.target_basis,
     target_kind = excluded.target_kind,
     source_kind = excluded.source_kind,
-    source_text = excluded.source_text,
     comparison_eligibility = excluded.comparison_eligibility;
 
 INSERT INTO plan_session_zone_segments (

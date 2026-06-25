@@ -390,7 +390,6 @@ def derive_zone_target_from_prescription(prescription: dict[str, Any] | None) ->
         "target_basis": target_basis,
         "target_kind": target_kind,
         "source_kind": "prescription",
-        "source_text": render_prescription_summary(prescription, group_role="primary"),
         "comparison_eligibility": "eligible" if target_kind == "single_zone" and target_basis != "mixed" else "limited",
         "segments": segments,
     }
@@ -460,12 +459,6 @@ def project_planned_session_row_from_prescription(session_row: dict[str, Any], p
 
     projected["planned_prescription"] = prescription
     projected["planned_activity_groups"] = build_activity_groups_from_prescription(prescription)
-    primary_summary = render_prescription_summary(prescription, group_role="primary")
-    support_summary = render_prescription_summary(prescription, group_role="support")
-    if primary_summary:
-        projected["primary_session"] = primary_summary
-    if support_summary:
-        projected["complementary_session"] = support_summary
     if projected.get("duration_min") is None and prescription.get("estimated_duration_min") is not None:
         projected["duration_min"] = prescription.get("estimated_duration_min")
     if projected.get("duration_max") is None and prescription.get("estimated_duration_max") is not None:
@@ -474,7 +467,6 @@ def project_planned_session_row_from_prescription(session_row: dict[str, Any], p
     if target is not None:
         projected["target_basis"] = target.get("target_basis")
         projected["target_kind"] = target.get("target_kind")
-        projected["source_text"] = target.get("source_text")
         projected["comparison_eligibility"] = target.get("comparison_eligibility")
     return projected
 

@@ -41,8 +41,6 @@ type Session = {
   prescription_type?: string | null;
   planned_type: string;
   objective: string;
-  primary_session: string;
-  complementary_session: string | null;
   planned_support_routine?: string | null;
   intensity_class: string | null;
   duration_min: number | null;
@@ -176,7 +174,6 @@ type PlannedZoneTarget = {
   target_basis: "heart_rate" | "power" | string | null;
   target_kind: string;
   source_kind: string;
-  source_text: string | null;
   comparison_eligibility: string;
   segments: PlannedZoneTargetSegment[];
 };
@@ -204,7 +201,6 @@ type PlanVsRealRow = {
   prescription_type?: string | null;
   planned_type: string;
   planned_objective: string;
-  planned_session: string;
   planned_support_routine?: string | null;
   duration_min: number | null;
   duration_max: number | null;
@@ -586,7 +582,6 @@ type ActivityDetail = {
   calculated_training_load_source: string;
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
-  subjective_feeling: string | null;
   power_sensor_profile: string | null;
   power_sensor_manufacturer: string | null;
   power_sensor_label: string | null;
@@ -709,7 +704,6 @@ type ActivityListItem = {
   calculated_training_load_source: string;
   avg_pace_seconds_per_km: number | null;
   perceived_exertion: number | null;
-  subjective_feeling: string | null;
   power_sensor_profile: string | null;
   power_sensor_manufacturer: string | null;
   power_sensor_label: string | null;
@@ -1056,7 +1050,6 @@ if (false) {
     calculated_training_load_source: "power_tss",
     avg_pace_seconds_per_km: null,
     perceived_exertion: 7,
-    subjective_feeling: null,
     power_sensor_profile: "pedal_power_meter",
     power_sensor_manufacturer: "GARMIN",
     power_sensor_label: "GARMIN 006-B2787-00 fit:2787 serial:3996467079",
@@ -2171,15 +2164,15 @@ function renderPrescriptionRoleSection(prescription: PlannedPrescription, role: 
 }
 
 function getSessionPrimaryText(session: Session) {
-  return formatPlannedPrescriptionBlocks(session.planned_prescription, "primary") ?? formatPlannedActivityGroups(session.planned_activity_groups, "primary") ?? session.primary_session;
+  return formatPlannedPrescriptionBlocks(session.planned_prescription, "primary") ?? formatPlannedActivityGroups(session.planned_activity_groups, "primary") ?? "-";
 }
 
 function getSessionSupportText(session: Session) {
-  return formatPlannedPrescriptionBlocks(session.planned_prescription, "support") ?? formatPlannedActivityGroups(session.planned_activity_groups, "support") ?? session.complementary_session ?? "-";
+  return formatPlannedPrescriptionBlocks(session.planned_prescription, "support") ?? formatPlannedActivityGroups(session.planned_activity_groups, "support") ?? "-";
 }
 
 function getPlanVsRealPlannedText(row: PlanVsRealRow) {
-  return formatPlannedPrescriptionBlocks(row.planned_prescription) ?? formatPlannedActivityGroups(row.planned_activity_groups) ?? row.planned_session;
+  return formatPlannedPrescriptionBlocks(row.planned_prescription) ?? formatPlannedActivityGroups(row.planned_activity_groups) ?? "-";
 }
 
 function toPlannedRoleLabel(plannedRole: string | null) {
@@ -4398,7 +4391,7 @@ export default function App() {
 
                 {zoneSummaryLabel ? <p className="activity-feed-zones">{zoneSummaryLabel}</p> : null}
 
-                <p className="activity-feed-summary">{activity.actual_summary ?? activity.notes ?? "Sin resumen adicional."}</p>
+                <p className="activity-feed-summary">{activity.actual_summary ?? "Sin revision diaria."}</p>
               </button>
                 );
               })()
@@ -5578,8 +5571,8 @@ export default function App() {
 
               <div className="activity-detail-notes">
                 <p><strong>Captura:</strong> {selectedActivity.source_system === "garmin" ? "Importada desde Garmin Connect y normalizada en SQLite." : "Registrada manualmente y guardada en SQLite."}</p>
-                <p><strong>Resumen:</strong> {selectedActivity.actual_summary ?? selectedActivity.notes ?? "Sin resumen adicional."}</p>
-                <p><strong>Sensacion:</strong> {selectedActivity.general_feeling ?? selectedActivity.subjective_feeling ?? "-"}</p>
+                <p><strong>Resumen:</strong> {selectedActivity.actual_summary ?? "Sin revision diaria."}</p>
+                <p><strong>Sensacion:</strong> {selectedActivity.general_feeling ?? "-"}</p>
                 <p><strong>Decision siguiente:</strong> {selectedActivity.next_day_decision ?? "-"}</p>
                 <p><strong>Racional:</strong> {selectedActivity.rationale ?? "-"}</p>
               </div>

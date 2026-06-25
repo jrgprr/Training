@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from datetime import date, timedelta
 import json
-import re
 import sqlite3
 from pathlib import Path
 from statistics import mean, median
@@ -105,30 +104,11 @@ def load_prescription_target(connection: sqlite3.Connection, planned_session_id:
     unique_zone_pairs = list(dict.fromkeys(zone_pairs))
     target_kind = "single_zone" if len(unique_zone_pairs) == 1 and unique_zone_pairs[0][0] == unique_zone_pairs[0][1] else "multi_segment"
 
-    summary_parts: list[str] = []
-    for row in targeted_rows:
-        label = str(row.get("block_name") or "block").strip()
-        zone_min = str(row["target_zone_min_code"])
-        zone_max = str(row["target_zone_max_code"])
-        zone_label = zone_min if zone_min == zone_max else f"{zone_min}-{zone_max}"
-        duration_min = row.get("duration_min")
-        duration_max = row.get("duration_max")
-        duration_label = None
-        if duration_min and duration_max:
-            duration_label = f"{duration_min}-{duration_max} minutos" if duration_min != duration_max else f"{duration_min} minutos"
-        elif duration_min:
-            duration_label = f"{duration_min} minutos"
-        if duration_label:
-            summary_parts.append(f"{label} {zone_label} {duration_label}")
-        else:
-            summary_parts.append(f"{label} {zone_label}")
-
     return {
         "target_basis": target_basis,
         "target_kind": target_kind,
         "target_zone_min_code": unique_zone_pairs[0][0],
         "target_zone_max_code": unique_zone_pairs[0][1],
-        "source_text": "; ".join(summary_parts),
     }
 
 
@@ -142,7 +122,7 @@ def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> d
                ea.avg_pace_seconds_per_km, ea.training_load, ea.quality_status,
                ea.quality_decision_count, ea.quality_limited_metric_count,
                l.planned_session_id,
-               ps.primary_session, ps.objective, ps.duration_min, ps.duration_max,
+             ps.duration_min, ps.duration_max,
                ps.intensity_class,
                pr.title AS prescription_title,
                pr.estimated_duration_min,
@@ -162,8 +142,6 @@ def load_activity_context(connection: sqlite3.Connection, activity_id: int) -> d
     prescription_target = load_prescription_target(connection, int(activity["planned_session_id"])) if activity.get("planned_session_id") is not None else None
     if prescription_target is not None:
         activity.update(prescription_target)
-        if prescription_target.get("source_text"):
-            activity["primary_session"] = prescription_target.get("source_text")
         if activity.get("duration_min") is None and activity.get("estimated_duration_min") is not None:
             activity["duration_min"] = activity.get("estimated_duration_min")
         if activity.get("duration_max") is None and activity.get("estimated_duration_max") is not None:
@@ -669,11 +647,33 @@ def coefficient_of_variation(values: list[float]) -> float | None:
     return (variance ** 0.5) / avg
 
 
-def extract_target_zone(source_text: str | None) -> str | None:
-    if not source_text:
+def extract_target_zone(activity: dict[str, Any]) -> str | None:
+    zone_min = activity.get("target_zone_min_code")
+    zone_max = activity.get("target_zone_max_code")
+    if not zone_min:
         return None
-    match = re.search(r"\bZ(\d+)\b", source_text.upper())
-    return f"Z{match.group(1)}" if match else None
+    return str(zone_min if zone_min == zone_max or zone_max in (None, "") else zone_min)
+
+
+def format_planned_target(activity: dict[str, Any]) -> str | None:
+    zone_min = activity.get("target_zone_min_code")
+    zone_max = activity.get("target_zone_max_code")
+    duration_min = activity.get("duration_min")
+    duration_max = activity.get("duration_max")
+    parts: list[str] = []
+
+    if activity.get("target_basis"):
+        parts.append(f"base {activity['target_basis']}")
+    if zone_min:
+        zone_label = str(zone_min) if zone_min == zone_max or zone_max in (None, "") else f"{zone_min}-{zone_max}"
+        parts.append(f"zona {zone_label}")
+    if duration_min is not None and duration_max is not None:
+        duration_label = f"{duration_min}-{duration_max} min" if duration_min != duration_max else f"{duration_min} min"
+        parts.append(f"duracion {duration_label}")
+    elif duration_min is not None:
+        parts.append(f"duracion {duration_min} min")
+
+    return "; ".join(parts) or None
 
 
 def format_pace(seconds_per_km: float | None) -> str | None:
@@ -992,7 +992,7 @@ def build_activity_efficiency(
     training_load = float(activity["training_load"]) if activity.get("training_load") not in (None, 0) else None
     ascent_meters = float(activity["ascent_meters"]) if activity.get("ascent_meters") not in (None, 0) else None
     avg_respiration_rate = get_summary_value(summaries, "respiration_rate")
-    target_zone = extract_target_zone(activity.get("source_text"))
+    target_zone = extract_target_zone(activity)
     target_basis = activity.get("target_basis")
     avg_pace_seconds_per_km = float(activity["avg_pace_seconds_per_km"]) if activity.get("avg_pace_seconds_per_km") not in (None, 0) else None
     discipline = str(activity.get("discipline") or "").lower()
@@ -1240,7 +1240,7 @@ def build_analysis(
 
     duration_status, duration_delta = classify_duration_vs_plan(activity)
     execution_vs_plan = duration_status
-    target_zone = extract_target_zone(activity.get("source_text"))
+    target_zone = extract_target_zone(activity)
     dominant_hr_zone = next((row.get("dominant_zone_code") for row in zone_results if row.get("metric_basis") == "heart_rate"), None)
     dominant_power_zone = next((row.get("dominant_zone_code") for row in zone_results if row.get("metric_basis") == "power"), None)
 
@@ -1344,10 +1344,11 @@ def build_analysis(
     if is_pace_endurance and hr_values and avg_pace_formatted:
         analysis_scope = "pace_plus_hr"
 
-    plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; planned text: {activity.get('primary_session') or 'n/a'}." if activity.get("planned_session_id") else "No linked planned session."
+    planned_target = format_planned_target(activity)
+    plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; structured target: {planned_target or 'n/a'}." if activity.get("planned_session_id") else "No linked planned session."
     if is_pace_endurance and avg_pace_formatted:
         if activity.get("planned_session_id"):
-            plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; planned text: {activity.get('primary_session') or 'n/a'}; observed average pace {avg_pace_formatted}."
+            plan_alignment_notes = f"Planned intensity {activity.get('intensity_class') or 'unknown'}; structured target: {planned_target or 'n/a'}; observed average pace {avg_pace_formatted}."
         else:
             plan_alignment_notes = f"No linked planned session. Observed average pace {avg_pace_formatted}."
 

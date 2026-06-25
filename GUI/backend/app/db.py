@@ -591,7 +591,6 @@ CREATE TABLE IF NOT EXISTS plan_session_zone_targets (
     target_basis TEXT,
     target_kind TEXT NOT NULL,
     source_kind TEXT NOT NULL DEFAULT 'explicit',
-    source_text TEXT,
     comparison_eligibility TEXT NOT NULL DEFAULT 'eligible',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
