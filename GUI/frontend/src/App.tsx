@@ -658,6 +658,15 @@ function getSeasonImportDateRange(season: Season, activities: ActivityListItem[]
   };
 }
 
+function getSeasonKpiDateRange(season: Season): SeasonKpiFilterState {
+  const today = getTodayIsoDate();
+  const dateTo = season.end_date < today ? season.end_date : today;
+  return {
+    date_from: season.start_date > dateTo ? dateTo : season.start_date,
+    date_to: dateTo,
+  };
+}
+
 function isDateWithinRange(date: string, startDate: string | null, endDate: string | null) {
   if (!startDate || !endDate) {
     return false;
@@ -723,6 +732,64 @@ type ActivityListItem = {
   next_day_decision: string | null;
   zone_summary?: ActivityZoneSummary;
 };
+
+type KpiTrendItem = {
+  activity_id: number;
+  activity_date: string;
+  started_at: string | null;
+  discipline: string | null;
+  activity_type: string | null;
+  planned_session_id: number | null;
+  planned_type: string | null;
+  week_id: number | null;
+  week_code: string | null;
+  duration_seconds: number | null;
+  distance_meters: number | null;
+  ascent_meters: number | null;
+  avg_hr: number | null;
+  avg_power: number | null;
+  normalized_power: number | null;
+  training_load: number | null;
+  calculated_training_load: number;
+  calculated_training_load_source: string;
+  compliance_status: string | null;
+  quality_status: string | null;
+  sleep_hours: number | null;
+  resting_hr: number | null;
+  stress_avg: number | null;
+  atl: number | null;
+  ctl: number | null;
+  tsb: number | null;
+  efficiency_factor: number | null;
+  variability_index: number | null;
+  load_density: number | null;
+  hr_power_decoupling_percent: number | null;
+  hr_drift_percent: number | null;
+  climbing_vertical_rate_m_per_hour: number | null;
+  climbing_ascent_per_km: number | null;
+  climbing_vertical_gain_per_kj: number | null;
+  performance_condition_average: number | null;
+  time_in_target_share: number | null;
+  time_above_target_share: number | null;
+  target_zone_compliance_status: string | null;
+  dominant_hr_zone: string | null;
+  is_aerobic_reference: boolean;
+  is_key_session: number | null;
+};
+
+type KpiTrendResponse = {
+  season_id: number;
+  discipline: string;
+  item_count: number;
+  items: KpiTrendItem[];
+};
+
+type SeasonKpiFilterState = {
+  date_from: string;
+  date_to: string;
+};
+
+type SeasonKpiRangePreset = "full_season" | "custom";
 
 type ActivityQualitySummaryImpact = {
   summary_kind: string;
@@ -1711,6 +1778,311 @@ function renderWeightTrendChart(
         })}
       </svg>
     </section>
+  );
+}
+
+type TrendMetricConfig = {
+  label: string;
+  suffix?: string;
+  description?: string;
+  getValue: (item: KpiTrendItem) => number | null;
+};
+
+function getTrendMoment(item: KpiTrendItem) {
+  return new Date(item.started_at ?? `${item.activity_date}T00:00:00Z`).getTime();
+}
+
+function formatTrendDateParts(value: string) {
+  const [, month, day] = value.split("-");
+  return { day, month };
+}
+
+function getTrendPointColor(item: KpiTrendItem) {
+  if (item.tsb != null && item.tsb <= -15) {
+    return "#b91c1c";
+  }
+  if (item.tsb != null && item.tsb <= -5) {
+    return "#b45309";
+  }
+  return "#0f766e";
+}
+
+function getScatterPointRadius(item: KpiTrendItem) {
+  const load = item.training_load ?? item.calculated_training_load;
+  if (load >= 180) {
+    return 7.5;
+  }
+  if (load >= 120) {
+    return 6.3;
+  }
+  if (load >= 80) {
+    return 5.4;
+  }
+  return 4.6;
+}
+
+function renderMetricLabel(label: string, description?: string) {
+  return (
+    <tspan className={description ? "trend-chart-label trend-chart-label-help" : "trend-chart-label"}>
+      <title>{description ?? label}</title>
+      {label}
+    </tspan>
+  );
+}
+
+function renderTrendTimelineChart(
+  title: string,
+  subtitle: string,
+  items: KpiTrendItem[],
+  metrics: TrendMetricConfig[],
+  selectedActivityId: number | null,
+  onSelectActivity: (activityId: number) => void,
+) {
+  if (!items.length) {
+    return null;
+  }
+
+  const width = 1200;
+  const leftGutter = 92;
+  const rightGutter = 24;
+  const topGutter = 18;
+  const bottomGutter = 52;
+  const rowHeight = 74;
+  const rowGap = 18;
+  const plotWidth = width - leftGutter - rightGutter;
+  const chartHeight = topGutter + metrics.length * rowHeight + (metrics.length - 1) * rowGap + bottomGutter;
+  const timestamps = items.map(getTrendMoment);
+  const minTimestamp = Math.min(...timestamps);
+  const maxTimestamp = Math.max(...timestamps);
+  const timestampSpan = Math.max(maxTimestamp - minTimestamp, 1);
+  const toX = (timestamp: number) => leftGutter + ((timestamp - minTimestamp) / timestampSpan) * plotWidth;
+
+  const dateTicks = items.map((item) => ({
+    activityId: item.activity_id,
+    date: item.activity_date,
+    x: toX(getTrendMoment(item)),
+  }));
+
+  return (
+    <section className="trend-chart-card panel-subcard">
+      <div className="trend-chart-head">
+        <div>
+          <strong>{title}</strong>
+          <p className="segment-missing-copy">{subtitle}</p>
+        </div>
+      </div>
+      <svg className="trend-chart-svg" viewBox={`0 0 ${width} ${chartHeight}`} role="img" aria-label={title}>
+        {metrics.map((metric, metricIndex) => {
+          const rowTop = topGutter + metricIndex * (rowHeight + rowGap);
+          const rowBottom = rowTop + rowHeight;
+          const rowMid = rowTop + rowHeight / 2;
+          const values = items.flatMap((item) => {
+            const value = metric.getValue(item);
+            return value == null ? [] : [value];
+          });
+
+          if (!values.length) {
+            return null;
+          }
+
+          const minValue = Math.min(...values);
+          const maxValue = Math.max(...values);
+          const valueSpan = Math.max(maxValue - minValue, 1);
+          const points = items.flatMap((item) => {
+            const value = metric.getValue(item);
+            if (value == null) {
+              return [];
+            }
+            return [{
+              item,
+              value,
+              x: toX(getTrendMoment(item)),
+              y: rowBottom - ((value - minValue) / valueSpan) * (rowHeight - 16) - 8,
+            }];
+          });
+          const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+
+          return (
+            <g key={metric.label}>
+              <line x1={leftGutter} y1={rowBottom} x2={width - rightGutter} y2={rowBottom} className="trend-chart-axis" />
+              <line x1={leftGutter} y1={rowTop} x2={leftGutter} y2={rowBottom} className="trend-chart-axis" />
+              <text x={12} y={rowTop + 16}>
+                {renderMetricLabel(metric.label, metric.description)}
+              </text>
+              <text x={12} y={rowMid + 18} className="trend-chart-range">{toMetricLabel(maxValue, metric.suffix ?? "")}</text>
+              <text x={12} y={rowBottom - 4} className="trend-chart-range">{toMetricLabel(minValue, metric.suffix ?? "")}</text>
+              <path d={path} className="trend-chart-line" />
+              {points.map((point) => (
+                <circle
+                  key={point.item.activity_id}
+                  cx={point.x}
+                  cy={point.y}
+                  r={selectedActivityId === point.item.activity_id ? 5.6 : 4.5}
+                  className={selectedActivityId === point.item.activity_id ? "trend-chart-dot selected" : "trend-chart-dot"}
+                  style={{ fill: getTrendPointColor(point.item) }}
+                  onClick={() => onSelectActivity(point.item.activity_id)}
+                >
+                  <title>{`${point.item.activity_date} · ${point.item.activity_type ?? point.item.discipline ?? "actividad"} · ${metric.label}: ${toMetricLabel(point.value, metric.suffix ?? "")}`}</title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+
+        {dateTicks.map((tick, index) => {
+          if (index !== 0 && index !== dateTicks.length - 1 && index % Math.max(Math.floor(dateTicks.length / 5), 1) !== 0) {
+            return null;
+          }
+          return (
+            <g key={`${tick.activityId}-${tick.date}`} transform={`translate(${tick.x.toFixed(1)}, ${chartHeight - 28})`}>
+              <line x1={0} y1={-10} x2={0} y2={-2} className="trend-chart-axis" />
+              <text textAnchor="middle" className="trend-chart-date">
+                <tspan x={0} dy={0}>{formatTrendDateParts(tick.date).day}</tspan>
+                <tspan x={0} dy={11}>{formatTrendDateParts(tick.date).month}</tspan>
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </section>
+  );
+}
+
+function renderCostVsOutputChart(
+  items: KpiTrendItem[],
+  selectedActivityId: number | null,
+  onSelectActivity: (activityId: number) => void,
+) {
+  const scatterItems = items.filter((item) => item.load_density != null && item.efficiency_factor != null);
+  if (!scatterItems.length) {
+    return null;
+  }
+
+  const width = 960;
+  const height = 360;
+  const leftGutter = 72;
+  const rightGutter = 26;
+  const topGutter = 26;
+  const bottomGutter = 58;
+  const plotWidth = width - leftGutter - rightGutter;
+  const plotHeight = height - topGutter - bottomGutter;
+  const minX = Math.min(...scatterItems.map((item) => item.load_density ?? 0));
+  const maxX = Math.max(...scatterItems.map((item) => item.load_density ?? 0));
+  const minY = Math.min(...scatterItems.map((item) => item.efficiency_factor ?? 0));
+  const maxY = Math.max(...scatterItems.map((item) => item.efficiency_factor ?? 0));
+  const xSpan = Math.max(maxX - minX, 1);
+  const ySpan = Math.max(maxY - minY, 0.1);
+  const toX = (value: number) => leftGutter + ((value - minX) / xSpan) * plotWidth;
+  const toY = (value: number) => topGutter + ((maxY - value) / ySpan) * plotHeight;
+  const xTicks = [minX, minX + xSpan / 2, maxX];
+  const yTicks = [maxY, minY + ySpan / 2, minY];
+
+  return (
+    <section className="trend-chart-card panel-subcard">
+      <div className="trend-chart-head">
+        <div>
+          <strong>Cost vs output</strong>
+          <p className="segment-missing-copy">Cada punto es una actividad. Eje X: load density. Eje Y: efficiency factor. El color aproxima la frescura por TSB.</p>
+        </div>
+        <div className="scatter-chart-legend" aria-label="Leyenda de frescura">
+          <span><i className="scatter-chart-swatch scatter-chart-swatch-fresh" />TSB mejor que -5</span>
+          <span><i className="scatter-chart-swatch scatter-chart-swatch-loaded" />TSB entre -5 y -15</span>
+          <span><i className="scatter-chart-swatch scatter-chart-swatch-fatigued" />TSB peor que -15</span>
+        </div>
+      </div>
+      <svg className="trend-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de coste frente a output">
+        {xTicks.map((tick) => (
+          <g key={`x-${tick}`}>
+            <line x1={toX(tick)} y1={topGutter} x2={toX(tick)} y2={height - bottomGutter} className="trend-chart-grid" />
+            <text x={toX(tick)} y={height - 18} textAnchor="middle" className="trend-chart-date">{toMetricLabel(tick)}</text>
+          </g>
+        ))}
+        {yTicks.map((tick) => (
+          <g key={`y-${tick}`}>
+            <line x1={leftGutter} y1={toY(tick)} x2={width - rightGutter} y2={toY(tick)} className="trend-chart-grid" />
+            <text x={14} y={toY(tick) + 4} className="trend-chart-range">{toMetricLabel(tick)}</text>
+          </g>
+        ))}
+        <line x1={leftGutter} y1={height - bottomGutter} x2={width - rightGutter} y2={height - bottomGutter} className="trend-chart-axis" />
+        <line x1={leftGutter} y1={topGutter} x2={leftGutter} y2={height - bottomGutter} className="trend-chart-axis" />
+        <text x={width / 2} y={height - 4} textAnchor="middle">
+          {renderMetricLabel("Load density", "Carga por hora de sesion. Mas a la derecha implica mas coste interno concentrado en menos tiempo.")}
+        </text>
+        <text x={20} y={topGutter - 6}>
+          {renderMetricLabel("Efficiency factor", "Relacion entre potencia normalizada y frecuencia cardiaca media. Mas arriba implica mas output por latido para actividades comparables.")}
+        </text>
+        {scatterItems.map((item) => {
+          const x = toX(item.load_density ?? 0);
+          const y = toY(item.efficiency_factor ?? 0);
+          return (
+            <circle
+              key={item.activity_id}
+              cx={x}
+              cy={y}
+              r={selectedActivityId === item.activity_id ? getScatterPointRadius(item) + 1.2 : getScatterPointRadius(item)}
+              className={selectedActivityId === item.activity_id ? "scatter-chart-dot selected" : "scatter-chart-dot"}
+              style={{ fill: getTrendPointColor(item) }}
+              onClick={() => onSelectActivity(item.activity_id)}
+            >
+              <title>{`${item.activity_date} · load density ${toMetricLabel(item.load_density)} · efficiency factor ${toMetricLabel(item.efficiency_factor)} · TSB ${toMetricLabel(item.tsb)}`}</title>
+            </circle>
+          );
+        })}
+      </svg>
+    </section>
+  );
+}
+
+function renderPerformanceCharts(
+  items: KpiTrendItem[],
+  selectedActivityId: number | null,
+  onSelectActivity: (activityId: number) => void,
+) {
+  if (!items.length) {
+    return null;
+  }
+
+  const aerobicReferenceItems = items.filter((item) => item.is_aerobic_reference);
+  const fitnessMetrics: TrendMetricConfig[] = [
+    { label: "Efficiency factor", description: "Relacion entre potencia normalizada y frecuencia cardiaca media. Mas alto suele indicar mejor output aerobico para el mismo coste cardiaco.", getValue: (item) => item.efficiency_factor },
+    { label: "Decoupling", suffix: "%", description: "Cambio de la relacion entre pulso y potencia entre la primera y la segunda mitad. Valores pequenos suelen indicar mejor durabilidad aerobica.", getValue: (item) => item.hr_power_decoupling_percent },
+    { label: "Climbing vertical rate", suffix: " m/h", description: "Velocidad vertical en subida. Resume cuanto desnivel asciendes por hora cuando la ruta incluye escalada util.", getValue: (item) => item.climbing_vertical_rate_m_per_hour },
+    { label: "Load density", description: "Carga por hora de sesion. Ayuda a distinguir dias largos y suaves de dias cortos con mucho coste interno.", getValue: (item) => item.load_density },
+    { label: "TSB", description: "Training Stress Balance. Mas negativo implica mas fatiga acumulada; mas cercano a cero o positivo implica mas frescura.", getValue: (item) => item.tsb },
+  ];
+
+  return (
+    <>
+      <div className="summary-strip performance-summary-strip">
+        <article>
+          <strong>{items.length}</strong>
+          <span>Actividades de tendencia</span>
+          <small>Ciclismo con KPI tecnico disponible</small>
+        </article>
+        <article>
+          <strong>{aerobicReferenceItems.length}</strong>
+          <span>Referencias aerobicas</span>
+          <small>Sesiones planificadas como referencia-aerobica o bicicleta-z2</small>
+        </article>
+        <article>
+          <strong>{items.filter((item) => item.tsb != null && item.tsb <= -15).length}</strong>
+          <span>Alta fatiga</span>
+          <small>Sesiones ejecutadas con TSB peor que -15</small>
+        </article>
+      </div>
+
+      <div className="performance-chart-grid">
+        {renderTrendTimelineChart(
+          "Fitness trend",
+          "Lectura longitudinal de output, durabilidad y contexto de frescura. Pulsa un punto para abrir la actividad real.",
+          items,
+          fitnessMetrics,
+          selectedActivityId,
+          onSelectActivity,
+        )}
+        {renderCostVsOutputChart(items, selectedActivityId, onSelectActivity)}
+      </div>
+    </>
   );
 }
 
@@ -3010,6 +3382,9 @@ export default function App() {
   const [selectedActivityQuality, setSelectedActivityQuality] = useState<ActivityQualityDetail | null>(null);
   const [selectedActivityRunningDynamicsHistory, setSelectedActivityRunningDynamicsHistory] = useState<RunningDynamicsHistoryResponse | null>(null);
   const [seasonActivities, setSeasonActivities] = useState<ActivityListItem[]>([]);
+  const [seasonKpiTrends, setSeasonKpiTrends] = useState<KpiTrendItem[]>([]);
+  const [seasonKpiFilter, setSeasonKpiFilter] = useState<SeasonKpiFilterState>({ date_from: "", date_to: getTodayIsoDate() });
+  const [seasonKpiRangePreset, setSeasonKpiRangePreset] = useState<SeasonKpiRangePreset>("full_season");
   const [zoneProposals, setZoneProposals] = useState<ZoneProposalItem[]>([]);
   const [currentZoneProfiles, setCurrentZoneProfiles] = useState<CurrentZoneProfilesResponse | null>(null);
   const [physiologicalAnchorsForm, setPhysiologicalAnchorsForm] = useState<PhysiologicalAnchorsFormState>(emptyPhysiologicalAnchorsForm);
@@ -3037,6 +3412,7 @@ export default function App() {
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
+  const [loadingSeasonKpis, setLoadingSeasonKpis] = useState(false);
   const [loadingDailyMetric, setLoadingDailyMetric] = useState(false);
   const [loadingDailyAssessment, setLoadingDailyAssessment] = useState(false);
   const [loadingBlockAssessment, setLoadingBlockAssessment] = useState(false);
@@ -3060,6 +3436,7 @@ export default function App() {
   const selectedPlanVsRealRow = planVsRealRows.find((row) => row.planned_session_id === selectedPlannedSessionId) ?? null;
   const selectedPlannedSessionActivities = selectedPlanVsRealRow ? getPlanVsRealActivities(selectedPlanVsRealRow) : [];
   const selectedLinkedActivity = selectedPlannedSessionActivities.length === 1 ? selectedPlannedSessionActivities[0] : null;
+  const aerobicReferenceTrendCount = seasonKpiTrends.filter((item) => item.is_aerobic_reference).length;
 
   useEffect(() => {
     if (selectedPlannedSessionId == null) {
@@ -3220,6 +3597,33 @@ export default function App() {
     }
   }
 
+  async function loadSeasonKpiTrends(seasonId: number, filters: SeasonKpiFilterState) {
+    try {
+      setLoadingSeasonKpis(true);
+      const params = new URLSearchParams({
+        discipline: "cycling",
+        limit: "365",
+      });
+      if (filters.date_from) {
+        params.set("date_from", filters.date_from);
+      }
+      if (filters.date_to) {
+        params.set("date_to", filters.date_to);
+      }
+      const payload = await fetchJson<KpiTrendResponse>(`/api/seasons/${seasonId}/kpi-trends?${params.toString()}`);
+      setSeasonKpiTrends(payload.items);
+      return payload.items;
+    } catch (requestError) {
+      if (isNotFoundError(requestError)) {
+        setSeasonKpiTrends([]);
+        return [];
+      }
+      throw requestError;
+    } finally {
+      setLoadingSeasonKpis(false);
+    }
+  }
+
   async function loadSegmentHistory(segmentId: number, historyLimit: number = segmentHistoryLimit) {
     try {
       setLoadingSegmentHistory(true);
@@ -3242,6 +3646,64 @@ export default function App() {
     setSegmentHistoryLimit(nextLimit);
     if (selectedSegmentId != null) {
       await loadSegmentHistory(selectedSegmentId, nextLimit);
+    }
+  }
+
+  function handleSeasonKpiFilterInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target;
+    setSeasonKpiRangePreset("custom");
+    setSeasonKpiFilter((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function handleSeasonKpiRangePresetChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextPreset = event.target.value as SeasonKpiRangePreset;
+    setSeasonKpiRangePreset(nextPreset);
+    if (!selectedSeason) {
+      return;
+    }
+    if (nextPreset === "full_season") {
+      const nextRange = getSeasonKpiDateRange(selectedSeason);
+      setSeasonKpiFilter(nextRange);
+      setError(null);
+      try {
+        await loadSeasonKpiTrends(selectedSeason.season_id, nextRange);
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+      }
+    }
+  }
+
+  async function applySeasonKpiFilter() {
+    if (!selectedSeason) {
+      return;
+    }
+    if (seasonKpiFilter.date_from && seasonKpiFilter.date_to && seasonKpiFilter.date_from > seasonKpiFilter.date_to) {
+      setError("El rango KPI no es valido: la fecha inicial no puede ser posterior a la final.");
+      return;
+    }
+    setError(null);
+    try {
+      await loadSeasonKpiTrends(selectedSeason.season_id, seasonKpiFilter);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    }
+  }
+
+  async function resetSeasonKpiFilter() {
+    if (!selectedSeason) {
+      return;
+    }
+    const nextRange = getSeasonKpiDateRange(selectedSeason);
+    setSeasonKpiRangePreset("full_season");
+    setSeasonKpiFilter(nextRange);
+    setError(null);
+    try {
+      await loadSeasonKpiTrends(selectedSeason.season_id, nextRange);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     }
   }
 
@@ -3302,12 +3764,17 @@ export default function App() {
       setSelectedSegmentId(null);
       setSelectedSegmentHistory(null);
       setSeasonActivities([]);
+      setSeasonKpiTrends([]);
+      const nextKpiRange = getSeasonKpiDateRange(season);
+      setSeasonKpiRangePreset("full_season");
+      setSeasonKpiFilter(nextKpiRange);
       setWeeks([]);
       setSessions([]);
       setPlanVsRealRows([]);
       const [data, activities] = await Promise.all([
         fetchJson<Block[]>(`/api/seasons/${season.season_id}/blocks`),
         loadSeasonActivities(season.season_id),
+        loadSeasonKpiTrends(season.season_id, nextKpiRange),
         loadSegments(season.season_id),
         loadZoneProposals(season.season_id),
         loadCurrentZoneProfiles(season.season_id),
@@ -3921,6 +4388,76 @@ export default function App() {
 
       {selectedDailyMetric?.load_model?.trend?.length ? renderLoadModelChart(selectedDailyMetric.load_model, "panel load-chart-card load-chart-panel-top") : null}
       {selectedDailyMetric?.weight_trend?.length ? renderWeightTrendChart(selectedDailyMetric.weight_trend, selectedDailyMetric.weight_measurements ?? [], "panel weight-chart-card load-chart-panel-top") : null}
+
+      {selectedSeason ? (
+        <section className="performance-panel panel load-chart-panel-top">
+          <div className="section-heading performance-heading">
+            <div>
+              <h2>Performance</h2>
+              <p className="section-subtitle">KPIs longitudinales para comparar fitness, referencias aerobicas y coste frente a output en la temporada activa.</p>
+            </div>
+            <form
+              className="performance-filter-bar"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void applySeasonKpiFilter();
+              }}
+            >
+              <label>
+                Rango
+                <select value={seasonKpiRangePreset} onChange={(event) => void handleSeasonKpiRangePresetChange(event)}>
+                  <option value="full_season">Temporada completa</option>
+                  <option value="custom">Personalizado</option>
+                </select>
+              </label>
+              <label>
+                Desde
+                <input
+                  name="date_from"
+                  type="date"
+                  value={seasonKpiFilter.date_from}
+                  min={selectedSeason.start_date}
+                  max={seasonKpiFilter.date_to || selectedSeason.end_date}
+                  disabled={seasonKpiRangePreset === "full_season"}
+                  onChange={handleSeasonKpiFilterInputChange}
+                />
+              </label>
+              <label>
+                Hasta
+                <input
+                  name="date_to"
+                  type="date"
+                  value={seasonKpiFilter.date_to}
+                  min={seasonKpiFilter.date_from || selectedSeason.start_date}
+                  max={selectedSeason.end_date < getTodayIsoDate() ? selectedSeason.end_date : getTodayIsoDate()}
+                  disabled={seasonKpiRangePreset === "full_season"}
+                  onChange={handleSeasonKpiFilterInputChange}
+                />
+              </label>
+              <div className="performance-filter-actions">
+                <button className="secondary-button" type="submit" disabled={loadingSeasonKpis}>Aplicar</button>
+                <button className="ghost-button" type="button" onClick={() => void resetSeasonKpiFilter()} disabled={loadingSeasonKpis || seasonKpiRangePreset === "full_season"}>Restablecer</button>
+              </div>
+            </form>
+          </div>
+
+          {loadingSeasonKpis ? (
+            <div className="empty-state-card empty-state-card-wide">
+              <strong>Cargando KPIs de rendimiento</strong>
+              <p>Calculando eficiencia, decoupling, load density y contexto de carga de las actividades de ciclismo.</p>
+            </div>
+          ) : seasonKpiTrends.length > 0 ? (
+            renderPerformanceCharts(seasonKpiTrends, selectedActivity?.activity_id ?? null, (activityId) => {
+              void loadActivityDetail(activityId);
+            })
+          ) : (
+            <div className="empty-state-card empty-state-card-wide">
+              <strong>Sin series KPI disponibles</strong>
+              <p>No hay actividades de ciclismo con analisis tecnico en el rango seleccionado.</p>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section className="import-layout">
         <section className="panel import-panel">

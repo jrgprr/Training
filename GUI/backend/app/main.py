@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 import sys
 from typing import Any
@@ -26,6 +27,17 @@ WEEKLY_ASSESSMENT_ROOT_NAME = "Weekly-Assessment-Logbook"
 BLOCK_ASSESSMENT_ROOT_NAME = "Block-Assessment-Logbook"
 WEIGHT_ASSESSMENT_ROOT_NAME = "Weight-Assessment-Logbook"
 RUNNING_DISCIPLINES = {"running", "trail_running", "track_running", "treadmill_running"}
+CYCLING_DISCIPLINES = {
+    "road_biking",
+    "gravel_biking",
+    "mountain_biking",
+    "indoor_cycling",
+    "virtual_cycling",
+    "cyclocross",
+    "bike_commuting",
+    "e_biking",
+    "hand_cycling",
+}
 RUNNING_DYNAMICS_METRIC_NAMES = (
     "cadence_double",
     "run_cadence",
@@ -219,6 +231,79 @@ def get_activity_metric_analysis(activity_id: int) -> dict[str, Any] | None:
     finally:
         if scripts_path in sys.path:
             sys.path.remove(scripts_path)
+
+
+def resolve_kpi_trend_disciplines(discipline: str | None) -> tuple[str, ...]:
+    normalized = (discipline or "cycling").strip().lower()
+    if normalized == "cycling":
+        return tuple(sorted(CYCLING_DISCIPLINES))
+    return (normalized,)
+
+
+def ensure_iso_date(value: str, field_name: str) -> str:
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} debe usar formato ISO YYYY-MM-DD.") from exc
+    return value
+
+
+def build_activity_kpi_trend_item(row: dict[str, Any]) -> dict[str, Any]:
+    activity_id = int(row["activity_id"])
+    season_id = int(row["season_id"])
+    activity_date = str(row["activity_date"])
+    calculated_load = compute_activity_load(row, season_id=season_id)
+    load_model = get_load_model_snapshot(season_id=season_id, metric_date=activity_date)
+    activity_analysis = get_activity_metric_analysis(activity_id)
+    analysis = activity_analysis or {}
+    activity_efficiency = analysis.get("activity_efficiency") or {}
+    target_zone_compliance = activity_efficiency.get("target_zone_compliance") or {}
+    performance_condition = analysis.get("performance_condition_signal") or {}
+    climbing_efficiency = activity_efficiency.get("climbing_efficiency") or {}
+
+    return {
+        "activity_id": activity_id,
+        "activity_date": row.get("activity_date"),
+        "started_at": row.get("started_at"),
+        "discipline": row.get("discipline"),
+        "activity_type": row.get("activity_type"),
+        "planned_session_id": row.get("planned_session_id"),
+        "planned_type": row.get("planned_type"),
+        "week_id": row.get("week_id"),
+        "week_code": row.get("week_code"),
+        "duration_seconds": row.get("duration_seconds"),
+        "distance_meters": row.get("distance_meters"),
+        "ascent_meters": row.get("ascent_meters"),
+        "avg_hr": row.get("avg_hr"),
+        "avg_power": row.get("avg_power"),
+        "normalized_power": row.get("normalized_power"),
+        "training_load": row.get("training_load"),
+        "calculated_training_load": round(float(calculated_load["load_value"]), 2),
+        "calculated_training_load_source": calculated_load["load_source"],
+        "compliance_status": row.get("compliance_status"),
+        "quality_status": row.get("quality_status"),
+        "sleep_hours": row.get("sleep_hours"),
+        "resting_hr": row.get("resting_hr"),
+        "stress_avg": row.get("stress_avg"),
+        "atl": load_model.get("atl") if load_model else None,
+        "ctl": load_model.get("ctl") if load_model else None,
+        "tsb": load_model.get("tsb") if load_model else None,
+        "efficiency_factor": (activity_efficiency.get("efficiency_factor") or {}).get("current"),
+        "variability_index": (activity_efficiency.get("variability_index") or {}).get("current"),
+        "load_density": (activity_efficiency.get("load_density") or {}).get("current"),
+        "hr_power_decoupling_percent": analysis.get("hr_power_decoupling_percent"),
+        "hr_drift_percent": analysis.get("hr_drift_percent"),
+        "climbing_vertical_rate_m_per_hour": (climbing_efficiency.get("vertical_rate_m_per_hour") or {}).get("current"),
+        "climbing_ascent_per_km": (climbing_efficiency.get("ascent_per_km") or {}).get("current"),
+        "climbing_vertical_gain_per_kj": (climbing_efficiency.get("vertical_gain_per_kj") or {}).get("current"),
+        "performance_condition_average": performance_condition.get("average"),
+        "time_in_target_share": target_zone_compliance.get("time_in_target_share"),
+        "time_above_target_share": target_zone_compliance.get("time_above_target_share"),
+        "target_zone_compliance_status": target_zone_compliance.get("status"),
+        "dominant_hr_zone": analysis.get("dominant_hr_zone"),
+        "is_aerobic_reference": row.get("planned_type") in {"referencia-aerobica", "bicicleta-z2"},
+        "is_key_session": row.get("is_key_session"),
+    }
 
 
 def get_daily_assessment_markdown_path(season_id: int, review_date: str, planned_session_id: int | None) -> Path:
@@ -1056,6 +1141,75 @@ def get_season_activities(season_id: int) -> list[dict[str, Any]]:
         row["calculated_training_load_source"] = calculated_load["load_source"]
         row["zone_summary"] = zone_summaries.get(int(row["activity_id"]), {})
     return rows
+
+
+@app.get("/api/seasons/{season_id}/kpi-trends")
+def get_season_kpi_trends(
+    season_id: int,
+    discipline: str = "cycling",
+    limit: int = 180,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="limit debe ser mayor que cero.")
+    if limit > 365:
+        raise HTTPException(status_code=400, detail="limit no puede ser mayor que 365.")
+
+    if date_from is not None:
+        date_from = ensure_iso_date(date_from, "date_from")
+    if date_to is not None:
+        date_to = ensure_iso_date(date_to, "date_to")
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise HTTPException(status_code=400, detail="date_from no puede ser posterior a date_to.")
+
+    discipline_values = resolve_kpi_trend_disciplines(discipline)
+    placeholders = ",".join("?" for _ in discipline_values)
+    where_clauses = [
+        "ea.season_id = ?",
+        f"ea.discipline IN ({placeholders})",
+    ]
+    parameters: list[Any] = [season_id, *discipline_values]
+
+    if date_from is not None:
+        where_clauses.append("ea.activity_date >= ?")
+        parameters.append(date_from)
+    if date_to is not None:
+        where_clauses.append("ea.activity_date <= ?")
+        parameters.append(date_to)
+
+    rows = fetch_all(
+        f"""
+        SELECT ea.activity_id, ea.season_id, ea.activity_date, ea.started_at,
+               ea.discipline, ea.activity_type, ea.duration_seconds, ea.distance_meters,
+               ea.ascent_meters, ea.avg_hr, ea.avg_power, ea.normalized_power,
+               ea.training_load, ea.quality_status,
+               l.planned_session_id, l.compliance_status,
+               ps.planned_type, ps.is_key_session, ps.week_id,
+               w.week_code,
+               dm.sleep_hours, dm.resting_hr, dm.stress_avg
+        FROM exec_activities ea
+        LEFT JOIN link_plan_execution l ON l.activity_id = ea.activity_id
+        LEFT JOIN plan_planned_sessions ps ON ps.planned_session_id = l.planned_session_id
+        LEFT JOIN plan_micro_weeks w ON w.week_id = ps.week_id
+        LEFT JOIN exec_daily_metrics dm
+               ON dm.season_id = ea.season_id
+              AND dm.metric_date = ea.activity_date
+              AND dm.source_system = ea.source_system
+                WHERE {' AND '.join(where_clauses)}
+        ORDER BY ea.activity_date ASC, COALESCE(ea.started_at, ea.activity_date) ASC, ea.activity_id ASC
+        LIMIT ?
+        """,
+                (*parameters, limit),
+    )
+
+    items = [build_activity_kpi_trend_item(row) for row in rows]
+    return {
+        "season_id": season_id,
+        "discipline": discipline,
+        "item_count": len(items),
+        "items": items,
+    }
 
 @app.get("/api/seasons/{season_id}/daily-metrics/{metric_date}")
 def get_season_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
