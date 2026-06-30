@@ -565,6 +565,7 @@ class TrainingZoneSchemaTests(unittest.TestCase):
         self.assertIn("calculated_training_load_source", payload[0])
         self.assertIn("zone_summary", payload[0])
         self.assertEqual(payload[0]["zone_summary"]["heart_rate"]["dominant_zone_code"], "Z2")
+        self.assertEqual(payload[0]["zone_summary"]["heart_rate"]["training_zone_code"], "Z2")
         self.assertEqual(payload[0]["zone_summary"]["heart_rate"]["zone_profile_id"], 12)
         self.assertEqual(payload[0]["zone_summary"]["power"]["calculation_status"], "limited")
         self.assertEqual(payload[0]["zone_summary"]["power"]["limiting_reasons"], ["insufficient_power_samples"])
@@ -1352,9 +1353,108 @@ class TrainingZoneComparisonTests(unittest.TestCase):
         self.assertEqual(payload[100][0]["comparison_status"], "aligned")
         self.assertEqual(payload[100][0]["metric_basis"], "heart_rate")
         self.assertEqual(payload[100][0]["target_zone_min_code"], "Z2")
+        self.assertEqual(payload[100][0]["training_zone_code"], "Z2")
         self.assertEqual(payload[101][0]["comparison_status"], "limited")
         self.assertEqual(payload[101][0]["metric_basis"], "power")
         self.assertEqual(payload[101][0]["dominant_zone_code"], None)
+
+    def test_list_session_zone_comparisons_uses_training_zone_not_dominant_bucket(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "training.sqlite"
+            with patch("app.db.get_database_path", return_value=database_path), patch("app.db.normalize_existing_manual_activity_disciplines"):
+                initialize_database()
+                with sqlite3.connect(database_path) as connection:
+                    connection.row_factory = sqlite3.Row
+                    connection.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS plan_seasons (
+                            season_id INTEGER PRIMARY KEY,
+                            season_code TEXT NOT NULL,
+                            season_name TEXT NOT NULL,
+                            start_date TEXT NOT NULL,
+                            end_date TEXT NOT NULL,
+                            status TEXT NOT NULL DEFAULT 'active',
+                            notes TEXT
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_meso_blocks (
+                            block_id INTEGER PRIMARY KEY,
+                            season_id INTEGER NOT NULL,
+                            block_code TEXT NOT NULL,
+                            block_name TEXT NOT NULL,
+                            phase_name TEXT,
+                            start_date TEXT NOT NULL,
+                            end_date TEXT NOT NULL
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_micro_weeks (
+                            week_id INTEGER PRIMARY KEY,
+                            block_id INTEGER NOT NULL,
+                            week_code TEXT NOT NULL,
+                            week_role TEXT,
+                            start_date TEXT NOT NULL,
+                            end_date TEXT NOT NULL
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_planned_sessions (
+                            planned_session_id INTEGER PRIMARY KEY,
+                            week_id INTEGER NOT NULL,
+                            session_date TEXT NOT NULL,
+                            day_name TEXT,
+                            sequence_in_week INTEGER,
+                            planned_type TEXT,
+                            objective TEXT,
+                            duration_min INTEGER,
+                            duration_max INTEGER,
+                            is_key_session INTEGER NOT NULL DEFAULT 0
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_session_zone_targets (
+                            planned_zone_target_id INTEGER PRIMARY KEY,
+                            planned_session_id INTEGER NOT NULL UNIQUE,
+                            target_basis TEXT,
+                            target_kind TEXT,
+                            source_kind TEXT,
+                            comparison_eligibility TEXT
+                        );
+                        CREATE TABLE IF NOT EXISTS plan_session_zone_segments (
+                            planned_zone_segment_id INTEGER PRIMARY KEY,
+                            planned_zone_target_id INTEGER NOT NULL,
+                            sequence_order INTEGER NOT NULL,
+                            target_zone_min_code TEXT,
+                            target_zone_max_code TEXT
+                        );
+                        CREATE TABLE IF NOT EXISTS link_plan_execution (
+                            link_id INTEGER PRIMARY KEY,
+                            planned_session_id INTEGER,
+                            activity_id INTEGER,
+                            compliance_status TEXT,
+                            rationale TEXT
+                        );
+                        """
+                    )
+                    connection.execute("INSERT INTO plan_seasons VALUES (2026, '2026', 'Temporada 2026', '2026-01-01', '2026-12-31', 'active', NULL)")
+                    connection.execute("INSERT INTO plan_meso_blocks VALUES (1, 2026, 'B1', 'Block', 'Base', '2026-05-01', '2026-05-31')")
+                    connection.execute("INSERT INTO plan_micro_weeks VALUES (20, 1, 'Semana-01', 'Base', '2026-05-19', '2026-05-25')")
+                    connection.execute("INSERT INTO plan_planned_sessions VALUES (100, 20, '2026-05-19', 'Lunes', 1, 'bike', 'Tempo', 90, 90, 1)")
+                    connection.execute("INSERT INTO plan_session_zone_targets VALUES (10, 100, 'power', 'single_zone', 'generated', 'eligible')")
+                    connection.execute("INSERT INTO plan_session_zone_segments VALUES (11, 10, 1, 'Z3', 'Z3')")
+                    connection.execute("INSERT INTO exec_activities (activity_id, season_id, source_system, external_activity_id, activity_date, started_at, discipline, activity_type, duration_seconds, avg_power, quality_status) VALUES (500, 2026, 'garmin', '500', '2026-05-19', '2026-05-19T08:00:00Z', 'road_biking', 'Ride', 5400, 210, 'filtered')")
+                    connection.execute("INSERT INTO link_plan_execution VALUES (1, 100, 500, 'completed', 'linked')")
+                    connection.execute("INSERT INTO zone_profiles (zone_profile_id, season_id, discipline, metric_basis, profile_label, governance_status, effective_start_date) VALUES (2, 2026, 'cycling', 'power', 'cycling power', 'accepted', '2026-05-01')")
+                    connection.execute("INSERT INTO exec_activity_zone_results (activity_zone_result_id, activity_id, zone_profile_id, metric_basis, calculation_status, quality_status_snapshot, supported_sample_count, total_supported_seconds, dominant_zone_code, dominant_zone_share) VALUES (20, 500, 2, 'power', 'calculated', 'filtered', 300, 5400, 'Z1', 0.38)")
+                    connection.executemany(
+                        "INSERT INTO exec_activity_zone_buckets (activity_zone_result_id, zone_index, zone_code, seconds_in_zone, share_in_zone, sample_count) VALUES (?, ?, ?, ?, ?, ?)",
+                        [
+                            (20, 1, 'Z1', 1800, 0.3333, 100),
+                            (20, 2, 'Z2', 600, 0.1111, 40),
+                            (20, 3, 'Z3', 2100, 0.3889, 120),
+                            (20, 4, 'Z4', 900, 0.1667, 40),
+                        ],
+                    )
+                    connection.commit()
+
+                payload = list_session_zone_comparisons(20)
+
+        self.assertEqual(payload[100][0]["dominant_zone_code"], "Z1")
+        self.assertEqual(payload[100][0]["training_zone_code"], "Z3")
+        self.assertEqual(payload[100][0]["comparison_status"], "aligned")
 
     def test_get_week_zone_comparison_summary_distinguishes_bases(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

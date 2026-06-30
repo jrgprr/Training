@@ -190,6 +190,8 @@ type ZoneComparisonItem = {
   calculation_status: string | null;
   dominant_zone_code: string | null;
   dominant_zone_share: number | null;
+  training_zone_code?: string | null;
+  training_zone_share?: number | null;
   comparison_status: string;
 };
 
@@ -247,6 +249,7 @@ type WeekZoneComparisonSummaryItem = {
     planned_session_id: number;
     comparison_status: string;
     dominant_zone_code: string | null;
+    training_zone_code?: string | null;
   }>;
 };
 
@@ -614,6 +617,9 @@ type ActivityZoneSummaryBasis = {
   calculation_status: string;
   dominant_zone_code: string | null;
   dominant_zone_share: number | null;
+  training_zone_code?: string | null;
+  training_zone_share?: number | null;
+  training_zone_rule?: string | null;
   zone_profile_id: number;
   limiting_reasons?: string[];
 };
@@ -3249,9 +3255,11 @@ function formatActivityZoneSummaryLabel(zoneSummary: ActivityZoneSummary | null 
 
     const basisLabel = formatZoneBasisShortLabel(metricBasis);
     if (summary.calculation_status === "calculated") {
-      const zoneCode = summary.dominant_zone_code ?? "sin zona";
-      const shareLabel = summary.dominant_zone_share != null ? ` ${toPercentLabel(summary.dominant_zone_share)}` : "";
-      return [`${basisLabel} ${zoneCode}${shareLabel}`];
+      const zoneCode = summary.training_zone_code ?? summary.dominant_zone_code ?? "sin zona";
+      const displayLabel = zoneCode === "mixed" ? "mixta" : zoneCode;
+      const shareValue = summary.training_zone_share ?? summary.dominant_zone_share;
+      const shareLabel = shareValue != null ? ` ${toPercentLabel(shareValue)}` : "";
+      return [`${basisLabel} ${displayLabel}${shareLabel}`];
     }
     if (summary.calculation_status === "limited") {
       return [`${basisLabel} limitada`];

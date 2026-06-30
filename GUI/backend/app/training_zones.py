@@ -519,6 +519,11 @@ def get_activity_zone_detail(activity_id: int) -> dict[str, Any] | None:
                 """,
                 (row["activity_zone_result_id"],),
             ).fetchall()
+            bucket_dicts = [dict(bucket) for bucket in buckets]
+            training_zone_code, training_zone_share, training_zone_rule = _resolve_training_zone_from_buckets(
+                bucket_dicts,
+                total_supported_seconds=int(row["total_supported_seconds"] or 0),
+            )
             results[row["metric_basis"]] = {
                 "metric_basis": row["metric_basis"],
                 "calculation_status": row["calculation_status"],
@@ -529,9 +534,12 @@ def get_activity_zone_detail(activity_id: int) -> dict[str, Any] | None:
                 "total_supported_seconds": row["total_supported_seconds"],
                 "dominant_zone_code": row["dominant_zone_code"],
                 "dominant_zone_share": row["dominant_zone_share"],
+                "training_zone_code": training_zone_code,
+                "training_zone_share": training_zone_share,
+                "training_zone_rule": training_zone_rule,
                 "calculation_notes": row["calculation_notes"],
                 "calculated_at": row["calculated_at"],
-                "buckets": [dict(bucket) for bucket in buckets],
+                "buckets": bucket_dicts,
             }
 
     return {
@@ -555,6 +563,7 @@ def list_activity_zone_summaries(activity_ids: list[int]) -> dict[int, dict[str,
         rows = connection.execute(
             f"""
             SELECT activity_id,
+                   activity_zone_result_id,
                    metric_basis,
                    zone_profile_id,
                    calculation_status,
@@ -568,12 +577,36 @@ def list_activity_zone_summaries(activity_ids: list[int]) -> dict[int, dict[str,
             tuple(activity_ids),
         ).fetchall()
 
+        result_ids = [int(row["activity_zone_result_id"]) for row in rows if row["activity_zone_result_id"] is not None]
+        buckets_by_result_id: dict[int, list[dict[str, Any]]] = {}
+        if result_ids:
+            placeholders = ", ".join("?" for _ in result_ids)
+            bucket_rows = connection.execute(
+                f"""
+                SELECT activity_zone_result_id, zone_index, zone_code, seconds_in_zone, share_in_zone, sample_count
+                FROM exec_activity_zone_buckets
+                WHERE activity_zone_result_id IN ({placeholders})
+                ORDER BY activity_zone_result_id, zone_index
+                """,
+                tuple(result_ids),
+            ).fetchall()
+            for bucket_row in bucket_rows:
+                buckets_by_result_id.setdefault(int(bucket_row["activity_zone_result_id"]), []).append(dict(bucket_row))
+
     summaries: dict[int, dict[str, Any]] = {}
     for row in rows:
+        bucket_rows = buckets_by_result_id.get(int(row["activity_zone_result_id"]), [])
+        training_zone_code, training_zone_share, training_zone_rule = _resolve_training_zone_from_buckets(
+            bucket_rows,
+            total_supported_seconds=int(sum(int(bucket.get("seconds_in_zone") or 0) for bucket in bucket_rows)),
+        )
         summary = {
             "calculation_status": row["calculation_status"],
             "dominant_zone_code": row["dominant_zone_code"],
             "dominant_zone_share": row["dominant_zone_share"],
+            "training_zone_code": training_zone_code,
+            "training_zone_share": training_zone_share,
+            "training_zone_rule": training_zone_rule,
             "zone_profile_id": row["zone_profile_id"],
         }
         limiting_reasons = _parse_calculation_notes(row["calculation_notes"])
@@ -904,10 +937,12 @@ def list_session_zone_comparisons(week_id: int) -> dict[int, list[dict[str, Any]
             activity_id = int(link_row["activity_id"]) if link_row is not None and link_row["activity_id"] is not None else None
             result_row = None
             any_result_count = 0
+            training_zone_code = None
+            training_zone_share = None
             if activity_id is not None:
                 result_row = connection.execute(
                     """
-                    SELECT calculation_status, dominant_zone_code, dominant_zone_share
+                    SELECT activity_zone_result_id, calculation_status, dominant_zone_code, dominant_zone_share
                     FROM exec_activity_zone_results
                     WHERE activity_id = ? AND metric_basis = ?
                     ORDER BY activity_zone_result_id DESC
@@ -921,6 +956,20 @@ def list_session_zone_comparisons(week_id: int) -> dict[int, list[dict[str, Any]
                         (activity_id,),
                     ).fetchone()[0]
                 )
+                if result_row is not None and result_row["activity_zone_result_id"] is not None:
+                    bucket_rows = connection.execute(
+                        """
+                        SELECT zone_index, zone_code, seconds_in_zone, share_in_zone, sample_count
+                        FROM exec_activity_zone_buckets
+                        WHERE activity_zone_result_id = ?
+                        ORDER BY zone_index
+                        """,
+                        (result_row["activity_zone_result_id"],),
+                    ).fetchall()
+                    training_zone_code, training_zone_share, _training_zone_rule = _resolve_training_zone_from_buckets(
+                        [dict(bucket) for bucket in bucket_rows],
+                        total_supported_seconds=int(sum(int(bucket["seconds_in_zone"] or 0) for bucket in bucket_rows)),
+                    )
 
             item = {
                 "planned_session_id": planned_session_id,
@@ -934,6 +983,8 @@ def list_session_zone_comparisons(week_id: int) -> dict[int, list[dict[str, Any]
                 "calculation_status": result_row["calculation_status"] if result_row is not None else None,
                 "dominant_zone_code": result_row["dominant_zone_code"] if result_row is not None else None,
                 "dominant_zone_share": result_row["dominant_zone_share"] if result_row is not None else None,
+                "training_zone_code": training_zone_code,
+                "training_zone_share": training_zone_share,
             }
             item["comparison_status"] = _resolve_session_zone_comparison_status(
                 target_basis=target.get("target_basis"),
@@ -941,7 +992,7 @@ def list_session_zone_comparisons(week_id: int) -> dict[int, list[dict[str, Any]
                 activity_id=activity_id,
                 calculation_status=item["calculation_status"],
                 target_kind=target.get("target_kind"),
-                dominant_zone_code=item["dominant_zone_code"],
+                training_zone_code=item["training_zone_code"],
                 target_zone_min_index=min_index,
                 target_zone_max_index=max_index,
                 any_result_count=any_result_count,
@@ -979,6 +1030,7 @@ def get_week_zone_comparison_summary(week_id: int) -> dict[str, Any]:
                     "planned_session_id": planned_session_id,
                     "comparison_status": status,
                     "dominant_zone_code": item["dominant_zone_code"],
+                    "training_zone_code": item["training_zone_code"],
                 }
             )
     return {"items": [summary_by_basis[key] for key in sorted(summary_by_basis)]}
@@ -1279,6 +1331,65 @@ def _zone_index_from_code(zone_code: str | None) -> int | None:
         return None
 
 
+def _sum_bucket_seconds(bucket_rows: list[dict[str, Any]], *, min_index: int | None = None, max_index: int | None = None) -> int:
+    total = 0
+    for bucket in bucket_rows:
+        zone_index = _zone_index_from_code(bucket.get("zone_code"))
+        if zone_index is None:
+            continue
+        if min_index is not None and zone_index < min_index:
+            continue
+        if max_index is not None and zone_index > max_index:
+            continue
+        total += int(bucket.get("seconds_in_zone") or 0)
+    return total
+
+
+def _resolve_training_zone_from_buckets(
+    bucket_rows: list[dict[str, Any]],
+    *,
+    total_supported_seconds: int,
+) -> tuple[str | None, float | None, str | None]:
+    if total_supported_seconds <= 0 or not bucket_rows:
+        return (None, None, None)
+
+    z1_seconds = _sum_bucket_seconds(bucket_rows, min_index=1, max_index=1)
+    z2_seconds = _sum_bucket_seconds(bucket_rows, min_index=2, max_index=2)
+    z1_z2_seconds = _sum_bucket_seconds(bucket_rows, min_index=1, max_index=2)
+    z2_z3_seconds = _sum_bucket_seconds(bucket_rows, min_index=2, max_index=3)
+    z3_plus_seconds = _sum_bucket_seconds(bucket_rows, min_index=3)
+    z4_plus_seconds = _sum_bucket_seconds(bucket_rows, min_index=4)
+    z5_plus_seconds = _sum_bucket_seconds(bucket_rows, min_index=5)
+    z6_plus_seconds = _sum_bucket_seconds(bucket_rows, min_index=6)
+    z7_seconds = _sum_bucket_seconds(bucket_rows, min_index=7)
+    z1_share = z1_seconds / total_supported_seconds
+    z1_z2_share = z1_z2_seconds / total_supported_seconds
+    z2_z3_share = z2_z3_seconds / total_supported_seconds
+
+    # Calibrated against recent terrain-shaped cycling history: aerobic rides often
+    # accumulate some Z4/Z5 spikes, so higher-zone labels require a more substantial dose.
+    if z6_plus_seconds >= 900 or z7_seconds >= 300:
+        return ("Z6", round(z6_plus_seconds / total_supported_seconds, 4), "meaningful_z6_plus_dose")
+    if z5_plus_seconds >= 1500:
+        return ("Z5", round(z5_plus_seconds / total_supported_seconds, 4), "meaningful_z5_plus_dose")
+    if z4_plus_seconds >= 2400:
+        return ("Z4", round(z4_plus_seconds / total_supported_seconds, 4), "meaningful_z4_plus_dose")
+    if z3_plus_seconds >= 3000:
+        return ("Z3", round(z3_plus_seconds / total_supported_seconds, 4), "meaningful_z3_plus_dose")
+    if z1_z2_share >= 0.78 and z4_plus_seconds < 500 and z5_plus_seconds < 120:
+        return ("Z1", round(z1_z2_share, 4), "predominantly_easy_with_low_upper_zone_contamination")
+    if z2_z3_share >= 0.45 and z5_plus_seconds < 900 and z4_plus_seconds < 1800:
+        return ("Z2", round(z2_z3_share, 4), "sustained_aerobic_useful_work_without_large_high_intensity_dose")
+
+    weighted_zone_score = sum(
+        int(bucket["zone_code"][1:]) * int(bucket.get("seconds_in_zone") or 0)
+        for bucket in bucket_rows
+        if _zone_index_from_code(bucket.get("zone_code")) is not None
+    ) / total_supported_seconds
+    fallback_zone_index = max(1, min(7, int(weighted_zone_score + 0.5)))
+    return (_zone_code_from_index(fallback_zone_index), None, "weighted_zone_centroid_fallback")
+
+
 def _resolve_session_zone_comparison_status(
     *,
     target_basis: str | None,
@@ -1286,7 +1397,7 @@ def _resolve_session_zone_comparison_status(
     activity_id: int | None,
     calculation_status: str | None,
     target_kind: str | None,
-    dominant_zone_code: str | None,
+    training_zone_code: str | None,
     target_zone_min_index: int | None,
     target_zone_max_index: int | None,
     any_result_count: int,
@@ -1301,10 +1412,10 @@ def _resolve_session_zone_comparison_status(
         return "limited"
     if calculation_status != "calculated":
         return "limited" if any_result_count > 0 or activity_id is not None else "not_comparable"
-    dominant_zone_index = _zone_index_from_code(dominant_zone_code)
-    if dominant_zone_index is None or target_zone_min_index is None or target_zone_max_index is None:
+    training_zone_index = _zone_index_from_code(training_zone_code)
+    if training_zone_index is None or target_zone_min_index is None or target_zone_max_index is None:
         return "limited"
-    if target_zone_min_index <= dominant_zone_index <= target_zone_max_index:
+    if target_zone_min_index <= training_zone_index <= target_zone_max_index:
         return "aligned"
     return "misaligned"
 
