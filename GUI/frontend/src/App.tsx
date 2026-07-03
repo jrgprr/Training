@@ -1271,6 +1271,29 @@ function getImportJobScope(job: ImportJob) {
   };
 }
 
+function isGarminProfileSyncNote(note: string): boolean {
+  const normalized = note.toLowerCase();
+  return normalized.includes("sincroniz") || normalized.includes("coincide con la app");
+}
+
+function getGarminProfileSyncNotes(notes: string[]): string[] {
+  return notes.filter(isGarminProfileSyncNote);
+}
+
+function getGarminProfileSyncTone(notes: string[]): "success" | "warning" | "neutral" {
+  if (notes.some((note) => note.toLowerCase().startsWith("no se pudo sincronizar"))) {
+    return "warning";
+  }
+  if (notes.length > 0) {
+    return "success";
+  }
+  return "neutral";
+}
+
+function getNonProfileSyncNotes(notes: string[]): string[] {
+  return notes.filter((note) => !isGarminProfileSyncNote(note));
+}
+
 const emptyGarminImportForm = (): GarminImportFormState => ({
   date_from: addDaysToIsoDate(getTodayIsoDate(), -1),
   date_to: getTodayIsoDate(),
@@ -1620,17 +1643,17 @@ function renderLoadModelChart(
     <section className={className}>
       <div className="load-chart-head">
         <div>
-          <strong>Tendencia ATL / CTL / TSB</strong>
-          <p className="segment-missing-copy">Carga diaria en barras y ATL, CTL, TSB en lineas sobre los ultimos {history.length} dias.</p>
+          <strong>Tendencia ATL / CTL / TSB matinal</strong>
+          <p className="segment-missing-copy">Carga diaria en barras y ATL, CTL y TSB matinal en lineas sobre los ultimos {history.length} dias.</p>
         </div>
         <div className="load-chart-legend" aria-label="Leyenda del grafico de carga">
           <span><i className="load-chart-swatch load-chart-swatch-load" />Carga</span>
           <span><i className="load-chart-swatch load-chart-swatch-atl" />ATL</span>
           <span><i className="load-chart-swatch load-chart-swatch-ctl" />CTL</span>
-          <span><i className="load-chart-swatch load-chart-swatch-tsb" />TSB</span>
+          <span><i className="load-chart-swatch load-chart-swatch-tsb" />TSB matinal</span>
         </div>
       </div>
-      <svg className="load-model-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de carga con ATL, CTL y TSB">
+      <svg className="load-model-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de carga con ATL, CTL y TSB matinal">
         {tickValues.map((tick) => (
           <g key={tick}>
             <line x1={leftGutter} y1={toY(tick)} x2={width - rightGutter} y2={toY(tick)} className="load-chart-grid" />
@@ -1666,7 +1689,7 @@ function renderLoadModelChart(
               <title>{`${entry.metric_date} · CTL ${toMetricLabel(entry.ctl)}`}</title>
             </circle>
             <circle cx={toX(index)} cy={toY(entry.tsb)} r={3.5} className="load-chart-dot load-chart-dot-tsb">
-              <title>{`${entry.metric_date} · TSB ${toMetricLabel(entry.tsb)}`}</title>
+              <title>{`${entry.metric_date} · TSB matinal ${toMetricLabel(entry.tsb)}`}</title>
             </circle>
           </g>
         ))}
@@ -4106,8 +4129,10 @@ export default function App() {
         );
       }
       const result = (await response.json()) as GarminImportRunResponse;
+      const profileSyncNotes = getGarminProfileSyncNotes(result.metadata.notes);
+      const profileSyncMessage = profileSyncNotes.length > 0 ? ` Perfil Garmin: ${profileSyncNotes.join(" ")}` : "";
       setSubmissionMessage(
-        `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas y ${result.counts.segment_efforts_loaded} esfuerzos de segmento normalizados. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.`,
+        `Importacion Garmin ${result.import_job.status}: job ${result.import_job.import_job_id}, ${result.import_job.rows_loaded} filas cargadas y ${result.counts.segment_efforts_loaded} esfuerzos de segmento normalizados. ${formatRetrySuitabilityLabel(result.import_job.retry_suitability)}.${profileSyncMessage}`,
       );
       const activities = await loadSeasonActivities(selectedSeason.season_id);
       setImportForm((current) => ({
@@ -4548,6 +4573,9 @@ export default function App() {
             {importJobs.map((job) => (
               (() => {
                 const scope = getImportJobScope(job);
+                const profileSyncNotes = getGarminProfileSyncNotes(job.notes);
+                const genericNotes = getNonProfileSyncNotes(job.notes);
+                const profileSyncTone = getGarminProfileSyncTone(profileSyncNotes);
                 return (
               <article key={job.import_job_id} className="import-job-card">
                 <div className="item-head">
@@ -4585,9 +4613,17 @@ export default function App() {
                     <span className="import-job-grid-note">Breakdown inserted/updated no disponible</span>
                   )}
                 </div>
-                {job.notes.length > 0 ? (
+                {profileSyncNotes.length > 0 ? (
+                  <div className={`import-profile-sync import-profile-sync-${profileSyncTone}`}>
+                    <strong>Perfil Garmin</strong>
+                    {profileSyncNotes.map((note) => (
+                      <p key={`${job.import_job_id}-profile-${note}`}>{note}</p>
+                    ))}
+                  </div>
+                ) : null}
+                {genericNotes.length > 0 ? (
                   <div className="import-notes-list">
-                    {job.notes.map((note) => (
+                    {genericNotes.map((note) => (
                       <p key={`${job.import_job_id}-${note}`}>{note}</p>
                     ))}
                   </div>
@@ -5765,7 +5801,7 @@ export default function App() {
                     {selectedDailyMetric.load_model ? <article><span>Carga del dia</span><strong>{toMetricLabel(selectedDailyMetric.load_model.daily_training_load)}</strong></article> : null}
                     {selectedDailyMetric.load_model ? <article><span>ATL</span><strong>{toMetricLabel(selectedDailyMetric.load_model.atl)}</strong></article> : null}
                     {selectedDailyMetric.load_model ? <article><span>CTL</span><strong>{toMetricLabel(selectedDailyMetric.load_model.ctl)}</strong></article> : null}
-                    {selectedDailyMetric.load_model ? <article><span>TSB</span><strong>{toMetricLabel(selectedDailyMetric.load_model.tsb)}</strong></article> : null}
+                    {selectedDailyMetric.load_model ? <article><span>TSB matinal</span><strong>{toMetricLabel(selectedDailyMetric.load_model.tsb)}</strong></article> : null}
                     {selectedDailyMetric.weight_kg != null ? <article><span>Peso</span><strong>{toMetricLabel(selectedDailyMetric.weight_kg, " kg")}</strong></article> : null}
                     {selectedDailyMetric.body_fat_pct != null ? <article><span>Grasa corporal</span><strong>{toMetricLabel(selectedDailyMetric.body_fat_pct, "%")}</strong></article> : null}
                     {selectedDailyMetric.body_water_pct != null ? <article><span>Agua corporal</span><strong>{toMetricLabel(selectedDailyMetric.body_water_pct, "%")}</strong></article> : null}

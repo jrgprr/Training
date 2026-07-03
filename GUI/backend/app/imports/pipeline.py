@@ -38,6 +38,9 @@ class GarminImportPipeline:
     def __init__(self, adapter: GarminConnectAdapter | None = None) -> None:
         self.adapter = adapter or GarminConnectAdapter()
 
+    def sync_profile(self, season_id: int, effective_start_date: str | None = None) -> dict[str, Any]:
+        return self.adapter.sync_profile_values(season_id=season_id, effective_start_date=effective_start_date)
+
     def preview(self, request: GarminImportRequest) -> GarminImportPreview:
         batch = self.adapter.fetch(request)
         metadata = batch.metadata
@@ -53,4 +56,13 @@ class GarminImportPipeline:
         )
 
     def run(self, request: GarminImportRequest) -> GarminImportBatch:
-        return self.adapter.fetch(request)
+        profile_sync_notes: list[str] = []
+        try:
+            profile_sync = self.sync_profile(request.season_id)
+            profile_sync_notes.extend(profile_sync.get("notes", []))
+        except Exception as error:
+            profile_sync_notes.append(f"No se pudo sincronizar el perfil Garmin con la app: {error}")
+
+        batch = self.adapter.fetch(request)
+        batch.metadata.notes.extend(profile_sync_notes)
+        return batch

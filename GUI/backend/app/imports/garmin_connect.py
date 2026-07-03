@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
 from typing import Any
@@ -248,6 +248,160 @@ class GarminConnectAdapter:
             raise GarminConnectTransportImportError("No se pudo conectar con Garmin Connect.") from error
         self._client = client
         return client
+
+    @staticmethod
+    def _same_numeric(left: Any, right: Any, *, tolerance: float = 0.01) -> bool:
+        left_value = GarminConnectAdapter._normalize_numeric(left)
+        right_value = GarminConnectAdapter._normalize_numeric(right)
+        if left_value is None or right_value is None:
+            return False
+        return abs(left_value - right_value) <= tolerance
+
+    @classmethod
+    def _select_heart_rate_zone_payload(cls, payload: Any) -> dict[str, Any] | None:
+        if not isinstance(payload, list):
+            return None
+        candidates = [item for item in payload if isinstance(item, dict)]
+        for sport in ("CYCLING", "DEFAULT"):
+            for item in candidates:
+                if str(item.get("sport") or "").upper() == sport:
+                    return item
+        return candidates[0] if candidates else None
+
+    def fetch_profile_snapshot(self) -> dict[str, Any]:
+        client = self._login()
+        ftp_payload = client.get_cycling_ftp() or {}
+        heart_rate_zones_payload = client.connectapi("/biometric-service/heartRateZones") or []
+        selected_heart_rate_payload = self._select_heart_rate_zone_payload(heart_rate_zones_payload) or {}
+        return {
+            "ftp": self._normalize_integer(self._pick_first(ftp_payload, "functionalThresholdPower")),
+            "ftp_payload": ftp_payload,
+            "heart_rate": {
+                "training_method": self._pick_first(selected_heart_rate_payload, "trainingMethod"),
+                "resting_hr": self._normalize_integer(
+                    self._pick_first(selected_heart_rate_payload, "restingHeartRateUsed")
+                ),
+                "max_hr": self._normalize_integer(self._pick_first(selected_heart_rate_payload, "maxHeartRateUsed")),
+                "sport": self._pick_first(selected_heart_rate_payload, "sport"),
+                "payload": selected_heart_rate_payload,
+            },
+        }
+
+    def sync_profile_values(self, season_id: int, effective_start_date: str | None = None) -> dict[str, Any]:
+        from ..training_zones import accept_zone_metric_profile, list_current_zone_metric_profiles
+
+        resolved_effective_start_date = (effective_start_date or date.today().isoformat()).strip()
+        snapshot = self.fetch_profile_snapshot()
+        current_profiles = list_current_zone_metric_profiles(season_id=season_id, discipline="cycling").get("profiles", {})
+        notes: list[str] = []
+        result: dict[str, Any] = {
+            "season_id": season_id,
+            "effective_start_date": resolved_effective_start_date,
+            "status": "unchanged",
+            "notes": notes,
+            "power": None,
+            "heart_rate": None,
+        }
+
+        updated_any = False
+        supported_any = False
+
+        ftp = snapshot.get("ftp")
+        current_power_profile = current_profiles.get("power") or {}
+        current_ftp = ((current_power_profile.get("parameters") or {}).get("ftp")) if current_power_profile else None
+        if ftp is None:
+            result["power"] = {"status": "missing", "ftp": None, "current_ftp": current_ftp}
+            notes.append("Garmin Connect no devolvio un FTP de ciclismo para sincronizar.")
+        else:
+            supported_any = True
+            power_status = "unchanged" if self._same_numeric(current_ftp, ftp) else "updated"
+            if power_status == "updated":
+                accept_zone_metric_profile(
+                    season_id=season_id,
+                    discipline="cycling",
+                    metric_basis="power",
+                    model_key="ftp_coggan_7_zone",
+                    effective_start_date=resolved_effective_start_date,
+                    ftp=float(ftp),
+                    notes="Sincronizado automaticamente desde Garmin Connect.",
+                )
+                updated_any = True
+                notes.append(f"FTP de ciclismo sincronizado desde Garmin Connect: {int(ftp)} W.")
+            else:
+                notes.append(f"El FTP Garmin ya coincide con la app: {int(ftp)} W.")
+            result["power"] = {"status": power_status, "ftp": ftp, "current_ftp": current_ftp}
+
+        heart_rate_snapshot = snapshot.get("heart_rate") or {}
+        training_method = str(heart_rate_snapshot.get("training_method") or "").strip().upper()
+        resting_hr = heart_rate_snapshot.get("resting_hr")
+        max_hr = heart_rate_snapshot.get("max_hr")
+        current_heart_rate_profile = current_profiles.get("heart_rate") or {}
+        current_heart_rate_parameters = current_heart_rate_profile.get("parameters") or {}
+        current_resting_hr = current_heart_rate_parameters.get("resting_hr")
+        current_max_hr = current_heart_rate_parameters.get("max_hr")
+        if training_method and training_method != "HR_RESERVE":
+            result["heart_rate"] = {
+                "status": "unsupported_training_method",
+                "training_method": training_method,
+                "resting_hr": resting_hr,
+                "max_hr": max_hr,
+                "current_resting_hr": current_resting_hr,
+                "current_max_hr": current_max_hr,
+            }
+            notes.append(
+                f"La configuracion HR Garmin usa {training_method}; la app solo sincroniza perfiles HR reserve."
+            )
+        elif resting_hr is None or max_hr is None:
+            result["heart_rate"] = {
+                "status": "missing",
+                "training_method": training_method or None,
+                "resting_hr": resting_hr,
+                "max_hr": max_hr,
+                "current_resting_hr": current_resting_hr,
+                "current_max_hr": current_max_hr,
+            }
+            notes.append("Garmin Connect no devolvio resting HR y max HR suficientes para sincronizar.")
+        else:
+            supported_any = True
+            heart_rate_status = (
+                "unchanged"
+                if self._same_numeric(current_resting_hr, resting_hr) and self._same_numeric(current_max_hr, max_hr)
+                else "updated"
+            )
+            if heart_rate_status == "updated":
+                accept_zone_metric_profile(
+                    season_id=season_id,
+                    discipline="cycling",
+                    metric_basis="heart_rate",
+                    model_key="heart_rate_reserve_5_zone",
+                    effective_start_date=resolved_effective_start_date,
+                    resting_hr=float(resting_hr),
+                    max_hr=float(max_hr),
+                    notes="Sincronizado automaticamente desde Garmin Connect.",
+                )
+                updated_any = True
+                notes.append(
+                    f"Perfil HR reserve sincronizado desde Garmin Connect: reposo {int(resting_hr)} bpm, max {int(max_hr)} bpm."
+                )
+            else:
+                notes.append(
+                    f"El perfil HR Garmin ya coincide con la app: reposo {int(resting_hr)} bpm, max {int(max_hr)} bpm."
+                )
+            result["heart_rate"] = {
+                "status": heart_rate_status,
+                "training_method": training_method or "HR_RESERVE",
+                "resting_hr": resting_hr,
+                "max_hr": max_hr,
+                "current_resting_hr": current_resting_hr,
+                "current_max_hr": current_max_hr,
+            }
+
+        if updated_any:
+            result["status"] = "updated"
+        elif not supported_any:
+            result["status"] = "no_supported_profile"
+            raise GarminConnectImportError("Garmin Connect no devolvio un perfil compatible para sincronizar con la app.")
+        return result
 
     @staticmethod
     def _pick_first(payload: dict[str, Any], *keys: str) -> Any:
@@ -1460,13 +1614,18 @@ class GarminConnectAdapter:
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Importacion Garmin Connect para V0.3.")
+    parser = argparse.ArgumentParser(description="Importacion y sincronizacion Garmin Connect para V0.3.")
     parser.add_argument("--season", type=int, required=True, dest="season_id", help="Temporada destino, por ejemplo 2026.")
-    parser.add_argument("--from", required=True, dest="date_from", help="Fecha inicial ISO, por ejemplo 2026-05-04.")
-    parser.add_argument("--to", required=True, dest="date_to", help="Fecha final ISO, por ejemplo 2026-05-10.")
+    parser.add_argument("--from", dest="date_from", help="Fecha inicial ISO, por ejemplo 2026-05-04.")
+    parser.add_argument("--to", dest="date_to", help="Fecha final ISO, por ejemplo 2026-05-10.")
     execution_mode = parser.add_mutually_exclusive_group(required=True)
     execution_mode.add_argument("--dry-run", action="store_true", help="Consulta Garmin y devuelve un resumen sin persistir.")
     execution_mode.add_argument("--apply", action="store_true", help="Consulta Garmin y persiste staging, tablas finales e import job.")
+    execution_mode.add_argument(
+        "--sync-profile",
+        action="store_true",
+        help="Sincroniza en la app el perfil actual de FTP y HR disponible en Garmin Connect.",
+    )
     parser.add_argument(
         "--no-daily-metrics",
         action="store_true",
@@ -1476,6 +1635,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
 
 def _request_from_cli_args(args: argparse.Namespace) -> GarminImportRequest:
+    if not args.date_from or not args.date_to:
+        raise ValueError("--from y --to son obligatorios para dry-run y apply.")
     return GarminImportRequest(
         season_id=args.season_id,
         date_from=args.date_from,
@@ -1487,21 +1648,38 @@ def _request_from_cli_args(args: argparse.Namespace) -> GarminImportRequest:
 def run_cli(argv: list[str] | None = None) -> int:
     parser = build_cli_parser()
     args = parser.parse_args(argv)
-    request = _request_from_cli_args(args)
     initialize_database()
 
-    from ..activity_weather import backfill_activity_weather_for_external_ids
     from .pipeline import GarminImportPipeline
-    from .storage import GarminImportStorage
 
     pipeline = GarminImportPipeline()
-    storage = GarminImportStorage()
 
     try:
+        if args.sync_profile:
+            summary = pipeline.sync_profile(args.season_id)
+            print(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "mode": "sync-profile",
+                        "profile_sync": summary,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
+
+        request = _request_from_cli_args(args)
         if args.dry_run:
             preview = pipeline.preview(request)
             print(json.dumps({"status": "ok", "mode": "dry-run", **preview.to_dict()}, ensure_ascii=False, indent=2))
             return 0
+
+        from ..activity_weather import backfill_activity_weather_for_external_ids
+        from .storage import GarminImportStorage
+
+        storage = GarminImportStorage()
 
         import_job_id = storage.start_import_job(
             season_id=request.season_id,

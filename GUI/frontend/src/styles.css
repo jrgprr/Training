@@ -697,6 +697,36 @@ textarea {
   color: var(--muted);
 }
 
+.import-profile-sync {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.import-profile-sync strong {
+  font-size: 0.84rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.import-profile-sync p {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.import-profile-sync-success {
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  color: var(--ink);
+}
+
+.import-profile-sync-warning {
+  background: rgba(180, 83, 9, 0.08);
+  border: 1px solid rgba(180, 83, 9, 0.18);
+  color: var(--ink);
+}
+
 .table-link-button {
   margin-top: 6px;
   padding: 0;

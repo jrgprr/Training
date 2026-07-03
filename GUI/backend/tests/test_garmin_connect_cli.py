@@ -80,13 +80,37 @@ class GarminConnectCliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         pipeline_cls.return_value.preview.assert_called_once()
-        storage_cls.assert_called_once()
+        storage_cls.assert_not_called()
         self.assertEqual(stderr.getvalue(), "")
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["mode"], "dry-run")
         self.assertEqual(payload["activities_detected"], 3)
         self.assertEqual(payload["daily_metrics_detected"], 7)
+
+    def test_sync_profile_prints_summary(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("app.imports.pipeline.GarminImportPipeline") as pipeline_cls, patch(
+            "app.imports.storage.GarminImportStorage"
+        ) as storage_cls, redirect_stdout(stdout), redirect_stderr(stderr):
+            pipeline_cls.return_value.sync_profile.return_value = {
+                "season_id": 2026,
+                "effective_start_date": "2026-07-03",
+                "status": "updated",
+                "notes": ["FTP de ciclismo sincronizado desde Garmin Connect: 270 W."],
+            }
+
+            exit_code = run_cli(["--season", "2026", "--sync-profile"])
+
+        self.assertEqual(exit_code, 0)
+        pipeline_cls.return_value.sync_profile.assert_called_once_with(2026)
+        storage_cls.assert_not_called()
+        self.assertEqual(stderr.getvalue(), "")
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["mode"], "sync-profile")
+        self.assertEqual(payload["profile_sync"]["status"], "updated")
 
     def test_apply_persists_batch_and_prints_job_summary(self) -> None:
         request = GarminImportRequest(

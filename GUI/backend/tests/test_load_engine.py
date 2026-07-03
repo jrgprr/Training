@@ -368,13 +368,24 @@ class LoadEngineTests(unittest.TestCase):
         self.assertEqual(result["load_source"], "hr_trimp")
         self.assertGreater(result["load_value"], 0)
 
-    def test_load_model_snapshot_reports_tsb_from_same_day_atl_ctl(self) -> None:
+    def test_load_model_snapshot_reports_tsb_as_morning_balance(self) -> None:
         snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-03")
 
-        self.assertAlmostEqual(snapshot["tsb"], round(snapshot["ctl"] - snapshot["atl"], 2), places=2)
         self.assertTrue(snapshot["trend"])
+        self.assertAlmostEqual(snapshot["tsb"], snapshot["trend"][-1]["tsb"], places=2)
+        previous_entry = None
         for entry in snapshot["trend"]:
-            self.assertLess(abs(entry["tsb"] - round(entry["ctl"] - entry["atl"], 2)), 0.011)
+            if previous_entry is None:
+                self.assertIsInstance(entry["tsb"], float)
+            else:
+                self.assertLess(abs(entry["tsb"] - round(previous_entry["ctl"] - previous_entry["atl"], 2)), 0.011)
+            previous_entry = entry
+
+    def test_load_model_snapshot_morning_tsb_differs_from_same_day_post_load_balance(self) -> None:
+        snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-03")
+
+        self.assertNotAlmostEqual(snapshot["tsb"], round(snapshot["ctl"] - snapshot["atl"], 2), places=2)
+        self.assertTrue(snapshot["trend"])
 
     def test_compute_activity_load_uses_hr_trimp_when_activity_type_marks_new_walking_like_activity(self) -> None:
         original_fetch = load_engine._fetch_anchor_profile

@@ -83,6 +83,12 @@ python -m app.imports.garmin_connect --season 2026 --from 2026-05-04 --to 2026-0
 python -m app.imports.garmin_connect --season 2026 --from 2026-05-04 --to 2026-05-10 --apply
 ```
 
+Sincronizacion manual del perfil actual de Garmin hacia la app:
+
+```bash
+python -m app.imports.garmin_connect --season 2026 --sync-profile
+```
+
 Opcional:
 
 ```bash
