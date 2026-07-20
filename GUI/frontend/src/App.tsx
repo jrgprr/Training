@@ -466,6 +466,14 @@ type DailyMetricDetail = {
       ctl: number;
       tsb: number;
     }>;
+    projection?: Array<{
+      metric_date: string;
+      daily_training_load: number;
+      atl: number;
+      ctl: number;
+      tsb: number;
+    }>;
+    projection_end_date?: string | null;
   } | null;
   weight_trend?: WeightTrendEntry[];
   weight_measurements?: WeightMeasurementEntry[];
@@ -1816,9 +1824,12 @@ function renderLoadModelChart(
   className = "load-chart-card panel-subcard",
 ) {
   const history = loadModel.trend;
+  const projection = loadModel.projection ?? [];
   if (!history.length) {
     return null;
   }
+
+  const allEntries = [...history, ...projection];
 
   const width = 1200;
   const height = 360;
@@ -1828,11 +1839,11 @@ function renderLoadModelChart(
   const bottomGutter = 52;
   const plotWidth = width - leftGutter - rightGutter;
   const plotHeight = height - topGutter - bottomGutter;
-  const minTsb = Math.min(...history.map((entry) => entry.tsb), 0);
-  const maxPositive = Math.max(...history.map((entry) => Math.max(entry.daily_training_load, entry.atl, entry.ctl, entry.tsb)), 1);
+  const minTsb = Math.min(...allEntries.map((entry) => entry.tsb), 0);
+  const maxPositive = Math.max(...allEntries.map((entry) => Math.max(entry.daily_training_load, entry.atl, entry.ctl, entry.tsb)), 1);
   const totalRange = Math.max(maxPositive - minTsb, 1);
   const zeroY = topGutter + ((maxPositive - 0) / totalRange) * plotHeight;
-  const stepX = history.length > 1 ? plotWidth / (history.length - 1) : 0;
+  const stepX = allEntries.length > 1 ? plotWidth / (allEntries.length - 1) : 0;
 
   const toY = (value: number) => topGutter + ((maxPositive - value) / totalRange) * plotHeight;
   const toX = (index: number) => leftGutter + index * stepX;
@@ -1841,6 +1852,10 @@ function renderLoadModelChart(
   const atlPath = toPath(history.map((entry) => entry.atl));
   const ctlPath = toPath(history.map((entry) => entry.ctl));
   const tsbPath = toPath(history.map((entry) => entry.tsb));
+  const projectedEntries = projection.length ? [history[history.length - 1], ...projection] : [];
+  const projectedAtlPath = projectedEntries.length ? toPath(projectedEntries.map((entry) => entry.atl)) : "";
+  const projectedCtlPath = projectedEntries.length ? toPath(projectedEntries.map((entry) => entry.ctl)) : "";
+  const projectedTsbPath = projectedEntries.length ? toPath(projectedEntries.map((entry) => entry.tsb)) : "";
   const tickValues = [maxPositive, (maxPositive + minTsb) / 2, minTsb].filter((value, index, values) => values.findIndex((candidate) => Math.abs(candidate - value) < 0.01) === index);
 
   return (
@@ -1848,13 +1863,14 @@ function renderLoadModelChart(
       <div className="load-chart-head">
         <div>
           <strong>Tendencia ATL / CTL / TSB matinal</strong>
-          <p className="segment-missing-copy">Carga diaria en barras y ATL, CTL y TSB matinal en lineas sobre los ultimos {history.length} dias.</p>
+          <p className="segment-missing-copy">Carga diaria en barras y ATL, CTL y TSB matinal en lineas sobre los ultimos {history.length} dias{projection.length ? `, con proyeccion esperada hasta ${loadModel.projection_end_date ?? projection[projection.length - 1]?.metric_date}.` : "."}</p>
         </div>
         <div className="load-chart-legend" aria-label="Leyenda del grafico de carga">
           <span><i className="load-chart-swatch load-chart-swatch-load" />Carga</span>
           <span><i className="load-chart-swatch load-chart-swatch-atl" />ATL</span>
           <span><i className="load-chart-swatch load-chart-swatch-ctl" />CTL</span>
           <span><i className="load-chart-swatch load-chart-swatch-tsb" />TSB matinal</span>
+          {projection.length ? <span><i className="load-chart-swatch load-chart-swatch-projection" />Proyeccion</span> : null}
         </div>
       </div>
       <svg className="load-model-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Grafico de carga con ATL, CTL y TSB matinal">
@@ -1865,17 +1881,18 @@ function renderLoadModelChart(
           </g>
         ))}
         <line x1={leftGutter} y1={zeroY} x2={width - rightGutter} y2={zeroY} className="load-chart-zero" />
-        {history.map((entry, index) => {
+        {allEntries.map((entry, index) => {
           const x = toX(index);
-          const barWidth = Math.max(plotWidth / Math.max(history.length * 2, 12), 8);
+          const barWidth = Math.max(plotWidth / Math.max(allEntries.length * 2, 12), 8);
           const barTop = toY(entry.daily_training_load);
           const barHeight = Math.max(zeroY - barTop, 0);
+          const projected = index >= history.length;
           return (
             <g key={entry.metric_date}>
-              <rect x={x - barWidth / 2} y={barTop} width={barWidth} height={barHeight} className="load-chart-bar">
-                <title>{`${entry.metric_date} · Carga ${toMetricLabel(entry.daily_training_load)}`}</title>
+              <rect x={x - barWidth / 2} y={barTop} width={barWidth} height={barHeight} className={projected ? "load-chart-bar load-chart-bar-projection" : "load-chart-bar"}>
+                <title>{`${entry.metric_date} · ${projected ? "Carga proyectada" : "Carga"} ${toMetricLabel(entry.daily_training_load)}`}</title>
               </rect>
-              {index === 0 || index === history.length - 1 || index % Math.max(Math.floor(history.length / 4), 1) === 0 ? (
+              {index === 0 || index === allEntries.length - 1 || index % Math.max(Math.floor(allEntries.length / 5), 1) === 0 ? (
                 <text x={x} y={height - 14} textAnchor="middle" className="load-chart-date-label">{entry.metric_date.slice(5)}</text>
               ) : null}
             </g>
@@ -1884,19 +1901,24 @@ function renderLoadModelChart(
         <path d={atlPath} className="load-chart-line load-chart-line-atl" />
         <path d={ctlPath} className="load-chart-line load-chart-line-ctl" />
         <path d={tsbPath} className="load-chart-line load-chart-line-tsb" />
-        {history.map((entry, index) => (
+        {projection.length ? <path d={projectedAtlPath} className="load-chart-line load-chart-line-atl load-chart-line-projection" /> : null}
+        {projection.length ? <path d={projectedCtlPath} className="load-chart-line load-chart-line-ctl load-chart-line-projection" /> : null}
+        {projection.length ? <path d={projectedTsbPath} className="load-chart-line load-chart-line-tsb load-chart-line-projection" /> : null}
+        {allEntries.map((entry, index) => {
+          const projected = index >= history.length;
+          return (
           <g key={`${entry.metric_date}-dots`}>
-            <circle cx={toX(index)} cy={toY(entry.atl)} r={3.5} className="load-chart-dot load-chart-dot-atl">
-              <title>{`${entry.metric_date} · ATL ${toMetricLabel(entry.atl)}`}</title>
+            <circle cx={toX(index)} cy={toY(entry.atl)} r={3.5} className={projected ? "load-chart-dot load-chart-dot-atl load-chart-dot-projection" : "load-chart-dot load-chart-dot-atl"}>
+              <title>{`${entry.metric_date} · ${projected ? "ATL proyectado" : "ATL"} ${toMetricLabel(entry.atl)}`}</title>
             </circle>
-            <circle cx={toX(index)} cy={toY(entry.ctl)} r={3.5} className="load-chart-dot load-chart-dot-ctl">
-              <title>{`${entry.metric_date} · CTL ${toMetricLabel(entry.ctl)}`}</title>
+            <circle cx={toX(index)} cy={toY(entry.ctl)} r={3.5} className={projected ? "load-chart-dot load-chart-dot-ctl load-chart-dot-projection" : "load-chart-dot load-chart-dot-ctl"}>
+              <title>{`${entry.metric_date} · ${projected ? "CTL proyectado" : "CTL"} ${toMetricLabel(entry.ctl)}`}</title>
             </circle>
-            <circle cx={toX(index)} cy={toY(entry.tsb)} r={3.5} className="load-chart-dot load-chart-dot-tsb">
-              <title>{`${entry.metric_date} · TSB matinal ${toMetricLabel(entry.tsb)}`}</title>
+            <circle cx={toX(index)} cy={toY(entry.tsb)} r={3.5} className={projected ? "load-chart-dot load-chart-dot-tsb load-chart-dot-projection" : "load-chart-dot load-chart-dot-tsb"}>
+              <title>{`${entry.metric_date} · ${projected ? "TSB matinal proyectado" : "TSB matinal"} ${toMetricLabel(entry.tsb)}`}</title>
             </circle>
           </g>
-        ))}
+        )})}
       </svg>
     </section>
   );

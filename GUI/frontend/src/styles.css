@@ -290,6 +290,27 @@ textarea {
   gap: 12px;
 }
 
+.benchmark-climb-panel {
+  margin-bottom: 16px;
+}
+
+.benchmark-climb-form-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.benchmark-climb-form-card input,
+.benchmark-climb-form-card textarea {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+}
+
 .trend-chart-card {
   display: grid;
   gap: 12px;
@@ -570,6 +591,52 @@ textarea {
 
 .zone-anchor-actions small {
   max-width: 720px;
+}
+
+.season-context-events-card {
+  gap: 14px;
+}
+
+.season-context-events-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.season-context-events-list,
+.season-context-event-form {
+  display: grid;
+  gap: 12px;
+}
+
+.season-context-event-item {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.82);
+  display: grid;
+  gap: 8px;
+}
+
+.season-context-event-item p,
+.season-context-events-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.season-context-event-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.season-context-event-head p {
+  margin-top: 4px;
+}
+
+.season-context-event-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .zone-chip-list {
@@ -1271,6 +1338,11 @@ textarea {
   background: #b91c1c;
 }
 
+.load-chart-swatch-projection {
+  background: repeating-linear-gradient(90deg, rgba(71, 85, 105, 0.95) 0 4px, rgba(255, 255, 255, 0) 4px 8px);
+  border: 1px solid rgba(71, 85, 105, 0.85);
+}
+
 .load-model-chart {
   width: 100%;
   height: auto;
@@ -1301,6 +1373,12 @@ textarea {
   stroke-width: 1;
 }
 
+.load-chart-bar-projection {
+  fill: rgba(71, 85, 105, 0.12);
+  stroke: rgba(71, 85, 105, 0.65);
+  stroke-dasharray: 4 3;
+}
+
 .load-chart-line {
   fill: none;
   stroke-width: 2.5;
@@ -1320,6 +1398,11 @@ textarea {
   stroke: #b91c1c;
 }
 
+.load-chart-line-projection {
+  stroke-dasharray: 7 5;
+  opacity: 0.8;
+}
+
 .load-chart-dot {
   stroke-width: 1.5;
 }
@@ -1337,6 +1420,10 @@ textarea {
 .load-chart-dot-tsb {
   fill: #fee2e2;
   stroke: #b91c1c;
+}
+
+.load-chart-dot-projection {
+  opacity: 0.7;
 }
 
 .weight-chart-swatch-line {
@@ -2034,6 +2121,15 @@ textarea {
 
   .activity-feed-list {
     grid-template-columns: 1fr;
+  }
+
+  .season-context-events-layout,
+  .season-context-event-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .benchmark-climb-form-card {
+    order: -1;
   }
 
   .section-heading,

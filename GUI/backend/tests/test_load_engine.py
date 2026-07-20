@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+from statistics import median
 from unittest.mock import patch
 
 from app import load_engine
@@ -511,11 +512,526 @@ class LoadEngineTests(unittest.TestCase):
         with patch("app.load_engine.get_connection", return_value=_ContextManager()):
             snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-02")
 
-        self.assertAlmostEqual(snapshot["daily_training_load"], 146.67, places=2)
+        self.assertAlmostEqual(snapshot["daily_training_load"], 145.67, places=2)
         self.assertAlmostEqual(snapshot["source_totals"]["power_tss"], 64.0, places=2)
         self.assertAlmostEqual(snapshot["source_totals"]["hr_trimp"], 145.67, places=2)
-        self.assertAlmostEqual(snapshot["source_totals"]["garmin_training_load"], 1.0, places=2)
+        self.assertNotIn("garmin_training_load", snapshot["source_totals"])
         self.assertEqual(len(snapshot["trend"]), 2)
+
+    def test_get_load_model_snapshot_excludes_strength_and_yoga_from_endurance_load(self) -> None:
+        database = sqlite3.connect(":memory:")
+        database.row_factory = sqlite3.Row
+        database.executescript(
+            """
+            CREATE TABLE exec_activities (
+                activity_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                started_at TEXT,
+                discipline TEXT,
+                activity_type TEXT,
+                duration_seconds INTEGER,
+                avg_hr REAL,
+                avg_power REAL,
+                normalized_power REAL,
+                training_load REAL,
+                perceived_exertion REAL
+            );
+            CREATE TABLE zone_metric_profiles (
+                zone_metric_profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                discipline TEXT NOT NULL,
+                metric_basis TEXT NOT NULL,
+                model_key TEXT,
+                resting_hr REAL,
+                max_hr REAL,
+                ftp REAL,
+                effective_start_date TEXT NOT NULL,
+                effective_end_date TEXT
+            );
+            """
+        )
+        database.executemany(
+            """
+            INSERT INTO zone_metric_profiles (
+                zone_metric_profile_id, season_id, discipline, metric_basis, model_key,
+                resting_hr, max_hr, ftp, effective_start_date, effective_end_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "cycling", "heart_rate", "heart_rate_reserve_5_zone", 50, 174, None, "2026-06-01", None),
+                (2, 2026, "cycling", "power", "ftp_coggan_7_zone", None, None, 250, "2026-06-01", None),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO exec_activities (
+                activity_id, season_id, activity_date, started_at, discipline, activity_type, duration_seconds,
+                avg_hr, avg_power, normalized_power, training_load, perceived_exertion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "2026-06-01", None, "road_biking", "Ride", 3600, 150, 190, 200, 50, None),
+                (2, 2026, "2026-06-02", None, "running", "Run", 3600, 150, None, None, 2, None),
+                (3, 2026, "2026-06-02", None, "strength_training", "Strength", 3600, None, None, None, 9, 6),
+                (4, 2026, "2026-06-02", None, "yoga", "Yoga", 1800, None, None, None, 4, None),
+            ],
+        )
+        database.commit()
+
+        class _ContextManager:
+            def __enter__(self):
+                return database
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.load_engine.get_connection", return_value=_ContextManager()):
+            snapshot = load_engine.get_load_model_snapshot(2026, "2026-06-02")
+
+        self.assertAlmostEqual(snapshot["daily_training_load"], 145.67, places=2)
+        self.assertAlmostEqual(snapshot["ctl"], 4.96, places=2)
+        self.assertAlmostEqual(snapshot["atl"], 28.65, places=2)
+        self.assertAlmostEqual(snapshot["tsb"], -7.62, places=2)
+        self.assertEqual(snapshot["source_totals"], {"hr_trimp": 145.67, "power_tss": 64.0})
+
+    def test_get_load_model_snapshot_adds_block_projection_through_block_end(self) -> None:
+        database = sqlite3.connect(":memory:")
+        database.row_factory = sqlite3.Row
+        database.executescript(
+            """
+            CREATE TABLE exec_activities (
+                activity_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                started_at TEXT,
+                discipline TEXT,
+                activity_type TEXT,
+                duration_seconds INTEGER,
+                avg_hr REAL,
+                avg_power REAL,
+                normalized_power REAL,
+                training_load REAL,
+                perceived_exertion REAL
+            );
+            CREATE TABLE zone_metric_profiles (
+                zone_metric_profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                discipline TEXT NOT NULL,
+                metric_basis TEXT NOT NULL,
+                model_key TEXT,
+                resting_hr REAL,
+                max_hr REAL,
+                ftp REAL,
+                effective_start_date TEXT NOT NULL,
+                effective_end_date TEXT
+            );
+            CREATE TABLE plan_micro_weeks (
+                week_id INTEGER PRIMARY KEY,
+                block_id INTEGER NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL
+            );
+            CREATE TABLE plan_meso_blocks (
+                block_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                block_code TEXT NOT NULL,
+                block_name TEXT NOT NULL,
+                sequence_order INTEGER NOT NULL
+            );
+            CREATE TABLE plan_planned_sessions (
+                planned_session_id INTEGER PRIMARY KEY,
+                week_id INTEGER NOT NULL,
+                session_date TEXT NOT NULL,
+                planned_role TEXT,
+                planned_type TEXT,
+                duration_min INTEGER,
+                duration_max INTEGER
+            );
+            CREATE TABLE link_plan_execution (
+                link_id INTEGER PRIMARY KEY,
+                planned_session_id INTEGER NOT NULL,
+                activity_id INTEGER NOT NULL,
+                compliance_status TEXT NOT NULL
+            );
+            """
+        )
+        database.executemany(
+            """
+            INSERT INTO zone_metric_profiles (
+                zone_metric_profile_id, season_id, discipline, metric_basis, model_key,
+                resting_hr, max_hr, ftp, effective_start_date, effective_end_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "cycling", "heart_rate", "heart_rate_reserve_5_zone", 50, 174, None, "2026-06-01", None),
+                (2, 2026, "cycling", "power", "ftp_coggan_7_zone", None, None, 250, "2026-06-01", None),
+            ],
+        )
+        database.execute(
+            """
+            INSERT INTO exec_activities (
+                activity_id, season_id, activity_date, started_at, discipline, activity_type, duration_seconds,
+                avg_hr, avg_power, normalized_power, training_load, perceived_exertion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, 2026, "2026-07-20", None, "road_biking", "Ride", 3600, 120, 150, 160, 40, None),
+        )
+        database.execute(
+            "INSERT INTO plan_meso_blocks (block_id, season_id, block_code, block_name, sequence_order) VALUES (?, ?, ?, ?, ?)",
+            (3, 2026, "B3", "B3", 3),
+        )
+        database.executemany(
+            "INSERT INTO plan_micro_weeks (week_id, block_id, start_date, end_date) VALUES (?, ?, ?, ?)",
+            [
+                (206, 3, "2026-07-20", "2026-07-26"),
+                (207, 3, "2026-07-27", "2026-08-02"),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO plan_planned_sessions (
+                planned_session_id, week_id, session_date, planned_role, planned_type, duration_min, duration_max
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (20602, 206, "2026-07-21", "resistencia-aerobica-principal", "bicicleta-z2", 90, 120),
+                (20603, 206, "2026-07-22", "carrera-continua", "trote-suave", 20, 30),
+                (20701, 207, "2026-07-27", "recuperacion", "recuperacion", 30, 90),
+            ],
+        )
+        database.commit()
+
+        class _ContextManager:
+            def __enter__(self):
+                return database
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.load_engine.get_connection", return_value=_ContextManager()):
+            snapshot = load_engine.get_load_model_snapshot(2026, "2026-07-20")
+
+        self.assertEqual(snapshot["projection_end_date"], "2026-08-02")
+        self.assertEqual([entry["metric_date"] for entry in snapshot["projection"]], [
+            "2026-07-21",
+            "2026-07-22",
+            "2026-07-23",
+            "2026-07-24",
+            "2026-07-25",
+            "2026-07-26",
+            "2026-07-27",
+            "2026-07-28",
+            "2026-07-29",
+            "2026-07-30",
+            "2026-07-31",
+            "2026-08-01",
+            "2026-08-02",
+        ])
+        self.assertAlmostEqual(snapshot["projection"][0]["daily_training_load"], 100.8, places=2)
+        self.assertAlmostEqual(snapshot["projection"][1]["daily_training_load"], 28.75, places=2)
+        self.assertAlmostEqual(snapshot["projection"][6]["daily_training_load"], 31.8, places=2)
+
+    def test_estimate_planned_session_load_prefers_recent_block_calibration(self) -> None:
+        database = sqlite3.connect(":memory:")
+        database.row_factory = sqlite3.Row
+        database.executescript(
+            """
+            CREATE TABLE exec_activities (
+                activity_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                started_at TEXT,
+                discipline TEXT,
+                activity_type TEXT,
+                duration_seconds INTEGER,
+                avg_hr REAL,
+                avg_power REAL,
+                normalized_power REAL,
+                training_load REAL,
+                perceived_exertion REAL
+            );
+            CREATE TABLE zone_metric_profiles (
+                zone_metric_profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                discipline TEXT NOT NULL,
+                metric_basis TEXT NOT NULL,
+                model_key TEXT,
+                resting_hr REAL,
+                max_hr REAL,
+                ftp REAL,
+                effective_start_date TEXT NOT NULL,
+                effective_end_date TEXT
+            );
+            CREATE TABLE plan_meso_blocks (
+                block_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                block_code TEXT NOT NULL,
+                block_name TEXT NOT NULL,
+                sequence_order INTEGER NOT NULL
+            );
+            CREATE TABLE plan_micro_weeks (
+                week_id INTEGER PRIMARY KEY,
+                block_id INTEGER NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL
+            );
+            CREATE TABLE plan_planned_sessions (
+                planned_session_id INTEGER PRIMARY KEY,
+                week_id INTEGER NOT NULL,
+                session_date TEXT NOT NULL,
+                planned_role TEXT,
+                planned_type TEXT,
+                duration_min INTEGER,
+                duration_max INTEGER
+            );
+            CREATE TABLE link_plan_execution (
+                link_id INTEGER PRIMARY KEY,
+                planned_session_id INTEGER NOT NULL,
+                activity_id INTEGER NOT NULL,
+                compliance_status TEXT NOT NULL
+            );
+            """
+        )
+        database.executemany(
+            """
+            INSERT INTO zone_metric_profiles (
+                zone_metric_profile_id, season_id, discipline, metric_basis, model_key,
+                resting_hr, max_hr, ftp, effective_start_date, effective_end_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "cycling", "heart_rate", "heart_rate_reserve_5_zone", 50, 174, None, "2026-06-01", None),
+                (2, 2026, "cycling", "power", "ftp_coggan_7_zone", None, None, 250, "2026-06-01", None),
+            ],
+        )
+        database.executemany(
+            "INSERT INTO plan_meso_blocks (block_id, season_id, block_code, block_name, sequence_order) VALUES (?, ?, ?, ?, ?)",
+            [
+                (2, 2026, "B2", "B2", 2),
+                (3, 2026, "B3", "B3", 3),
+            ],
+        )
+        database.executemany(
+            "INSERT INTO plan_micro_weeks (week_id, block_id, start_date, end_date) VALUES (?, ?, ?, ?)",
+            [
+                (205, 2, "2026-07-13", "2026-07-19"),
+                (206, 3, "2026-07-20", "2026-07-26"),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO plan_planned_sessions (
+                planned_session_id, week_id, session_date, planned_role, planned_type, duration_min, duration_max
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (20501, 205, "2026-07-14", "resistencia-aerobica-principal", "bicicleta-z2", 90, 120),
+                (20502, 205, "2026-07-16", "resistencia-aerobica-principal", "bicicleta-z2", 90, 120),
+                (20602, 206, "2026-07-21", "resistencia-aerobica-principal", "bicicleta-z2", 90, 120),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO exec_activities (
+                activity_id, season_id, activity_date, started_at, discipline, activity_type, duration_seconds,
+                avg_hr, avg_power, normalized_power, training_load, perceived_exertion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "2026-07-14", None, "road_biking", "Ride", 7200, 125, 140, 145, 55, None),
+                (2, 2026, "2026-07-16", None, "road_biking", "Ride", 6000, 122, 138, 143, 48, None),
+            ],
+        )
+        database.executemany(
+            "INSERT INTO link_plan_execution (link_id, planned_session_id, activity_id, compliance_status) VALUES (?, ?, ?, ?)",
+            [
+                (1, 20501, 1, "completed"),
+                (2, 20502, 2, "completed"),
+            ],
+        )
+        database.commit()
+
+        class _ContextManager:
+            def __enter__(self):
+                return database
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.load_engine.get_connection", return_value=_ContextManager()):
+            projection_loads, _ = load_engine._build_block_projection_loads(season_id=2026, metric_date="2026-07-20")
+            sample_loads = [
+                load_engine.compute_activity_load(
+                    {
+                        "activity_date": "2026-07-14",
+                        "started_at": None,
+                        "discipline": "road_biking",
+                        "activity_type": "Ride",
+                        "duration_seconds": 7200,
+                        "avg_hr": 125,
+                        "avg_power": 140,
+                        "normalized_power": 145,
+                        "training_load": 55,
+                        "perceived_exertion": None,
+                    },
+                    season_id=2026,
+                )["load_value"],
+                load_engine.compute_activity_load(
+                    {
+                        "activity_date": "2026-07-16",
+                        "started_at": None,
+                        "discipline": "road_biking",
+                        "activity_type": "Ride",
+                        "duration_seconds": 6000,
+                        "avg_hr": 122,
+                        "avg_power": 138,
+                        "normalized_power": 143,
+                        "training_load": 48,
+                        "perceived_exertion": None,
+                    },
+                    season_id=2026,
+                )["load_value"],
+            ]
+        expected_factor = median([sample_loads[0] / 105.0, sample_loads[1] / 105.0])
+        self.assertAlmostEqual(projection_loads["2026-07-21"], round(105.0 * expected_factor, 2), places=1)
+        self.assertLess(projection_loads["2026-07-21"], 100.8)
+
+    def test_recovery_calibration_excludes_completed_sessions_far_from_planned_duration(self) -> None:
+        database = sqlite3.connect(":memory:")
+        database.row_factory = sqlite3.Row
+        database.executescript(
+            """
+            CREATE TABLE exec_activities (
+                activity_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                activity_date TEXT NOT NULL,
+                started_at TEXT,
+                discipline TEXT,
+                activity_type TEXT,
+                duration_seconds INTEGER,
+                avg_hr REAL,
+                avg_power REAL,
+                normalized_power REAL,
+                training_load REAL,
+                perceived_exertion REAL
+            );
+            CREATE TABLE zone_metric_profiles (
+                zone_metric_profile_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                discipline TEXT NOT NULL,
+                metric_basis TEXT NOT NULL,
+                model_key TEXT,
+                resting_hr REAL,
+                max_hr REAL,
+                ftp REAL,
+                effective_start_date TEXT NOT NULL,
+                effective_end_date TEXT
+            );
+            CREATE TABLE plan_meso_blocks (
+                block_id INTEGER PRIMARY KEY,
+                season_id INTEGER NOT NULL,
+                block_code TEXT NOT NULL,
+                block_name TEXT NOT NULL,
+                sequence_order INTEGER NOT NULL
+            );
+            CREATE TABLE plan_micro_weeks (
+                week_id INTEGER PRIMARY KEY,
+                block_id INTEGER NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL
+            );
+            CREATE TABLE plan_planned_sessions (
+                planned_session_id INTEGER PRIMARY KEY,
+                week_id INTEGER NOT NULL,
+                session_date TEXT NOT NULL,
+                planned_role TEXT,
+                planned_type TEXT,
+                duration_min INTEGER,
+                duration_max INTEGER
+            );
+            CREATE TABLE link_plan_execution (
+                link_id INTEGER PRIMARY KEY,
+                planned_session_id INTEGER NOT NULL,
+                activity_id INTEGER NOT NULL,
+                compliance_status TEXT NOT NULL
+            );
+            """
+        )
+        database.execute(
+            """
+            INSERT INTO zone_metric_profiles (
+                zone_metric_profile_id, season_id, discipline, metric_basis, model_key,
+                resting_hr, max_hr, ftp, effective_start_date, effective_end_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, 2026, "cycling", "heart_rate", "heart_rate_reserve_5_zone", 50, 174, None, "2026-06-01", None),
+        )
+        database.executemany(
+            "INSERT INTO plan_meso_blocks (block_id, season_id, block_code, block_name, sequence_order) VALUES (?, ?, ?, ?, ?)",
+            [
+                (2, 2026, "B2", "B2", 2),
+                (3, 2026, "B3", "B3", 3),
+            ],
+        )
+        database.executemany(
+            "INSERT INTO plan_micro_weeks (week_id, block_id, start_date, end_date) VALUES (?, ?, ?, ?)",
+            [
+                (205, 2, "2026-07-13", "2026-07-19"),
+                (206, 3, "2026-07-20", "2026-07-26"),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO plan_planned_sessions (
+                planned_session_id, week_id, session_date, planned_role, planned_type, duration_min, duration_max
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (20501, 205, "2026-07-14", "recuperacion", "recuperacion", 30, 90),
+                (20502, 205, "2026-07-16", "recuperacion", "recuperacion", 30, 90),
+                (20503, 205, "2026-07-18", "recuperacion", "recuperacion", 30, 90),
+            ],
+        )
+        database.executemany(
+            """
+            INSERT INTO exec_activities (
+                activity_id, season_id, activity_date, started_at, discipline, activity_type, duration_seconds,
+                avg_hr, avg_power, normalized_power, training_load, perceived_exertion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, 2026, "2026-07-14", None, "road_biking", "Ride", 3600, 110, None, None, 30, None),
+                (2, 2026, "2026-07-16", None, "road_biking", "Ride", 3300, 112, None, None, 32, None),
+                (3, 2026, "2026-07-18", None, "road_biking", "Ride", 12600, 145, None, None, 120, None),
+            ],
+        )
+        database.executemany(
+            "INSERT INTO link_plan_execution (link_id, planned_session_id, activity_id, compliance_status) VALUES (?, ?, ?, ?)",
+            [
+                (1, 20501, 1, "completed"),
+                (2, 20502, 2, "completed"),
+                (3, 20503, 3, "completed"),
+            ],
+        )
+        database.commit()
+
+        class _ContextManager:
+            def __enter__(self):
+                return database
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.load_engine.get_connection", return_value=_ContextManager()):
+            calibration = load_engine._collect_projection_calibration(
+                season_id=2026,
+                season_block_sequence=3,
+                metric_date="2026-07-20",
+            )
+
+        self.assertIn("recuperacion", calibration["type"])
+        self.assertLess(calibration["type"]["recuperacion"], 1.0)
 
 
 if __name__ == "__main__":

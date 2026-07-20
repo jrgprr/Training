@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from math import exp
+from statistics import median
 from typing import Any
 
 from .db import get_connection
@@ -155,6 +156,195 @@ def _is_locomotion_activity(activity_row: dict[str, Any]) -> bool:
     return False
 
 
+def _is_endurance_load_activity(activity_row: dict[str, Any]) -> bool:
+    discipline = str(activity_row.get("discipline") or "").strip().lower()
+    if discipline in CYCLING_DISCIPLINES:
+        return True
+    return _is_locomotion_activity(activity_row)
+
+
+def _default_projection_factor(session_row: dict[str, Any]) -> float:
+    planned_type = str(session_row.get("planned_type") or "").strip().lower()
+    planned_role = str(session_row.get("planned_role") or "").strip().lower()
+
+    factors = {
+        "recuperacion": 0.53,
+        "bicicleta-z2": 0.96,
+        "trote-suave": 1.15,
+        "salida-larga": 0.85,
+        "complementaria": 0.42,
+    }
+    factor = factors.get(planned_type)
+    if factor is None:
+        if "carrera" in planned_role:
+            factor = 1.15
+        elif "extensiva" in planned_role:
+            factor = 0.85
+        elif "principal" in planned_role:
+            factor = 0.96
+        elif "suave" in planned_role or "recuperacion" in planned_role:
+            factor = 0.53
+        else:
+            factor = 0.6
+    return factor
+
+
+def _is_recovery_calibration_sample(activity_row: dict[str, Any], *, midpoint_duration: float) -> bool:
+    compliance_status = str(activity_row.get("compliance_status") or "").strip().lower()
+    if compliance_status != "completed":
+        return False
+
+    duration_seconds = activity_row.get("duration_seconds")
+    if duration_seconds in (None, 0) or midpoint_duration <= 0:
+        return False
+
+    actual_minutes = float(duration_seconds) / 60.0
+    adherence_ratio = actual_minutes / midpoint_duration
+    return 0.75 <= adherence_ratio <= 1.25
+
+
+def _collect_projection_calibration(*, season_id: int, season_block_sequence: int, metric_date: str) -> dict[str, dict[str, float]]:
+    with get_connection() as connection:
+        linked_rows = connection.execute(
+            """
+                 SELECT ps.planned_type, ps.planned_role, ps.duration_min, ps.duration_max,
+                     l.compliance_status,
+                   e.activity_date, e.started_at, e.discipline, e.activity_type,
+                   e.duration_seconds, e.avg_hr, e.avg_power, e.normalized_power,
+                   e.training_load, e.perceived_exertion
+            FROM link_plan_execution l
+            JOIN plan_planned_sessions ps ON ps.planned_session_id = l.planned_session_id
+            JOIN plan_micro_weeks mw ON mw.week_id = ps.week_id
+            JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
+            JOIN exec_activities e ON e.activity_id = l.activity_id
+            WHERE mb.season_id = ?
+              AND mb.sequence_order BETWEEN ? AND ?
+              AND ps.session_date < ?
+            ORDER BY ps.session_date ASC, l.link_id ASC
+            """,
+            (season_id, max(season_block_sequence - 1, 1), season_block_sequence, metric_date),
+        ).fetchall()
+
+    samples_by_type: dict[str, list[float]] = defaultdict(list)
+    samples_by_role: dict[str, list[float]] = defaultdict(list)
+    for row in linked_rows:
+        activity_row = dict(row)
+        if not _is_endurance_load_activity(activity_row):
+            continue
+        duration_min = activity_row.get("duration_min")
+        duration_max = activity_row.get("duration_max")
+        lower_bound = float(duration_min if duration_min is not None else duration_max if duration_max is not None else 0)
+        upper_bound = float(duration_max if duration_max is not None else duration_min if duration_min is not None else 0)
+        midpoint_duration = (lower_bound + upper_bound) / 2 if lower_bound or upper_bound else 0.0
+        if midpoint_duration <= 0:
+            continue
+
+        planned_type = str(activity_row.get("planned_type") or "").strip().lower()
+        if planned_type == "recuperacion" and not _is_recovery_calibration_sample(activity_row, midpoint_duration=midpoint_duration):
+            continue
+
+        load_value = float(compute_activity_load(activity_row, season_id=season_id)["load_value"])
+        load_per_minute = load_value / midpoint_duration
+        if load_per_minute <= 0:
+            continue
+
+        planned_role = str(activity_row.get("planned_role") or "").strip().lower()
+        if planned_type:
+            samples_by_type[planned_type].append(load_per_minute)
+        if planned_role:
+            samples_by_role[planned_role].append(load_per_minute)
+
+    return {
+        "type": {key: round(median(values), 3) for key, values in samples_by_type.items() if len(values) >= 2},
+        "role": {key: round(median(values), 3) for key, values in samples_by_role.items() if len(values) >= 2},
+    }
+
+
+def _estimate_planned_session_load(session_row: dict[str, Any], calibration: dict[str, dict[str, float]] | None = None) -> float:
+    duration_min = session_row.get("duration_min")
+    duration_max = session_row.get("duration_max")
+    lower_bound = float(duration_min if duration_min is not None else duration_max if duration_max is not None else 0)
+    upper_bound = float(duration_max if duration_max is not None else duration_min if duration_min is not None else 0)
+    midpoint_duration = (lower_bound + upper_bound) / 2 if lower_bound or upper_bound else 0.0
+
+    planned_type = str(session_row.get("planned_type") or "").strip().lower()
+    planned_role = str(session_row.get("planned_role") or "").strip().lower()
+    factor = None
+    if calibration:
+        factor = calibration.get("type", {}).get(planned_type)
+        if factor is None:
+            factor = calibration.get("role", {}).get(planned_role)
+    if factor is None:
+        factor = _default_projection_factor(session_row)
+    return round(midpoint_duration * factor, 2)
+
+
+def _build_block_projection_loads(*, season_id: int, metric_date: str) -> tuple[dict[str, float], str | None]:
+    with get_connection() as connection:
+        planning_tables_available = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_micro_weeks'"
+        ).fetchone() is not None and connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_planned_sessions'"
+        ).fetchone() is not None and connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'plan_meso_blocks'"
+        ).fetchone() is not None
+        if not planning_tables_available:
+            return {}, None
+
+        week_row = connection.execute(
+            """
+            SELECT mw.week_id, mw.block_id, mb.season_id, mb.sequence_order
+            FROM plan_micro_weeks mw
+            JOIN plan_meso_blocks mb ON mb.block_id = mw.block_id
+            WHERE mw.start_date <= ? AND mw.end_date >= ?
+            ORDER BY mw.start_date DESC, mw.week_id DESC
+            LIMIT 1
+            """,
+            (metric_date, metric_date),
+        ).fetchone()
+        if week_row is None:
+            return {}, None
+
+        block_end_row = connection.execute(
+            """
+            SELECT MAX(end_date) AS block_end_date
+            FROM plan_micro_weeks
+            WHERE block_id = ?
+            """,
+            (week_row["block_id"],),
+        ).fetchone()
+        block_end_date = str(block_end_row["block_end_date"]) if block_end_row and block_end_row["block_end_date"] else None
+        if not block_end_date or block_end_date <= metric_date:
+            return {}, block_end_date
+
+        calibration = _collect_projection_calibration(
+            season_id=int(week_row["season_id"]),
+            season_block_sequence=int(week_row["sequence_order"]),
+            metric_date=metric_date,
+        )
+
+        session_rows = connection.execute(
+            """
+            SELECT session_date, planned_type, planned_role, duration_min, duration_max
+            FROM plan_planned_sessions
+            WHERE session_date > ?
+              AND week_id IN (
+                  SELECT week_id
+                  FROM plan_micro_weeks
+                  WHERE block_id = ?
+              )
+            ORDER BY session_date ASC, planned_session_id ASC
+            """,
+            (metric_date, week_row["block_id"]),
+        ).fetchall()
+
+    projected_loads: dict[str, float] = {}
+    for row in session_rows:
+        session = dict(row)
+        projected_loads[str(session["session_date"])] = _estimate_planned_session_load(session, calibration)
+    return projected_loads, block_end_date
+
+
 def compute_activity_load(activity_row: dict[str, Any], *, season_id: int) -> dict[str, Any]:
     discipline = str(activity_row.get("discipline") or "").strip().lower()
     activity_date = _activity_moment_key(activity_row)
@@ -280,6 +470,9 @@ def build_daily_loads(*, season_id: int, through_date: str) -> tuple[dict[str, f
     for row in rows:
         activity = dict(row)
         load = compute_activity_load(activity, season_id=season_id)
+        if not _is_endurance_load_activity(activity):
+            continue
+
         metric_date = str(activity["activity_date"])
         daily_loads[metric_date] += float(load["load_value"])
         activity_loads.append(
@@ -371,6 +564,15 @@ def get_load_model_snapshot(season_id: int, metric_date: str) -> dict[str, Any]:
 
     snapshot = _compute_load_model_series(daily_loads, through_date=metric_date)
     snapshot["trend"] = _compute_load_model_history(daily_loads, through_date=metric_date)
+    projection_loads, projection_end_date = _build_block_projection_loads(season_id=season_id, metric_date=metric_date)
+    if projection_loads and projection_end_date:
+        projected_daily_loads = dict(daily_loads)
+        projected_daily_loads.update(projection_loads)
+        projected_history = _compute_load_model_history(projected_daily_loads, through_date=projection_end_date, trailing_days=365)
+        snapshot["projection"] = [entry for entry in projected_history if str(entry["metric_date"]) > metric_date]
+    else:
+        snapshot["projection"] = []
+    snapshot["projection_end_date"] = projection_end_date
     snapshot["source_totals"] = {key: round(value, 2) for key, value in sorted(source_totals.items())}
     return snapshot
 
