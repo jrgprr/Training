@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .activity_quality import get_activity_quality
+from .benchmark_climbs import create_benchmark_climb, get_benchmark_climb_detail, list_benchmark_climbs, refresh_benchmark_climb_profile
 from .activity_weather import backfill_activity_weather_batch, backfill_activity_weather_for_external_ids, enrich_activity_weather, get_activity_weather
 from .db import get_connection, get_database_path, initialize_database
 from .imports import GarminConnectAdapter, GarminConnectImportError, GarminConnectNotConfiguredError, GarminImportPipeline, GarminImportRequest, GarminImportStorage, classify_garmin_failure
@@ -372,6 +373,124 @@ class ZoneMetricProfileAcceptancePayload(BaseModel):
     notes: str | None = None
 
 
+class SeasonContextEventPayload(BaseModel):
+    event_date: str
+    event_type: str
+    title: str
+    equipment_label: str | None = None
+    notes: str | None = None
+
+
+class BenchmarkClimbPayload(BaseModel):
+    climb_name: str
+    primary_segment_id: int
+    discipline: str | None = None
+    notes: str | None = None
+
+
+def get_season_context_events(season_id: int) -> dict[str, Any]:
+    season = fetch_one(
+        """
+        SELECT season_id, season_code, season_name
+        FROM plan_seasons
+        WHERE season_id = ?
+        """,
+        (season_id,),
+    )
+    if season is None:
+        raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+
+    items = fetch_all(
+        """
+        SELECT season_context_event_id, season_id, event_date, event_type, title,
+               equipment_label, notes, created_at, updated_at
+        FROM season_context_events
+        WHERE season_id = ?
+        ORDER BY event_date DESC, season_context_event_id DESC
+        """,
+        (season_id,),
+    )
+    return {
+        "season_id": season_id,
+        "season_code": season["season_code"],
+        "season_name": season["season_name"],
+        "items": items,
+    }
+
+
+def create_season_context_event(season_id: int, payload: SeasonContextEventPayload) -> dict[str, Any]:
+    event_date = ensure_iso_date(payload.event_date, "event_date")
+    event_type = payload.event_type.strip()
+    title = payload.title.strip()
+    equipment_label = payload.equipment_label.strip() if payload.equipment_label and payload.equipment_label.strip() else None
+    notes = payload.notes.strip() if payload.notes and payload.notes.strip() else None
+
+    if not event_type:
+        raise HTTPException(status_code=400, detail="event_type no puede estar vacio.")
+    if not title:
+        raise HTTPException(status_code=400, detail="title no puede estar vacio.")
+
+    with get_connection() as connection:
+        season = connection.execute(
+            """
+            SELECT season_id
+            FROM plan_seasons
+            WHERE season_id = ?
+            """,
+            (season_id,),
+        ).fetchone()
+        if season is None:
+            raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+
+        cursor = connection.execute(
+            """
+            INSERT INTO season_context_events (
+                season_id, event_date, event_type, title, equipment_label, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (season_id, event_date, event_type, title, equipment_label, notes),
+        )
+        row = connection.execute(
+            """
+            SELECT season_context_event_id, season_id, event_date, event_type, title,
+                   equipment_label, notes, created_at, updated_at
+            FROM season_context_events
+            WHERE season_context_event_id = ?
+            """,
+            (int(cursor.lastrowid),),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=500, detail="No se pudo recuperar el evento creado.")
+    return dict(row)
+
+
+def delete_season_context_event(season_id: int, season_context_event_id: int) -> dict[str, Any]:
+    with get_connection() as connection:
+        season = connection.execute(
+            "SELECT season_id FROM plan_seasons WHERE season_id = ?",
+            (season_id,),
+        ).fetchone()
+        if season is None:
+            raise HTTPException(status_code=404, detail=f"No existe la temporada {season_id}.")
+
+        cursor = connection.execute(
+            """
+            DELETE FROM season_context_events
+            WHERE season_id = ? AND season_context_event_id = ?
+            """,
+            (season_id, season_context_event_id),
+        )
+
+    if cursor.rowcount == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No existe el evento {season_context_event_id} en la temporada {season_id}.",
+        )
+    return {"deleted": True, "season_context_event_id": season_context_event_id}
+
+
 def get_daily_metric(season_id: int, metric_date: str) -> dict[str, Any]:
     metric = fetch_one(
         """
@@ -506,6 +625,126 @@ def get_block_context(block_id: int) -> dict[str, Any]:
     return row
 
 
+WEEKLY_COMPLIANCE_STATUSES = {"completed", "partial", "pending", "skipped", "replaced"}
+
+
+def _sum_activity_minutes(activities: list[dict[str, Any]]) -> float:
+    return float(sum((activity.get("actual_duration_min") or 0) for activity in activities))
+
+
+def _is_support_flexibility_activity(activity: dict[str, Any]) -> bool:
+    return str(activity.get("actual_discipline") or "").strip().lower() == "yoga"
+
+
+def _sum_load_bearing_optional_minutes(activities: list[dict[str, Any]]) -> float:
+    return float(
+        sum(
+            (activity.get("actual_duration_min") or 0)
+            for activity in activities
+            if not _is_support_flexibility_activity(activity)
+        )
+    )
+
+
+def _normalize_review_compliance_status(
+    review_status: Any,
+    actual_summary: Any,
+    has_recorded_activities: bool,
+) -> str | None:
+    review_text = str(review_status).strip().lower() if review_status not in (None, "") else ""
+    summary_text = str(actual_summary).strip().lower() if actual_summary not in (None, "") else ""
+
+    if not review_text and not summary_text:
+        return "completed" if has_recorded_activities else None
+
+    for text in (review_text, summary_text):
+        if text in WEEKLY_COMPLIANCE_STATUSES:
+            return text
+        if any(token in text for token in ("replaced", "replace", "replacement", "reemplaz")):
+            return "replaced"
+        if any(token in text for token in ("partial", "parcial")):
+            return "partial"
+        if any(token in text for token in ("pending", "pendiente")):
+            return "pending"
+
+    if any(
+        token in review_text
+        for token in (
+            "completed",
+            "complete",
+            "on-target",
+            "acceptable",
+            "active rest",
+            "full rest",
+            "recovery day taken as full rest",
+        )
+    ):
+        return "completed"
+
+    combined_text = " ".join(part for part in (review_text, summary_text) if part)
+    if any(
+        token in combined_text
+        for token in (
+            "skipped",
+            "skip",
+            "missed",
+            "omit",
+            "omitted",
+            "not done",
+            "did not happen",
+            "no activity was recorded",
+            "was not done",
+            "salt",
+            "omitid",
+            "no se realiz",
+        )
+    ):
+        return "skipped"
+    return "completed" if has_recorded_activities else None
+
+
+def _resolve_weekly_compliance_status(row: dict[str, Any]) -> str:
+    linked_status = row.get("linked_compliance_status")
+    if linked_status in WEEKLY_COMPLIANCE_STATUSES:
+        return str(linked_status)
+
+    attached_activities = [
+        *(row.get("activities") or []),
+        *(row.get("other_daily_activities") or []),
+        *(row.get("optional_daily_activities") or []),
+    ]
+    normalized_review_status = _normalize_review_compliance_status(
+        row.get("review_compliance_status") or row.get("compliance_status"),
+        row.get("actual_summary"),
+        bool(attached_activities),
+    )
+    if normalized_review_status in WEEKLY_COMPLIANCE_STATUSES:
+        return normalized_review_status
+    return "pending"
+
+
+def _calculate_weekly_actual_minutes(rows: list[dict[str, Any]]) -> int:
+    total_minutes = 0.0
+    seen_activity_ids: set[int] = set()
+
+    for row in rows:
+        for key in ("activities", "other_daily_activities", "optional_daily_activities"):
+            for activity in row.get(key) or []:
+                if key == "optional_daily_activities" and _is_support_flexibility_activity(activity):
+                    continue
+
+                activity_id = activity.get("activity_id")
+                if activity_id is not None:
+                    activity_id_int = int(activity_id)
+                    if activity_id_int in seen_activity_ids:
+                        continue
+                    seen_activity_ids.add(activity_id_int)
+
+                total_minutes += float(activity.get("actual_duration_min") or 0)
+
+    return round(total_minutes)
+
+
 def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
     rows = fetch_all(
         """
@@ -528,6 +767,8 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
              ps.duration_min, ps.duration_max, ps.is_key_session,
              up.support_routine AS planned_support_routine,
              rr.daily_review_id, mb.season_id AS review_season_id,
+               rl.compliance_status AS linked_compliance_status,
+               rr.compliance_status AS review_compliance_status,
                CASE
                    WHEN COALESCE(rr.compliance_status, rl.compliance_status, 'pending') = 'skipped' THEN NULL
                    ELSE rl.activity_id
@@ -758,17 +999,28 @@ def get_week_plan_vs_real_rows(week_id: int) -> list[dict[str, Any]]:
     zone_comparison_by_session = list_session_zone_comparisons(week_id)
 
     for row in rows:
-        activities = [] if row["compliance_status"] == "skipped" else activities_by_session.get(row["planned_session_id"], [])
+        activities = activities_by_session.get(row["planned_session_id"], [])
         row["activities"] = activities
         row["optional_daily_activities"] = optional_activities_by_date.get(row["session_date"], [])
         row["other_daily_activities"] = other_activities_by_date.get(row["session_date"], [])
         row["zone_comparison"] = zone_comparison_by_session.get(row["planned_session_id"], [])
 
-        if not activities:
-            continue
+        row["normalized_compliance_status"] = _resolve_weekly_compliance_status(row)
 
-        total_minutes = sum(activity["actual_duration_min"] for activity in activities if activity["actual_duration_min"] is not None)
-        row["actual_duration_min"] = total_minutes if total_minutes > 0 else row["actual_duration_min"]
+        if row["normalized_compliance_status"] == "skipped":
+            row["activities"] = []
+
+        linked_minutes = _sum_activity_minutes(row["activities"])
+        other_minutes = _sum_activity_minutes(row["other_daily_activities"])
+        optional_minutes = _sum_load_bearing_optional_minutes(row["optional_daily_activities"])
+        fallback_minutes = other_minutes + optional_minutes
+
+        if linked_minutes > 0:
+            row["actual_duration_min"] = linked_minutes
+        elif fallback_minutes > 0:
+            row["actual_duration_min"] = fallback_minutes
+
+        row["actual_minutes_total"] = linked_minutes + other_minutes + optional_minutes
 
     return rows
 
@@ -787,13 +1039,13 @@ def calculate_weekly_review_metrics(week_id: int) -> dict[str, Any]:
     rows = get_week_plan_vs_real_rows(week_id)
 
     total = len(rows)
-    completed = sum(1 for row in rows if row["compliance_status"] == "completed")
-    partial = sum(1 for row in rows if row["compliance_status"] == "partial")
-    pending = sum(1 for row in rows if row["compliance_status"] == "pending")
-    skipped = sum(1 for row in rows if row["compliance_status"] == "skipped")
-    replaced = sum(1 for row in rows if row["compliance_status"] == "replaced")
+    completed = sum(1 for row in rows if row.get("normalized_compliance_status") == "completed")
+    partial = sum(1 for row in rows if row.get("normalized_compliance_status") == "partial")
+    pending = sum(1 for row in rows if row.get("normalized_compliance_status") == "pending")
+    skipped = sum(1 for row in rows if row.get("normalized_compliance_status") == "skipped")
+    replaced = sum(1 for row in rows if row.get("normalized_compliance_status") == "replaced")
     tracked = total - pending
-    actual_minutes = round(sum((row["actual_duration_min"] or 0) for row in rows))
+    actual_minutes = _calculate_weekly_actual_minutes(rows)
     planned_reference_minutes = round(
         sum((((session["duration_min"] or session["duration_max"] or 0) + (session["duration_max"] or session["duration_min"] or 0)) / 2) for session in session_rows)
     )
@@ -1403,6 +1655,66 @@ def get_seasons() -> list[dict[str, Any]]:
         ORDER BY season_code
         """
     )
+
+
+@app.get("/api/seasons/{season_id}/context-events")
+def get_season_context_events_endpoint(season_id: int) -> dict[str, Any]:
+    return get_season_context_events(season_id)
+
+
+@app.post("/api/seasons/{season_id}/context-events")
+def create_season_context_event_endpoint(season_id: int, payload: SeasonContextEventPayload) -> dict[str, Any]:
+    return create_season_context_event(season_id, payload)
+
+
+@app.delete("/api/seasons/{season_id}/context-events/{season_context_event_id}")
+def delete_season_context_event_endpoint(season_id: int, season_context_event_id: int) -> dict[str, Any]:
+    return delete_season_context_event(season_id, season_context_event_id)
+
+
+@app.get("/api/benchmark-climbs")
+def get_benchmark_climbs_endpoint(season_id: int) -> dict[str, Any]:
+    try:
+        return {"items": list_benchmark_climbs(season_id)}
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/seasons/{season_id}/benchmark-climbs")
+def create_benchmark_climb_endpoint(season_id: int, payload: BenchmarkClimbPayload) -> dict[str, Any]:
+    try:
+        return create_benchmark_climb(
+            season_id,
+            payload.climb_name,
+            payload.primary_segment_id,
+            discipline=payload.discipline,
+            notes=payload.notes,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:
+        detail = str(error)
+        if 'UNIQUE constraint failed: benchmark_climbs.season_id, benchmark_climbs.climb_name' in detail:
+            raise HTTPException(status_code=409, detail='A benchmark climb with that name already exists in this season.') from error
+        raise
+
+
+@app.get("/api/benchmark-climbs/{benchmark_climb_id}")
+def get_benchmark_climb_detail_endpoint(benchmark_climb_id: int) -> dict[str, Any]:
+    try:
+        return get_benchmark_climb_detail(benchmark_climb_id)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/benchmark-climbs/{benchmark_climb_id}/refresh-profile")
+def refresh_benchmark_climb_profile_endpoint(benchmark_climb_id: int) -> dict[str, Any]:
+    try:
+        return refresh_benchmark_climb_profile(benchmark_climb_id)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.get("/api/seasons/{season_id}/blocks")

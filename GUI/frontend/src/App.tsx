@@ -217,6 +217,7 @@ type PlanVsRealRow = {
   perceived_exertion: number | null;
   daily_review_id: number | null;
   compliance_status: string;
+  normalized_compliance_status?: string | null;
   actual_summary: string | null;
   general_feeling: string | null;
   next_day_decision: string | null;
@@ -402,6 +403,33 @@ type PhysiologicalAnchorsFormState = {
   notes: string;
 };
 
+type SeasonContextEvent = {
+  season_context_event_id: number;
+  season_id: number;
+  event_date: string;
+  event_type: string;
+  title: string;
+  equipment_label: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SeasonContextEventsResponse = {
+  season_id: number;
+  season_code: string;
+  season_name: string;
+  items: SeasonContextEvent[];
+};
+
+type SeasonContextEventFormState = {
+  event_date: string;
+  event_type: string;
+  title: string;
+  equipment_label: string;
+  notes: string;
+};
+
 type CurrentZoneProfilesResponse = {
   season_id: number;
   discipline: string;
@@ -410,6 +438,14 @@ type CurrentZoneProfilesResponse = {
 
 const SEGMENT_HISTORY_LIMIT_OPTIONS = [5, 10, 20, 30, 50] as const;
 const SEGMENT_DAY_OCCURRENCE_COLORS = ["#0f766e", "#b45309", "#2563eb", "#9333ea", "#dc2626"] as const;
+const SEASON_CONTEXT_EVENT_OPTIONS = [
+  { value: "new_bicycle", label: "Bicicleta nueva" },
+  { value: "tyre_change", label: "Cambio de cubiertas" },
+  { value: "wheel_change", label: "Cambio de ruedas" },
+  { value: "bike_fit", label: "Ajuste biomecanico" },
+  { value: "maintenance", label: "Mantenimiento" },
+  { value: "other", label: "Otro" },
+] as const;
 
 type DailyMetricDetail = {
   daily_metric_id: number;
@@ -1008,6 +1044,83 @@ type SegmentHistoryResponse = {
   efforts: SegmentHistoryEffort[];
 };
 
+type BenchmarkClimbListItem = {
+  benchmark_climb_id: number;
+  season_id: number;
+  climb_name: string;
+  discipline: string;
+  primary_segment_id: number | null;
+  primary_segment_name: string | null;
+  effort_count: number;
+  best_elapsed_time_seconds: number | null;
+  last_activity_date: string | null;
+  profile_distance_meters: number | null;
+  profile_ascent_meters: number | null;
+  profile_average_grade_percent: number | null;
+  profile_ready: boolean;
+  profile_derived_at: string | null;
+};
+
+type BenchmarkClimbDetailResponse = {
+  benchmark_climb: {
+    benchmark_climb_id: number;
+    season_id: number;
+    climb_name: string;
+    discipline: string;
+    primary_segment_id: number | null;
+    status: string;
+    notes: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  segments: Array<{
+    segment_id: number;
+    role_code: string;
+    sequence_order: number;
+    segment_name: string | null;
+    discipline: string | null;
+    distance_meters: number | null;
+    ascent_meters: number | null;
+    average_grade_percent: number | null;
+  }>;
+  profile: {
+    benchmark_climb_profile_id: number;
+    benchmark_climb_id: number;
+    source_activity_id: number | null;
+    source_segment_effort_id: number | null;
+    source_enrichment_run_id: number | null;
+    distance_meters: number | null;
+    ascent_meters: number | null;
+    descent_meters: number | null;
+    average_grade_percent: number | null;
+    max_grade_percent: number | null;
+    min_altitude_meters: number | null;
+    max_altitude_meters: number | null;
+    point_count: number;
+    derived_at: string;
+  } | null;
+  profile_points: Array<{
+    point_index: number;
+    distance_meters: number;
+    altitude_meters: number | null;
+    grade_percent: number | null;
+    latitude: number | null;
+    longitude: number | null;
+  }>;
+  segment_history: SegmentHistoryResponse | null;
+  profile_source?: {
+    segment_effort_id: number;
+    activity_id: number;
+    activity_date: string;
+    elapsed_time_seconds: number;
+  };
+};
+
+type BenchmarkClimbFormState = {
+  climb_name: string;
+  notes: string;
+};
+
 type SegmentChartMetricKey = "elapsed_time_seconds" | "avg_power" | "avg_cadence" | "avg_heart_rate" | "max_heart_rate" | "avg_respiration_rate";
 
 type GarminImportRunResponse = {
@@ -1308,6 +1421,19 @@ const emptyPhysiologicalAnchorsForm = (): PhysiologicalAnchorsFormState => ({
   notes: "",
 });
 
+const emptySeasonContextEventForm = (): SeasonContextEventFormState => ({
+  event_date: getTodayIsoDate(),
+  event_type: "new_bicycle",
+  title: "",
+  equipment_label: "",
+  notes: "",
+});
+
+const emptyBenchmarkClimbForm = (): BenchmarkClimbFormState => ({
+  climb_name: "",
+  notes: "",
+});
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
@@ -1334,6 +1460,16 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
   });
   if (!response.ok) {
     throw new Error(await getApiErrorMessage(response, `Error ${response.status} guardando ${path}`));
+  }
+  return response.json() as Promise<T>;
+}
+
+async function deleteJson<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, `Error ${response.status} eliminando ${path}`));
   }
   return response.json() as Promise<T>;
 }
@@ -1601,6 +1737,74 @@ function renderSegmentEvolutionChart(history: SegmentHistoryResponse) {
               <tspan x={0} dy={11}>{formatSegmentChartDateParts(tick.activityDate).month}</tspan>
             </text>
           </g>
+        ))}
+      </svg>
+    </section>
+  );
+}
+
+function renderBenchmarkProfileChart(detail: BenchmarkClimbDetailResponse) {
+  if (!detail.profile || detail.profile_points.length < 2) {
+    return null;
+  }
+
+  const width = 760;
+  const height = 240;
+  const leftGutter = 54;
+  const rightGutter = 18;
+  const topGutter = 18;
+  const bottomGutter = 34;
+  const plotWidth = width - leftGutter - rightGutter;
+  const plotHeight = height - topGutter - bottomGutter;
+  const distances = detail.profile_points.map((point) => point.distance_meters);
+  const altitudeValues = detail.profile_points.flatMap((point) => point.altitude_meters == null ? [] : [point.altitude_meters]);
+  if (altitudeValues.length < 2) {
+    return null;
+  }
+
+  const maxDistance = Math.max(...distances, 1);
+  const minAltitude = Math.min(...altitudeValues);
+  const maxAltitude = Math.max(...altitudeValues);
+  const altitudeSpan = Math.max(maxAltitude - minAltitude, 1);
+  const toX = (distance: number) => leftGutter + (distance / maxDistance) * plotWidth;
+  const toY = (altitude: number) => topGutter + ((maxAltitude - altitude) / altitudeSpan) * plotHeight;
+  const pathData = detail.profile_points
+    .filter((point) => point.altitude_meters != null)
+    .map((point, index) => `${index === 0 ? "M" : "L"}${toX(point.distance_meters).toFixed(1)},${toY(point.altitude_meters ?? minAltitude).toFixed(1)}`)
+    .join(" ");
+  const distanceTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((maxDistance * ratio) / 10) * 10);
+
+  return (
+    <section className="segment-chart-card panel-subcard">
+      <div className="segment-chart-head">
+        <div>
+          <strong>Perfil del benchmark</strong>
+          <p className="segment-missing-copy">Perfil derivado desde la geometria guardada de la actividad fuente, priorizando altitud corregida cuando existe.</p>
+        </div>
+      </div>
+      <svg className="trend-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Perfil de ascenso del benchmark">
+        <line x1={leftGutter} y1={height - bottomGutter} x2={width - rightGutter} y2={height - bottomGutter} className="trend-chart-axis" />
+        <line x1={leftGutter} y1={topGutter} x2={leftGutter} y2={height - bottomGutter} className="trend-chart-axis" />
+        <path d={pathData} className="trend-chart-line" />
+        {distanceTicks.map((tick) => (
+          <g key={`benchmark-distance-${tick}`} transform={`translate(${toX(tick).toFixed(1)}, ${height - bottomGutter})`}>
+            <line x1={0} y1={0} x2={0} y2={6} className="trend-chart-axis" />
+            <text y={20} textAnchor="middle" className="trend-chart-date">{toMetricLabel(tick / 1000, " km")}</text>
+          </g>
+        ))}
+        <text x={12} y={topGutter + 10} className="trend-chart-range">{toMetricLabel(maxAltitude, " m")}</text>
+        <text x={12} y={height - bottomGutter} className="trend-chart-range">{toMetricLabel(minAltitude, " m")}</text>
+        {detail.profile_points.filter((point) => point.altitude_meters != null).map((point) => (
+          <circle
+            key={`benchmark-point-${point.point_index}`}
+            cx={toX(point.distance_meters)}
+            cy={toY(point.altitude_meters ?? minAltitude)}
+            r={3.2}
+            className="trend-chart-dot"
+            style={{ fill: "#0f766e" }}
+          >
+            <title>{`${toMetricLabel(point.distance_meters / 1000, " km")} · ${toMetricLabel(point.altitude_meters, " m")} · pendiente ${toMetricLabel(point.grade_percent, "%")}`}</title>
+          </circle>
         ))}
       </svg>
     </section>
@@ -2176,6 +2380,17 @@ function toDateTimeLabel(value: string | null) {
   });
 }
 
+function toDateLabel(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+  return new Date(value).toLocaleDateString("es-ES", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
 function toMetricLabel(value: number | null, suffix = "") {
   if (value == null) {
     return "-";
@@ -2280,6 +2495,71 @@ function getOptionalDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[]
 
 function getSupportDailyActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
   return (row.optional_daily_activities ?? []).filter((activity) => activity.actual_discipline === "yoga");
+}
+
+function normalizeDisciplineFamily(discipline: string | null | undefined) {
+  if (!discipline) {
+    return null;
+  }
+  if (["road_biking", "indoor_cycling", "mountain_biking", "gravel_biking", "virtual_cycling"].includes(discipline)) {
+    return "cycling";
+  }
+  if (["walking", "hiking"].includes(discipline)) {
+    return "walking";
+  }
+  if (["running", "trail_running", "track_running", "treadmill_running"].includes(discipline)) {
+    return "running";
+  }
+  return discipline;
+}
+
+function getWeeklyComplianceStatus(row: PlanVsRealRow) {
+  return row.normalized_compliance_status ?? row.compliance_status;
+}
+
+function getPlannedSupportFamilies(row: PlanVsRealRow) {
+  const families = new Set<string>();
+
+  for (const block of row.planned_prescription?.blocks ?? []) {
+    if (block.block_role === "support" && block.discipline_family) {
+      families.add(block.discipline_family);
+    }
+  }
+
+  for (const group of row.planned_activity_groups ?? []) {
+    if (group.group_role !== "support") {
+      continue;
+    }
+    for (const item of group.items ?? []) {
+      if (item.discipline_family) {
+        families.add(item.discipline_family);
+      }
+    }
+  }
+
+  return families;
+}
+
+function getLinkedPlannedSupportActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
+  const supportFamilies = getPlannedSupportFamilies(row);
+  if (supportFamilies.size === 0) {
+    return [];
+  }
+
+  return getPlanVsRealActivities(row)
+    .filter((activity) => {
+      const disciplineFamily = normalizeDisciplineFamily(activity.actual_discipline);
+      return disciplineFamily !== null && supportFamilies.has(disciplineFamily);
+    })
+    .map((activity) => ({ ...activity }));
+}
+
+function getLinkedOptionalStrengthActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
+  return getLinkedPlannedSupportActivities(row).filter((activity) => activity.actual_discipline !== "yoga");
+}
+
+function getLinkedSupportFlexibilityActivities(row: PlanVsRealRow): OptionalDailyActivity[] {
+  return getLinkedPlannedSupportActivities(row).filter((activity) => activity.actual_discipline === "yoga");
 }
 
 function getOptionalDailyLoadMinutes(row: PlanVsRealRow) {
@@ -3394,6 +3674,25 @@ function toConfidenceLabel(value: string | null | undefined) {
   return "Sin confianza";
 }
 
+function formatSeasonContextEventTypeLabel(value: string) {
+  switch (value) {
+    case "new_bicycle":
+      return "Bicicleta nueva";
+    case "tyre_change":
+      return "Cambio de cubiertas";
+    case "wheel_change":
+      return "Cambio de ruedas";
+    case "bike_fit":
+      return "Ajuste biomecanico";
+    case "maintenance":
+      return "Mantenimiento";
+    case "other":
+      return "Otro";
+    default:
+      return value.replace(/_/g, " ");
+  }
+}
+
 export default function App() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -3419,6 +3718,8 @@ export default function App() {
   const [zoneProposals, setZoneProposals] = useState<ZoneProposalItem[]>([]);
   const [currentZoneProfiles, setCurrentZoneProfiles] = useState<CurrentZoneProfilesResponse | null>(null);
   const [physiologicalAnchorsForm, setPhysiologicalAnchorsForm] = useState<PhysiologicalAnchorsFormState>(emptyPhysiologicalAnchorsForm);
+  const [seasonContextEvents, setSeasonContextEvents] = useState<SeasonContextEvent[]>([]);
+  const [seasonContextEventForm, setSeasonContextEventForm] = useState<SeasonContextEventFormState>(emptySeasonContextEventForm);
   const [selectedDailyMetric, setSelectedDailyMetric] = useState<DailyMetricDetail | null>(null);
   const [selectedDailyMetricDate, setSelectedDailyMetricDate] = useState<string | null>(null);
   const [selectedDailyAssessment, setSelectedDailyAssessment] = useState<DailyAssessmentView | null>(null);
@@ -3436,10 +3737,16 @@ export default function App() {
   const [segmentHistoryLimit, setSegmentHistoryLimit] = useState<number>(20);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [selectedSegmentHistory, setSelectedSegmentHistory] = useState<SegmentHistoryResponse | null>(null);
+  const [benchmarkClimbs, setBenchmarkClimbs] = useState<BenchmarkClimbListItem[]>([]);
+  const [selectedBenchmarkClimbId, setSelectedBenchmarkClimbId] = useState<number | null>(null);
+  const [selectedBenchmarkClimbDetail, setSelectedBenchmarkClimbDetail] = useState<BenchmarkClimbDetailResponse | null>(null);
+  const [benchmarkClimbForm, setBenchmarkClimbForm] = useState<BenchmarkClimbFormState>(emptyBenchmarkClimbForm);
   const [importing, setImporting] = useState(false);
   const [previewingImport, setPreviewingImport] = useState(false);
   const [loadingSegments, setLoadingSegments] = useState(false);
   const [loadingSegmentHistory, setLoadingSegmentHistory] = useState(false);
+  const [loadingBenchmarkClimbs, setLoadingBenchmarkClimbs] = useState(false);
+  const [loadingBenchmarkClimbDetail, setLoadingBenchmarkClimbDetail] = useState(false);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [loadingActivityQuality, setLoadingActivityQuality] = useState(false);
   const [loadingSeasonActivities, setLoadingSeasonActivities] = useState(false);
@@ -3455,6 +3762,10 @@ export default function App() {
   const [savingWeeklyReview, setSavingWeeklyReview] = useState(false);
   const [replayingActivityQuality, setReplayingActivityQuality] = useState(false);
   const [savingPhysiologicalAnchors, setSavingPhysiologicalAnchors] = useState(false);
+  const [savingSeasonContextEvent, setSavingSeasonContextEvent] = useState(false);
+  const [savingBenchmarkClimb, setSavingBenchmarkClimb] = useState(false);
+  const [refreshingBenchmarkClimbId, setRefreshingBenchmarkClimbId] = useState<number | null>(null);
+  const [deletingSeasonContextEventId, setDeletingSeasonContextEventId] = useState<number | null>(null);
 
   useEffect(() => {
     void loadSeasons();
@@ -3576,6 +3887,12 @@ export default function App() {
       }
       throw requestError;
     }
+  }
+
+  async function loadSeasonContextEvents(seasonId: number) {
+    const payload = await fetchJson<SeasonContextEventsResponse>(`/api/seasons/${seasonId}/context-events`);
+    setSeasonContextEvents(payload.items);
+    return payload.items;
   }
 
   async function loadSeasons() {
@@ -3738,16 +4055,20 @@ export default function App() {
     }
   }
 
-  async function loadSegments(seasonId: number, preferredSegmentId?: number | null) {
+  async function loadSegments(seasonId: number, preferredSegmentId?: number | null, preserveSelection = true) {
     try {
       setLoadingSegments(true);
       const data = await fetchJson<{ items: SegmentListItem[] }>(`/api/segments?season_id=${seasonId}&limit=24`);
       setSegments(data.items);
+      const preservedSegmentId =
+        preserveSelection && selectedSegmentId != null && data.items.some((segment) => segment.segment_id === selectedSegmentId)
+          ? selectedSegmentId
+          : null;
       const nextSegmentId =
         preferredSegmentId ??
-        (selectedSegmentId != null && data.items.some((segment) => segment.segment_id === selectedSegmentId)
-          ? selectedSegmentId
-          : data.items[0]?.segment_id ?? null);
+        preservedSegmentId ??
+        data.items[0]?.segment_id ??
+        null;
 
       if (nextSegmentId != null) {
         await loadSegmentHistory(nextSegmentId);
@@ -3764,6 +4085,51 @@ export default function App() {
       }
     } finally {
       setLoadingSegments(false);
+    }
+  }
+
+  async function loadBenchmarkClimbDetail(benchmarkClimbId: number) {
+    try {
+      setLoadingBenchmarkClimbDetail(true);
+      const data = await fetchJson<BenchmarkClimbDetailResponse>(`/api/benchmark-climbs/${benchmarkClimbId}`);
+      setSelectedBenchmarkClimbId(benchmarkClimbId);
+      setSelectedBenchmarkClimbDetail(data);
+    } catch (requestError) {
+      setSelectedBenchmarkClimbId(null);
+      setSelectedBenchmarkClimbDetail(null);
+      if (!isNotFoundError(requestError)) {
+        throw requestError;
+      }
+    } finally {
+      setLoadingBenchmarkClimbDetail(false);
+    }
+  }
+
+  async function loadBenchmarkClimbs(seasonId: number, preferredBenchmarkClimbId?: number | null, preserveSelection = true) {
+    try {
+      setLoadingBenchmarkClimbs(true);
+      const data = await fetchJson<{ items: BenchmarkClimbListItem[] }>(`/api/benchmark-climbs?season_id=${seasonId}`);
+      setBenchmarkClimbs(data.items);
+      const preservedBenchmarkClimbId =
+        preserveSelection && selectedBenchmarkClimbId != null && data.items.some((item) => item.benchmark_climb_id === selectedBenchmarkClimbId)
+          ? selectedBenchmarkClimbId
+          : null;
+      const nextBenchmarkClimbId = preferredBenchmarkClimbId ?? preservedBenchmarkClimbId ?? data.items[0]?.benchmark_climb_id ?? null;
+      if (nextBenchmarkClimbId != null) {
+        await loadBenchmarkClimbDetail(nextBenchmarkClimbId);
+      } else {
+        setSelectedBenchmarkClimbId(null);
+        setSelectedBenchmarkClimbDetail(null);
+      }
+    } catch (requestError) {
+      setBenchmarkClimbs([]);
+      setSelectedBenchmarkClimbId(null);
+      setSelectedBenchmarkClimbDetail(null);
+      if (!isNotFoundError(requestError)) {
+        throw requestError;
+      }
+    } finally {
+      setLoadingBenchmarkClimbs(false);
     }
   }
 
@@ -3791,9 +4157,15 @@ export default function App() {
       setZoneProposals([]);
       setCurrentZoneProfiles(null);
       setPhysiologicalAnchorsForm(emptyPhysiologicalAnchorsForm);
+      setSeasonContextEvents([]);
+      setSeasonContextEventForm(emptySeasonContextEventForm);
       setSegments([]);
       setSelectedSegmentId(null);
       setSelectedSegmentHistory(null);
+      setBenchmarkClimbs([]);
+      setSelectedBenchmarkClimbId(null);
+      setSelectedBenchmarkClimbDetail(null);
+      setBenchmarkClimbForm(emptyBenchmarkClimbForm);
       setSeasonActivities([]);
       setSeasonKpiTrends([]);
       const nextKpiRange = getSeasonKpiDateRange(season);
@@ -3807,8 +4179,10 @@ export default function App() {
         loadSeasonActivities(season.season_id),
         loadSeasonKpiTrends(season.season_id, nextKpiRange),
         loadSegments(season.season_id),
+        loadBenchmarkClimbs(season.season_id),
         loadZoneProposals(season.season_id),
         loadCurrentZoneProfiles(season.season_id),
+        loadSeasonContextEvents(season.season_id),
         loadWeightReview(season.season_id),
       ]);
       setBlocks(data);
@@ -3833,6 +4207,79 @@ export default function App() {
       ...current,
       [name]: value,
     }));
+  }
+
+  function handleSeasonContextEventInputChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+    const { name, value } = event.target;
+    setSeasonContextEventForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  function handleBenchmarkClimbInputChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    const { name, value } = event.target;
+    setBenchmarkClimbForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  async function saveBenchmarkClimb() {
+    if (!selectedSeason) {
+      setError("Selecciona una temporada antes de guardar un benchmark.");
+      return;
+    }
+    if (selectedSegmentId == null) {
+      setError("Selecciona primero un segmento Garmin para convertirlo en benchmark.");
+      return;
+    }
+    if (!benchmarkClimbForm.climb_name.trim()) {
+      setError("Indica un nombre corto para el benchmark.");
+      return;
+    }
+
+    try {
+      setSavingBenchmarkClimb(true);
+      setError(null);
+      setSubmissionMessage(null);
+      const created = await postJson<BenchmarkClimbDetailResponse>(
+        `/api/seasons/${selectedSeason.season_id}/benchmark-climbs`,
+        {
+          climb_name: benchmarkClimbForm.climb_name.trim(),
+          primary_segment_id: selectedSegmentId,
+          notes: benchmarkClimbForm.notes.trim() || null,
+        },
+      );
+      setSelectedBenchmarkClimbId(created.benchmark_climb.benchmark_climb_id);
+      setSelectedBenchmarkClimbDetail(created);
+      setBenchmarkClimbForm(emptyBenchmarkClimbForm());
+      await loadBenchmarkClimbs(selectedSeason.season_id, created.benchmark_climb.benchmark_climb_id, false);
+      setSubmissionMessage("Benchmark guardado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setSavingBenchmarkClimb(false);
+    }
+  }
+
+  async function refreshSelectedBenchmarkClimbProfile() {
+    if (!selectedSeason || selectedBenchmarkClimbId == null) {
+      return;
+    }
+
+    try {
+      setRefreshingBenchmarkClimbId(selectedBenchmarkClimbId);
+      setError(null);
+      const detail = await postJson<BenchmarkClimbDetailResponse>(`/api/benchmark-climbs/${selectedBenchmarkClimbId}/refresh-profile`, {});
+      setSelectedBenchmarkClimbDetail(detail);
+      await loadBenchmarkClimbs(selectedSeason.season_id, selectedBenchmarkClimbId, false);
+      setSubmissionMessage("Perfil del benchmark actualizado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setRefreshingBenchmarkClimbId(null);
+    }
   }
 
   async function savePhysiologicalAnchorsVersion() {
@@ -3882,6 +4329,60 @@ export default function App() {
       setError(requestError instanceof Error ? requestError.message : "Error desconocido");
     } finally {
       setSavingPhysiologicalAnchors(false);
+    }
+  }
+
+  async function saveSeasonContextEvent() {
+    if (!selectedSeason) {
+      setError("Selecciona una temporada antes de registrar un evento.");
+      return;
+    }
+    if (!seasonContextEventForm.title.trim()) {
+      setError("Introduce un titulo para el evento.");
+      return;
+    }
+
+    try {
+      setSavingSeasonContextEvent(true);
+      setError(null);
+      setSubmissionMessage(null);
+      await postJson(`/api/seasons/${selectedSeason.season_id}/context-events`, {
+        event_date: seasonContextEventForm.event_date || getTodayIsoDate(),
+        event_type: seasonContextEventForm.event_type,
+        title: seasonContextEventForm.title.trim(),
+        equipment_label: seasonContextEventForm.equipment_label.trim() || null,
+        notes: seasonContextEventForm.notes.trim() || null,
+      });
+      await loadSeasonContextEvents(selectedSeason.season_id);
+      setSeasonContextEventForm((current) => ({
+        ...emptySeasonContextEventForm(),
+        event_date: current.event_date || getTodayIsoDate(),
+        event_type: current.event_type || "new_bicycle",
+      }));
+      setSubmissionMessage("Evento de contexto guardado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setSavingSeasonContextEvent(false);
+    }
+  }
+
+  async function removeSeasonContextEvent(seasonContextEventId: number) {
+    if (!selectedSeason) {
+      return;
+    }
+
+    try {
+      setDeletingSeasonContextEventId(seasonContextEventId);
+      setError(null);
+      setSubmissionMessage(null);
+      await deleteJson(`/api/seasons/${selectedSeason.season_id}/context-events/${seasonContextEventId}`);
+      await loadSeasonContextEvents(selectedSeason.season_id);
+      setSubmissionMessage("Evento de contexto eliminado.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Error desconocido");
+    } finally {
+      setDeletingSeasonContextEventId(null);
     }
   }
 
@@ -3956,6 +4457,18 @@ export default function App() {
       setSelectedPlannedSessionPrescription(preferredSession?.planned_prescription ?? null);
       setPlanVsRealRows(comparisonData);
       setWeeklyReview(reviewData);
+      if (reviewData.weekly_assessment_available && reviewData.weekly_assessment_url) {
+        try {
+          setLoadingWeeklyAssessment(true);
+          const markdown = await fetchText(reviewData.weekly_assessment_url);
+          setSelectedWeeklyAssessmentMarkdown(markdown);
+        } catch (assessmentError) {
+          setSelectedWeeklyAssessmentMarkdown(null);
+          setError(assessmentError instanceof Error ? assessmentError.message : "Error desconocido");
+        } finally {
+          setLoadingWeeklyAssessment(false);
+        }
+      }
       const availableDates = Array.from(new Set([...sessionData.map((session) => session.session_date), ...comparisonData.map((row) => row.session_date)])).sort();
       const defaultMetricDate = availableDates.find((date) => date === getTodayIsoDate()) ?? availableDates[0] ?? week.start_date;
       setSelectedDailyMetricDate(defaultMetricDate);
@@ -4140,7 +4653,12 @@ export default function App() {
         ...getSeasonImportDateRange(selectedSeason, activities),
       }));
       await loadImportJobs();
-      await loadSegments(selectedSeason.season_id, selectedSegmentId);
+      const shouldFocusLatestSegment = result.counts.segment_efforts_loaded > 0;
+      await loadSegments(
+        selectedSeason.season_id,
+        shouldFocusLatestSegment ? undefined : selectedSegmentId,
+        !shouldFocusLatestSegment,
+      );
       if (selectedDailyMetricDate) {
         await loadDailyMetric(selectedSeason.season_id, selectedDailyMetricDate);
       }
@@ -4242,24 +4760,30 @@ export default function App() {
 
   const weeklySummary = {
     total: planVsRealRows.length,
-    completed: planVsRealRows.filter((row) => row.compliance_status === "completed").length,
-    partial: planVsRealRows.filter((row) => row.compliance_status === "partial").length,
-    pending: planVsRealRows.filter((row) => row.compliance_status === "pending").length,
-    other: planVsRealRows.filter((row) => !["completed", "partial", "pending"].includes(row.compliance_status)).length,
+    completed: planVsRealRows.filter((row) => getWeeklyComplianceStatus(row) === "completed").length,
+    partial: planVsRealRows.filter((row) => getWeeklyComplianceStatus(row) === "partial").length,
+    pending: planVsRealRows.filter((row) => getWeeklyComplianceStatus(row) === "pending").length,
+    other: planVsRealRows.filter((row) => !["completed", "partial", "pending"].includes(getWeeklyComplianceStatus(row))).length,
     actualMinutes: Math.round(planVsRealRows.reduce((total, row) => total + (row.actual_duration_min ?? 0), 0)),
   };
-  const optionalDailyActivities = planVsRealRows.flatMap((row) => getOptionalDailyActivities(row));
-  const supportDailyActivities = planVsRealRows.flatMap((row) => getSupportDailyActivities(row));
+  const unlinkedOptionalDailyActivities = planVsRealRows.flatMap((row) => getOptionalDailyActivities(row));
+  const unlinkedSupportDailyActivities = planVsRealRows.flatMap((row) => getSupportDailyActivities(row));
+  const linkedOptionalStrengthActivities = planVsRealRows.flatMap((row) => getLinkedOptionalStrengthActivities(row));
+  const linkedSupportFlexibilityActivities = planVsRealRows.flatMap((row) => getLinkedSupportFlexibilityActivities(row));
+  const optionalDailyActivities = [...linkedOptionalStrengthActivities, ...unlinkedOptionalDailyActivities];
+  const supportDailyActivities = [...linkedSupportFlexibilityActivities, ...unlinkedSupportDailyActivities];
   const optionalStrengthCount = optionalDailyActivities.filter((activity) => activity.actual_discipline === "strength_training").length;
   const supportFlexibilityCount = supportDailyActivities.length;
   const optionalDailyMinutes = Math.round(optionalDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const supportDailyMinutes = Math.round(supportDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+  const unlinkedOptionalDailyMinutes = Math.round(unlinkedOptionalDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
+  const unlinkedSupportDailyMinutes = Math.round(unlinkedSupportDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const otherDailyActivities = planVsRealRows.flatMap((row) => row.other_daily_activities ?? []);
   const otherDailyMinutes = Math.round(otherDailyActivities.reduce((total, activity) => total + (activity.actual_duration_min ?? 0), 0));
   const dailyMetricDates = Array.from(new Set([...sessions.map((session) => session.session_date), ...planVsRealRows.map((row) => row.session_date)])).sort();
-  const totalLoadMinutes = weeklySummary.actualMinutes + optionalDailyMinutes + supportDailyMinutes + otherDailyMinutes;
-  const skippedCount = planVsRealRows.filter((row) => row.compliance_status === "skipped").length;
-  const replacedCount = planVsRealRows.filter((row) => row.compliance_status === "replaced").length;
+  const totalLoadMinutes = weeklySummary.actualMinutes + unlinkedOptionalDailyMinutes + otherDailyMinutes;
+  const skippedCount = planVsRealRows.filter((row) => getWeeklyComplianceStatus(row) === "skipped").length;
+  const replacedCount = planVsRealRows.filter((row) => getWeeklyComplianceStatus(row) === "replaced").length;
   const trackedCount = weeklySummary.total - weeklySummary.pending;
   const plannedLowerMinutes = sessions.reduce((total, session) => total + (session.duration_min ?? 0), 0);
   const plannedUpperMinutes = sessions.reduce((total, session) => total + (session.duration_max ?? session.duration_min ?? 0), 0);
@@ -4282,7 +4806,7 @@ export default function App() {
           ? "por encima de la banda"
           : "dentro de la banda";
   const keySessionRows = planVsRealRows.filter((row) => row.is_key_session === 1);
-  const keySessionsClosed = keySessionRows.filter((row) => ["completed", "partial", "replaced"].includes(row.compliance_status)).length;
+  const keySessionsClosed = keySessionRows.filter((row) => ["completed", "partial", "replaced"].includes(getWeeklyComplianceStatus(row))).length;
   const riskLevel =
     weeklySummary.pending >= 2 || skippedCount >= 2 || volumeStatus === "por debajo de la banda"
       ? "Riesgo alto"
@@ -4316,7 +4840,7 @@ export default function App() {
   const dashboardSignals = [
     `${selectedWeek?.week_role ?? "Semana activa"} con objetivo "${selectedWeek?.objective_primary ?? "sin objetivo definido"}".`,
     `Volumen real ${volumeStatus}: ${toHoursLabel(weeklySummary.actualMinutes)} frente a una referencia de ${toHoursLabel(plannedReferenceMinutes)}.`,
-    `Carga total registrada: ${toHoursLabel(totalLoadMinutes)} (${toHoursLabel(weeklySummary.actualMinutes)} del plan + ${toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} en actividades no planificadas + ${toHoursLabel(supportDailyMinutes)} de flexibilidad de soporte).`,
+    `Carga total registrada: ${toHoursLabel(totalLoadMinutes)} (${toHoursLabel(weeklySummary.actualMinutes)} del plan + ${toHoursLabel(unlinkedOptionalDailyMinutes + otherDailyMinutes)} en actividades no planificadas).`,
     optionalDailyActivities.length > 0
       ? `Extras diarios: ${optionalStrengthCount} sesiones de fuerza (${toHoursLabel(optionalDailyMinutes)}).`
       : "Sin extras diarios opcionales registrados en la semana.",
@@ -4791,6 +5315,158 @@ export default function App() {
         </div>
       </section>
 
+      <section className="panel benchmark-climb-panel">
+        <div className="section-heading">
+          <div>
+            <h2>Benchmark climbs</h2>
+            <p className="section-subtitle">Climbs curados para seguimiento tecnico, apoyados sobre los segmentos Garmin y la geometria persistida de las actividades.</p>
+          </div>
+        </div>
+
+        <div className="segment-layout">
+          <div className="segment-list">
+            <div className="panel-subcard benchmark-climb-form-card season-context-event-form">
+              <div>
+                <strong>Nuevo benchmark</strong>
+                <p className="segment-missing-copy">Usa el segmento Garmin seleccionado como ancla del benchmark.</p>
+              </div>
+              <div className="segment-list-meta">
+                <span>Segmento activo: {selectedSegmentHistory?.segment.segment_name ?? "Selecciona un segmento"}</span>
+                {selectedSegmentHistory?.segment.distance_meters != null ? <span>{selectedSegmentHistory.segment.distance_meters.toFixed(0)} m</span> : null}
+                {selectedSegmentHistory?.segment.average_grade_percent != null ? <span>{selectedSegmentHistory.segment.average_grade_percent.toFixed(1)}% media</span> : null}
+              </div>
+              <label>
+                <span>Nombre del benchmark</span>
+                <input name="climb_name" value={benchmarkClimbForm.climb_name} onChange={handleBenchmarkClimbInputChange} placeholder={selectedSegmentHistory?.segment.segment_name ?? "Urkiola"} />
+              </label>
+              <label>
+                <span>Notas</span>
+                <textarea name="notes" rows={3} value={benchmarkClimbForm.notes} onChange={handleBenchmarkClimbInputChange} placeholder="Contexto opcional para recordar por que este puerto es relevante." />
+              </label>
+              <button className="primary-button" type="button" onClick={() => void saveBenchmarkClimb()} disabled={savingBenchmarkClimb || selectedSegmentId == null}>
+                {savingBenchmarkClimb ? "Guardando..." : "Crear benchmark"}
+              </button>
+            </div>
+
+            {loadingBenchmarkClimbs ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Cargando benchmarks</strong>
+                <p>Recuperando los puertos curados de la temporada activa.</p>
+              </div>
+            ) : benchmarkClimbs.length === 0 ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Sin benchmarks</strong>
+                <p>Crea el primero a partir del segmento Garmin que quieras seguir como referencia.</p>
+              </div>
+            ) : (
+              benchmarkClimbs.map((benchmark) => (
+                <button
+                  key={benchmark.benchmark_climb_id}
+                  type="button"
+                  className={`segment-list-item${selectedBenchmarkClimbId === benchmark.benchmark_climb_id ? " selected" : ""}`}
+                  onClick={() => void loadBenchmarkClimbDetail(benchmark.benchmark_climb_id)}
+                >
+                  <div className="segment-list-head">
+                    <strong>{benchmark.climb_name}</strong>
+                    <span className={benchmark.profile_ready ? "status-pill status-pill-ready" : "status-pill status-pill-missing"}>
+                      {benchmark.profile_ready ? "Perfil listo" : "Sin perfil"}
+                    </span>
+                  </div>
+                  <div className="segment-list-meta">
+                    <span>Segmento: {benchmark.primary_segment_name ?? "-"}</span>
+                    <span>Mejor: {formatSecondsLabel(benchmark.best_elapsed_time_seconds)}</span>
+                    <span>Esfuerzos: {benchmark.effort_count}</span>
+                    <span>Ultimo dia: {benchmark.last_activity_date ?? "-"}</span>
+                  </div>
+                  <p className="segment-missing-copy">
+                    {benchmark.profile_ready
+                      ? `${benchmark.profile_distance_meters != null ? `${benchmark.profile_distance_meters.toFixed(0)} m` : "Distancia sin dato"}${benchmark.profile_average_grade_percent != null ? ` · ${benchmark.profile_average_grade_percent.toFixed(1)}% media` : ""}`
+                      : "Aun no se ha derivado un perfil geometrico desde una actividad fuente."}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="segment-detail-card panel-subcard">
+            {loadingBenchmarkClimbDetail ? (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Cargando benchmark</strong>
+                <p>Recuperando el detalle tecnico del puerto seleccionado.</p>
+              </div>
+            ) : selectedBenchmarkClimbDetail ? (
+              <>
+                <div className="segment-detail-head">
+                  <div>
+                    <h3>{selectedBenchmarkClimbDetail.benchmark_climb.climb_name}</h3>
+                    <p className="section-subtitle">
+                      {selectedBenchmarkClimbDetail.segments[0]?.segment_name ?? "Segmento base sin nombre"}
+                      {selectedBenchmarkClimbDetail.profile?.distance_meters != null ? ` · ${selectedBenchmarkClimbDetail.profile.distance_meters.toFixed(0)} m` : ""}
+                      {selectedBenchmarkClimbDetail.profile?.average_grade_percent != null ? ` · ${selectedBenchmarkClimbDetail.profile.average_grade_percent.toFixed(1)}% media` : ""}
+                    </p>
+                  </div>
+                  <div className="segment-detail-controls">
+                    <button className="ghost-button" type="button" onClick={() => void refreshSelectedBenchmarkClimbProfile()} disabled={refreshingBenchmarkClimbId === selectedBenchmarkClimbId}>
+                      {refreshingBenchmarkClimbId === selectedBenchmarkClimbId ? "Actualizando perfil..." : "Actualizar perfil"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="summary-strip segment-summary-strip">
+                  <article>
+                    <strong>{selectedBenchmarkClimbDetail.segment_history?.summary.effort_count ?? 0}</strong>
+                    <span>Esfuerzos</span>
+                  </article>
+                  <article>
+                    <strong>{selectedBenchmarkClimbDetail.profile?.ascent_meters != null ? `${selectedBenchmarkClimbDetail.profile.ascent_meters.toFixed(0)} m` : "Sin dato"}</strong>
+                    <span>Ascenso</span>
+                  </article>
+                  <article>
+                    <strong>{selectedBenchmarkClimbDetail.profile?.max_grade_percent != null ? `${selectedBenchmarkClimbDetail.profile.max_grade_percent.toFixed(1)}%` : "Sin dato"}</strong>
+                    <span>Pendiente max.</span>
+                  </article>
+                </div>
+
+                <p className="segment-availability-copy">
+                  {selectedBenchmarkClimbDetail.profile
+                    ? `Perfil derivado el ${toDateTimeLabel(selectedBenchmarkClimbDetail.profile.derived_at)}${selectedBenchmarkClimbDetail.profile_source ? ` a partir del esfuerzo ${formatSecondsLabel(selectedBenchmarkClimbDetail.profile_source.elapsed_time_seconds)} del ${selectedBenchmarkClimbDetail.profile_source.activity_date}` : ""}.`
+                    : "Todavia no hay perfil derivado. Usa 'Actualizar perfil' para construirlo desde el mejor esfuerzo con geometria disponible."}
+                </p>
+
+                {renderBenchmarkProfileChart(selectedBenchmarkClimbDetail)}
+
+                {selectedBenchmarkClimbDetail.segment_history ? (
+                  <div className="segment-effort-list">
+                    {selectedBenchmarkClimbDetail.segment_history.efforts.slice().reverse().slice(0, 4).map((effort) => (
+                      <article key={`benchmark-effort-${effort.segment_effort_id}`} className="segment-effort-item">
+                        <div className="segment-list-head">
+                          <strong>{effort.activity_date}</strong>
+                          <div className="segment-effort-badges">
+                            {effort.is_best_effort ? <span className="status-pill status-pill-ready">Mejor</span> : null}
+                            {effort.is_latest_effort ? <span className="status-pill">Ultimo</span> : null}
+                          </div>
+                        </div>
+                        <div className="segment-list-meta">
+                          <span>Tiempo: {formatSecondsLabel(effort.elapsed_time_seconds)}</span>
+                          <span>Vs mejor: {formatDeltaLabel(effort.delta_vs_best_seconds)}</span>
+                          <span>Potencia: {effort.avg_power != null ? `${effort.avg_power.toFixed(0)} W` : "Sin dato"}</span>
+                          <span>FC: {effort.avg_heart_rate != null ? `${effort.avg_heart_rate.toFixed(0)} ppm` : "Sin dato"}</span>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="empty-state-card empty-state-card-wide">
+                <strong>Selecciona un benchmark</strong>
+                <p>Aqui veras el perfil del puerto y el historial resumido de su segmento base.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="panel activity-feed-panel">
         <div className="section-heading">
           <div>
@@ -4908,6 +5584,81 @@ export default function App() {
                   <small>Se crearan perfiles nuevos para FC por reserva cardiaca y potencia por FTP con la fecha efectiva indicada.</small>
                 </div>
               </form>
+            </article>
+            <article className="zone-governance-card zone-governance-card-wide season-context-events-card">
+              <div className="item-head">
+                <strong>Eventos de contexto</strong>
+                <span className="dashboard-label">{seasonContextEvents.length} registrados</span>
+              </div>
+              <p>Registra cambios de material o hitos que puedan ayudar a interpretar la temporada.</p>
+              <div className="season-context-events-layout">
+                <div className="season-context-events-list">
+                  {seasonContextEvents.length > 0 ? seasonContextEvents.map((item) => (
+                    <article key={item.season_context_event_id} className="season-context-event-item">
+                      <div className="season-context-event-head">
+                        <div>
+                          <strong>{item.title}</strong>
+                          <p>
+                            {[
+                              toDateLabel(item.event_date),
+                              formatSeasonContextEventTypeLabel(item.event_type),
+                              item.equipment_label,
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => void removeSeasonContextEvent(item.season_context_event_id)}
+                          disabled={deletingSeasonContextEventId === item.season_context_event_id}
+                        >
+                          {deletingSeasonContextEventId === item.season_context_event_id ? "Eliminando..." : "Eliminar"}
+                        </button>
+                      </div>
+                      {item.notes ? <p>{item.notes}</p> : null}
+                    </article>
+                  )) : (
+                    <p className="season-context-events-empty">Todavia no hay eventos registrados para esta temporada.</p>
+                  )}
+                </div>
+                <form className="manual-form season-context-event-form" onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveSeasonContextEvent();
+                }}>
+                  <div className="form-grid season-context-event-form-grid">
+                    <label>
+                      Fecha
+                      <input name="event_date" type="date" value={seasonContextEventForm.event_date} onChange={handleSeasonContextEventInputChange} />
+                    </label>
+                    <label>
+                      Tipo
+                      <select name="event_type" value={seasonContextEventForm.event_type} onChange={handleSeasonContextEventInputChange}>
+                        {SEASON_CONTEXT_EVENT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Titulo
+                      <input name="title" type="text" value={seasonContextEventForm.title} onChange={handleSeasonContextEventInputChange} placeholder="Ejemplo: bici nueva o cambio trasero" />
+                    </label>
+                    <label>
+                      Material
+                      <input name="equipment_label" type="text" value={seasonContextEventForm.equipment_label} onChange={handleSeasonContextEventInputChange} placeholder="Ejemplo: Orbea Orca o GP5000 28 mm" />
+                    </label>
+                  </div>
+                  <label>
+                    Notas
+                    <textarea name="notes" rows={2} value={seasonContextEventForm.notes} onChange={handleSeasonContextEventInputChange} placeholder="Detalle opcional para recordar el contexto del cambio." />
+                  </label>
+                  <div className="review-actions zone-anchor-actions">
+                    <button className="secondary-button" type="submit" disabled={savingSeasonContextEvent}>
+                      {savingSeasonContextEvent ? "Guardando evento..." : "Guardar evento"}
+                    </button>
+                    <small>Ejemplos: bicicleta nueva, cambio de cubiertas, ajuste biomecanico o mantenimiento relevante.</small>
+                  </div>
+                </form>
+              </div>
             </article>
             <article className="zone-governance-card">
               <span className="dashboard-label">Propuestas de refinamiento</span>
@@ -5287,7 +6038,7 @@ export default function App() {
                 <article>
                   <strong>{toHoursLabel(totalLoadMinutes)}</strong>
                   <span>Carga total</span>
-                  <small>{toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} fuera del plan · {toHoursLabel(supportDailyMinutes)} soporte movilidad</small>
+                  <small>{toHoursLabel(unlinkedOptionalDailyMinutes + otherDailyMinutes)} fuera del plan</small>
                 </article>
                 <article>
                   <strong>
@@ -5538,7 +6289,7 @@ export default function App() {
                           ) : null}
                         </td>
                         <td>
-                          <span className={toBadgeClass(row.compliance_status)}>{row.compliance_status}</span>
+                          <span className={toBadgeClass(getWeeklyComplianceStatus(row))}>{row.compliance_status}</span>
                         </td>
                         <td>
                           {row.general_feeling ?? '-'}
@@ -5560,7 +6311,7 @@ export default function App() {
                 {persistedSummary ?? `${selectedWeek?.week_code ?? 'Esta semana'}: ${weeklySummary.completed} completadas, ${weeklySummary.partial} parciales, ${weeklySummary.pending} pendientes y ${weeklySummary.other} con otro estado. La semana acumula ${weeklySummary.actualMinutes} minutos reales.`}
               </p>
               <p>
-                Carga total registrada: {toHoursLabel(totalLoadMinutes)}. De ese total, {toHoursLabel(weeklySummary.actualMinutes)} corresponden a sesiones del plan, {toHoursLabel(optionalDailyMinutes + otherDailyMinutes)} a actividades fuera del plan y {toHoursLabel(supportDailyMinutes)} a flexibilidad de soporte.
+                Carga total registrada: {toHoursLabel(totalLoadMinutes)}. De ese total, {toHoursLabel(weeklySummary.actualMinutes)} corresponden a sesiones del plan y {toHoursLabel(unlinkedOptionalDailyMinutes + otherDailyMinutes)} a actividades fuera del plan.
               </p>
               <p>
                 Opcionales diarios: {optionalDailyActivities.length === 0 ? 'sin registro adicional.' : `${optionalStrengthCount} sesiones de fuerza, con ${optionalDailyMinutes} minutos acumulados.`}
